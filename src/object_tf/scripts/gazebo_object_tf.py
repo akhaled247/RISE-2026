@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from tf.transformations import quaternion_matrix
+import numpy as np
 import rospy
 import tf2_ros
 from gazebo_msgs.msg import ModelStates
@@ -36,6 +38,30 @@ class GazeboObjectTFBroadcaster:
             t.transform.translation.x = pose.position.x
             t.transform.translation.y = pose.position.y
             t.transform.translation.z = pose.position.z
+
+            if object_name == "block":
+                p = np.array([
+                    pose.position.x,
+                    pose.position.y,
+                    pose.position.z
+                ])
+
+                q = [
+                    pose.orientation.x,
+                    pose.orientation.y,
+                    pose.orientation.z,
+                    pose.orientation.w
+                ]
+
+                R = quaternion_matrix(q)[:3, :3]
+
+                offset_local = np.array([0.025, 0.025, 0.025])
+                center = p + R.dot(offset_local)
+
+                t.transform.translation.x = center[0]
+                t.transform.translation.y = center[1]
+                t.transform.translation.z = center[2]
+
             t.transform.rotation = pose.orientation
 
             self.br.sendTransform(t)

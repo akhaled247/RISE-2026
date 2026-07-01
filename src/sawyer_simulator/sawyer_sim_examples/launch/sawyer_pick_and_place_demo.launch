@@ -27,8 +27,8 @@
         args="-file $(find sawyer_sim_examples)/models/block/model.urdf
               -urdf
               -model block
-              -x 0.4225
-              -y 0.1265
+              -x 0.7
+              -y 0
               -z 0.7725
               -Y 0.0" />
 

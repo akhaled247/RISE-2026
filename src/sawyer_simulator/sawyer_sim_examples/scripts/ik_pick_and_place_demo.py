@@ -57,6 +57,7 @@ class PickAndPlace(object):
         self._init_state = self._rs.state().enabled
         print("Enabling robot... ")
         self._rs.enable()
+        self._limb.set_joint_position_speed(0.0)
 
     def move_to_start(self, start_angles=None):
         print("Moving the {0} arm to start pose...".format(self._limb_name))
@@ -66,8 +67,6 @@ class PickAndPlace(object):
         self.gripper_open()
 
     def _guarded_move_to_joint_position(self, joint_angles, timeout=5.0):
-        if rospy.is_shutdown():
-            return
         if joint_angles:
             self._limb.move_to_joint_positions(joint_angles,timeout=timeout)
         else:
@@ -75,11 +74,11 @@ class PickAndPlace(object):
 
     def gripper_open(self):
         self._gripper.open()
-        rospy.sleep(1.0)
+        rospy.sleep(0.5)
 
     def gripper_close(self):
         self._gripper.close()
-        rospy.sleep(1.0)
+        rospy.sleep(0.5)
 
     def _approach(self, pose):
         approach = copy.deepcopy(pose)
@@ -104,66 +103,66 @@ class PickAndPlace(object):
         self._servo_to_pose(ik_pose)
 
     def _servo_to_pose(self, pose, time=2.0, steps=1.0):
-        ''' An *incredibly simple* linearly-interpolated Cartesian move '''
-        r = rospy.Rate(1/(time/steps)) # Defaults to 100Hz command rate
-        current_pose = self._limb.endpoint_pose()
-        ik_delta = Pose()
-        ik_delta.position.x = (current_pose['position'].x - pose.position.x) / steps
-        ik_delta.position.y = (current_pose['position'].y - pose.position.y) / steps
-        ik_delta.position.z = (current_pose['position'].z - pose.position.z) / steps
-        ik_delta.orientation.x = (current_pose['orientation'].x - pose.orientation.x) / steps
-        ik_delta.orientation.y = (current_pose['orientation'].y - pose.orientation.y) / steps
-        ik_delta.orientation.z = (current_pose['orientation'].z - pose.orientation.z) / steps
-        ik_delta.orientation.w = (current_pose['orientation'].w - pose.orientation.w) / steps
-        for d in range(int(steps), -1, -1):
-            if rospy.is_shutdown():
-                return
-            ik_step = Pose()
-            ik_step.position.x = d*ik_delta.position.x + pose.position.x
-            ik_step.position.y = d*ik_delta.position.y + pose.position.y
-            ik_step.position.z = d*ik_delta.position.z + pose.position.z
-            ik_step.orientation.x = d*ik_delta.orientation.x + pose.orientation.x
-            ik_step.orientation.y = d*ik_delta.orientation.y + pose.orientation.y
-            ik_step.orientation.z = d*ik_delta.orientation.z + pose.orientation.z
-            ik_step.orientation.w = d*ik_delta.orientation.w + pose.orientation.w
-            joint_angles = self._limb.ik_request(ik_step, self._tip_name)
-            if joint_angles:
-                self._limb.set_joint_positions(joint_angles)
-            else:
-                rospy.logerr("No Joint Angles provided for move_to_joint_positions. Staying put.")
-            r.sleep()
-        rospy.sleep(1.0)
+        rospy.sleep(0.5)
+        ''' Cartesian move '''
+        if rospy.is_shutdown():
+            return
+        d = 0
+        ik_step = Pose()
+        ik_step.position.x = pose.position.x
+        ik_step.position.y = pose.position.y
+        ik_step.position.z = pose.position.z
+        ik_step.orientation.x = pose.orientation.x
+        ik_step.orientation.y = pose.orientation.y
+        ik_step.orientation.z = pose.orientation.z
+        ik_step.orientation.w = pose.orientation.w
+        self._limb.set_joint_position_speed(0.0)
+        joint_angles = self._limb.ik_request(ik_step, self._tip_name)
+        if joint_angles:
+            self._limb.set_joint_positions(joint_angles)
+        else:
+            rospy.logerr("No solution for " + str(joint_angles))
+            return False
+        rospy.sleep(0.5)
 
     def pick(self, pose):
+        if rospy.is_shutdown():
+            return
         print("Picking to " + str(pose))
-        if rospy.is_shutdown():
-            return
-        # open the gripper
+
+        approach = copy.deepcopy(pose)
+        approach.position.z = approach.position.z + self._hover_distance
+
         self.gripper_open()
-        # servo above pose
-        self._approach(pose)
-        # servo to pose
-        self._servo_to_pose(pose)
-        if rospy.is_shutdown():
-            return
-        # close gripper
+
+        if self._servo_to_pose(approach) is False:
+            return False
+        if self._servo_to_pose(pose) is False:
+            return False
+
+        rospy.sleep(0.5)
+
         self.gripper_close()
-        # retract to clear object
-        self._retract()
+        if self._servo_to_pose(approach) is False:
+            return False
+        
 
     def place(self, pose):
-        if rospy.is_shutdown():
-            return
-        # servo above pose
-        self._approach(pose)
-        # servo to pose
-        self._servo_to_pose(pose)
-        if rospy.is_shutdown():
-            return
-        # open the gripper
+        print("Placing to " + str(pose))
+
+        approach = copy.deepcopy(pose)
+        approach.position.z = approach.position.z + self._hover_distance
+
+
+        if self._servo_to_pose(approach) is False:
+            return False
+        if self._servo_to_pose(pose) is False:
+            return False
+
+
         self.gripper_open()
-        # retract to clear object
-        self._retract()
+        if self._servo_to_pose(approach) is False:
+            return False
 
 def load_gazebo_models(table_pose=Pose(position=Point(x=0.75, y=0.0, z=0.0)),
                        table_reference_frame="world",
@@ -247,18 +246,7 @@ def main():
                              y=0.999994209902,
                              z=-0.00177030764765,
                              w=0.00253311793936)
-    block_poses = list()
-    # The Pose of the block in its initial location.
-    # You may wish to replace these poses with estimates
-    # from a perception node.
-    block_poses.append(Pose(
-        position=Point(x=0.45, y=0.155, z=-0.129),
-        orientation=overhead_orientation))
-    # Feel free to add additional desired poses for the object.
-    # Each additional pose will get its own pick and place.
-    block_poses.append(Pose(
-        position=Point(x=0.6, y=-0.1, z=-0.129),
-        orientation=overhead_orientation))
+
     # Move to the desired starting angles
     print("Running. Ctrl-c to quit")
     pnp.move_to_start(starting_joint_angles)
@@ -266,12 +254,22 @@ def main():
     while not rospy.is_shutdown():
         print("\nPicking...")
         (translation, rotation) = listener.lookupTransform('sawyer', 'block', rospy.Time(0))
-        pnp.pick(Pose(position=Point(x=translation[0]+0.05,y=translation[1]+0.03,z=translation[2]), orientation=overhead_orientation))
+        while pnp.pick(Pose(position=Point(x=translation[0]+0.02,y=translation[1],z=translation[2]), orientation=overhead_orientation)) is False:
+            rospy.logerr("Attempting picking again...")
+            (translation, rotation) = listener.lookupTransform('sawyer', 'block', rospy.Time(0))
+
         print("\nPlacing...")
-        idx = (idx+1) % len(block_poses)
-        pnp.place(Pose(position=Point(x=translation[0]+0.05,y=translation[1]-0.2,z=translation[2]), orientation=overhead_orientation))
+        pnp.place(Pose(position=Point(x=translation[0]+0.1,y=translation[1],z=translation[2]), orientation=overhead_orientation))
     return 0
 
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except rospy.exceptions.ROSInterruptException:
+        sys.exit(0)
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except rospy.exceptions.ROSException as e:
+        print("rospy.exceptions.ROSException: " + e)
+        sys.exit(1)
 	
