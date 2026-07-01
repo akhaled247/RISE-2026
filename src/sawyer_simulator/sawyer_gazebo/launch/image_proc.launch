@@ -15,7 +15,7 @@
     </include>
   -->
   <arg name="respawn"             default="false" />
-  <arg name="use_mono"            default="true" />
+  <arg name="use_mono"            default="false" />
   <arg name="mono_topic"          default="image_mono" />
   <arg name="use_color"           default="true" />
   <arg name="color_topic"         default="image_color" />

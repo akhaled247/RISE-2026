@@ -125,7 +125,7 @@
         <image>
           <width>752</width>
           <height>480</height>
-          <format>L8</format>
+          <format>R8G8B8</format>
         </image>
         <clip>
           <near>0.02</near>

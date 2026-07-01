@@ -12,10 +12,10 @@
 
   <node pkg="nodelet" type="nodelet" name="intera_camera_nodelets" args="manager"/>
   <include file="$(find sawyer_gazebo)/launch/image_proc.launch" ns="$(arg wrist_camera_ns)">
-      <arg name="manager"              value="/intera_camera_nodelets" />
-      <arg name="use_mono"             value="true" />
-      <arg name="mono_topic"           value="image_raw" />
-      <arg name="use_color"            value="false" />
+      <arg name="manager" value="/intera_camera_nodelets" />
+      <arg name="use_mono"             value="false" />
+      <arg name="use_color"            value="true" />
+      <arg name="color_topic"          value="image_raw" />
       <arg name="use_debayer"          value="false" />
   </include>
   <include file="$(find sawyer_gazebo)/launch/image_proc.launch" ns="$(arg head_camera_ns)">

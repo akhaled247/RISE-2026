@@ -45,7 +45,7 @@ import intera_interface
 sawyer_pos = Point()
 block_pos = Point()
 class PickAndPlace(object):
-    def __init__(self, limb="right", hover_distance = 0.15, tip_name="right_gripper_tip", sawyer_pos=Point(), block_pos=Point()):
+    def __init__(self, limb="right", hover_distance = 0.25, tip_name="right_gripper_tip", sawyer_pos=Point(), block_pos=Point()):
         self._limb_name = limb # string
         self._tip_name = tip_name # string
         self._hover_distance = hover_distance # in meters
@@ -229,7 +229,7 @@ def main():
     rospy.on_shutdown(delete_gazebo_models)
 
     limb = 'right'
-    hover_distance = 0.15 # meters
+    hover_distance = 0.25 # meters
     # Starting Joint angles for right arm
     starting_joint_angles = {'right_j0': -0.041662954890248294,
                              'right_j1': -1.0258291091425074,
