@@ -15,13 +15,13 @@
     </inertial>
     <visual>
       <geometry>
-<mesh filename="package://sawyer_sim_examples/models/plastic_banana/textured.obj" scale="1 1 1"/>
+        <mesh filename="package://sawyer_sim_examples/models/plastic_banana/textured.obj" scale="1 1 1"/>
       </geometry>
       
     </visual>
     <collision>
       <geometry>
-<mesh filename="package://sawyer_sim_examples/models/plastic_banana/collision.obj" scale="1 1 1"/>
+        <mesh filename="package://sawyer_sim_examples/models/plastic_banana/collision.obj" scale="1 1 1"/>
       </geometry>
     </collision>
   </link>

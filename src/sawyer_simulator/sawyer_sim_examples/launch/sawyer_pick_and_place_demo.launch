@@ -24,10 +24,22 @@
         pkg="gazebo_ros"
         type="spawn_model"
         output="screen"
-        args="-file $(find sawyer_sim_examples)/models/block/model.urdf
+        args="-file $(find sawyer_sim_examples)/models/red_block/model.urdf
               -urdf
               -model red_block_1
               -x 0.7
+              -y 0
+              -z 0.7725
+              -y 0.0" />
+
+  <node name="spawn_blue_block_1"
+        pkg="gazebo_ros"
+        type="spawn_model"
+        output="screen"
+        args="-file $(find sawyer_sim_examples)/models/blue_block/model.urdf
+              -urdf
+              -model blue_block_1
+              -x 0.5
               -y 0
               -z 0.7725
               -y 0.0" />
