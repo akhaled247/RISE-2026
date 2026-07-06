@@ -29,3 +29,7 @@
 
 # Linux
 *.swp
+
+
+!sawyer_sim_examples/models/plastic_banana/textured.obj
+!sawyer_sim_examples/models/plastic_banana/collision.obj
