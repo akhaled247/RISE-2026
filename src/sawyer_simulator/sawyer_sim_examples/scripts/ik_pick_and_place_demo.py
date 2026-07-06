@@ -253,10 +253,10 @@ def main():
     idx = 0
     while not rospy.is_shutdown():
         print("\nPicking...")
-        (translation, rotation) = listener.lookupTransform('sawyer', 'block', rospy.Time(0))
+        (translation, rotation) = listener.lookupTransform('sawyer', 'red_block_1', rospy.Time(0))
         while pnp.pick(Pose(position=Point(x=translation[0]+0.02,y=translation[1],z=translation[2]), orientation=overhead_orientation)) is False:
             rospy.logerr("Attempting picking again...")
-            (translation, rotation) = listener.lookupTransform('sawyer', 'block', rospy.Time(0))
+            (translation, rotation) = listener.lookupTransform('sawyer', 'red_block_1', rospy.Time(0))
 
         print("\nPlacing...")
         pnp.place(Pose(position=Point(x=translation[0]+0.1,y=translation[1],z=translation[2]), orientation=overhead_orientation))

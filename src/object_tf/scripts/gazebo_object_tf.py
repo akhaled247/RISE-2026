@@ -7,7 +7,7 @@ import tf2_ros
 from gazebo_msgs.msg import ModelStates
 from geometry_msgs.msg import TransformStamped
 
-OBJECT_NAMES = ["block", "sawyer"]
+OBJECT_NAMES = ["red_block_1", "red_block_2","red_block_3","sawyer"]
 
 class GazeboObjectTFBroadcaster: 
     def __init__(self):
