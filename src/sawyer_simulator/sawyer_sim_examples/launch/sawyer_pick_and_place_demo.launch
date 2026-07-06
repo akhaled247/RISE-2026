@@ -57,7 +57,8 @@
               -y 0.0" />
 
   <include file="$(find object_tf)/launch/object_tf.launch" />
+  <include file="$(find vlm)/launch/vlm.launch" />
 
   <!-- Start the Sawyer pick and place demo -->
-  <node pkg="sawyer_sim_examples" type="ik_pick_and_place_demo.py" name="ik_pick_and_place_demo" />
+  <node pkg="sawyer_sim_examples" type="ik_pick_and_place_demo.py" name="ik_pick_and_place_demo" output="screen" />
 </launch>
