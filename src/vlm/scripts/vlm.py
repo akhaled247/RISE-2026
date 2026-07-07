@@ -2,11 +2,9 @@
 
 import numpy as np
 import rospy
-import openai
+from openai import OpenAI
 
 def main(): 
-    from openai import OpenAI
-
     client = OpenAI(
         api_key="dummy",
         base_url="http://localhost:49173/v1"
@@ -26,6 +24,6 @@ def main():
     print("RESPONSE:", response.output_text)
 
 if __name__ == "__main__":
-    main()
     rospy.init_node("vlm")
+    main()
     rospy.spin()
