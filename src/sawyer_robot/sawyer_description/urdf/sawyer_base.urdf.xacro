@@ -526,7 +526,7 @@
   </joint>
   <link name="head_camera"/>
   <joint name="head_camera" type="fixed">
-    <origin rpy="-2.8 -0.000 1.57079632679" xyz="1 0 0.593"/>
+    <origin rpy="-2.4 -0.000 1.57079632679" xyz="1.3 0 0.35"/>
     <parent link="base"/>
     <child link="head_camera"/>
     <axis xyz="0 0 0"/>
