@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 
 import sys
-import os
-import numpy as np
-import rospkg
-import rospy
 import base64
-import roslib
+import rospy
 import message_filters
 import cv2
+
 from vlm.msg import StampedString
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
@@ -17,51 +14,65 @@ from openai import OpenAI
 class VLM:
     def __init__(self, base_url, model):
         self.bridge = CvBridge()
-        instruction_sub = message_filters.Subscriber("/vlm/instruction", StampedString)
-        image_sub = message_filters.Subscriber("/io/internal_camera/head_camera/image_raw", Image)
 
+        self.instruction_sub = message_filters.Subscriber("/vlm/instruction", StampedString)
+        self.image_sub = message_filters.Subscriber("/io/internal_camera/head_camera/image_raw", Image)
         self.sync = message_filters.ApproximateTimeSynchronizer(
-            [instruction_sub, image_sub],
-            queue_size=1,
+            [self.instruction_sub, self.image_sub],
+            queue_size=5,
             slop=0.1
         )
-
         self.sync.registerCallback(self.callback)
 
-        self.image = None
-        self.instruction = None
+        self.used_image_pub = rospy.Publisher("/vlm/used/image_raw", Image, queue_size=1, latch=True)
+        self.used_instruction_pub = rospy.Publisher("/vlm/used/instruction", StampedString, queue_size=1, latch=True)
+
+        self.latest_pair = None
+
         self.client = OpenAI(
             api_key="dummy",
             base_url=base_url
         )
         self.model = model
-  
-    def callback(self, instruction_msg, image_msg):
-        self.instruction = instruction_msg.data
 
+    def callback(self, instruction_msg, image_msg):
+        self.latest_pair = (instruction_msg, image_msg)
+
+    def image_msg_to_base64(self, image_msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(image_msg, "bgr8")
         except CvBridgeError as e:
-            print(e)
-            return
+            rospy.logerr(f"Failed to convert image message: {e}")
+            return None
 
         success, buffer = cv2.imencode(".jpg", cv_image)
 
         if not success:
             rospy.logerr("Failed to encode image")
-            return
+            return None
 
-        self.image = base64.b64encode(buffer).decode("utf-8")
+        return base64.b64encode(buffer).decode("utf-8")
 
-    def get_response(self, message, base64_image):
+    def get_response(self, instruction_msg, image_msg):
+        self.used_instruction_pub.publish(instruction_msg)
+        self.used_image_pub.publish(image_msg)
+
+        base64_image = self.image_msg_to_base64(image_msg)
+
+        if base64_image is None:
+            raise RuntimeError("Could not encode image to base64")
+
         response = self.client.chat.completions.create(
             model=self.model,
-            #reasoning_effort="low",
+            reasoning_effort="none",
             messages=[
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": message},
+                        {
+                            "type": "text",
+                            "text": instruction_msg.data
+                        },
                         {
                             "type": "image_url",
                             "image_url": {
@@ -72,35 +83,46 @@ class VLM:
                 }
             ],
         )
-        return response.choices[0].message.content
-    
-    def get_current_prompt(self):
-        return self.instruction, self.image
 
-  
-def main(): 
-    vlm = VLM(base_url="http://localhost:49173/v1", model="Qwen/Qwen3.5-4B")
-    
-    rate = rospy.Rate(0.1)
+        return response.choices[0].message.content
+
+    def get_current_prompt(self):
+        pair = self.latest_pair
+
+        if pair is None:
+            return None, None
+
+        instruction_msg, image_msg = pair
+        return instruction_msg, image_msg
+
+
+def main():
+    vlm = VLM(
+        base_url="http://localhost:49173/v1",
+        model="Qwen/Qwen3.5-4B"
+    )
+
+    rate = rospy.Rate(0.4)
+
     while not rospy.is_shutdown():
         print("Fetching response...")
 
         start_time = rospy.Time.now()
 
-        instruction, image = vlm.get_current_prompt()
+        instruction_msg, image_msg = vlm.get_current_prompt()
 
-        if image is not None and instruction is not None:
+        if image_msg is not None and instruction_msg is not None:
             try:
-                response = vlm.get_response(instruction, image)
+                response = vlm.get_response(instruction_msg, image_msg)
                 print("Response:")
                 print(response)
             except Exception as e:
                 rospy.logerr(f"VLM request failed: {e}")
         else:
-            if image is None:
-                print("image is None")
-            if instruction is None:
-                print("instruction is None")
+            if image_msg is None:
+                print("image_msg is None")
+            if instruction_msg is None:
+                print("instruction_msg is None")
 
         end_time = rospy.Time.now()
         duration_s = (end_time - start_time).to_sec()
@@ -109,6 +131,7 @@ def main():
         rate.sleep()
 
     return 0
+
 
 if __name__ == "__main__":
     rospy.init_node("vlm_node")
