@@ -7,7 +7,9 @@ import rospkg
 import rospy
 import base64
 import roslib
+import message_filters
 import cv2
+from vlm.msg import StampedString
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from openai import OpenAI
@@ -15,17 +17,30 @@ from openai import OpenAI
 class VLM:
     def __init__(self, base_url, model):
         self.bridge = CvBridge()
-        self.image_sub = rospy.Subscriber("/io/internal_camera/head_camera/image_raw",Image,self.callback)
+        instruction_sub = message_filters.Subscriber("/vlm/instruction", StampedString)
+        image_sub = message_filters.Subscriber("/io/internal_camera/head_camera/image_raw", Image)
+
+        self.sync = message_filters.ApproximateTimeSynchronizer(
+            [instruction_sub, image_sub],
+            queue_size=1,
+            slop=0.1
+        )
+
+        self.sync.registerCallback(self.callback)
+
         self.image = None
+        self.instruction = None
         self.client = OpenAI(
             api_key="dummy",
             base_url=base_url
         )
         self.model = model
   
-    def callback(self,data):
+    def callback(self, instruction_msg, image_msg):
+        self.instruction = instruction_msg.data
+
         try:
-            cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+            cv_image = self.bridge.imgmsg_to_cv2(image_msg, "bgr8")
         except CvBridgeError as e:
             print(e)
             return
@@ -59,8 +74,8 @@ class VLM:
         )
         return response.choices[0].message.content
     
-    def get_current_image(self):
-        return self.image
+    def get_current_prompt(self):
+        return self.instruction, self.image
 
   
 def main(): 
@@ -72,23 +87,20 @@ def main():
 
         start_time = rospy.Time.now()
 
-        current_image = vlm.get_current_image()
+        instruction, image = vlm.get_current_prompt()
 
-        if current_image is not None:
+        if image is not None and instruction is not None:
             try:
-                response = vlm.get_response(
-                    """Respond with only one of these phrases describing the quadrant of the image that the banana is in:
-                    - top left
-                    - top right
-                    - bottom left
-                    - bottom right
-                    """, current_image)
+                response = vlm.get_response(instruction, image)
                 print("Response:")
                 print(response)
             except Exception as e:
                 rospy.logerr(f"VLM request failed: {e}")
         else:
-            print("current_image is None")
+            if image is None:
+                print("image is None")
+            if instruction is None:
+                print("instruction is None")
 
         end_time = rospy.Time.now()
         duration_s = (end_time - start_time).to_sec()
@@ -99,5 +111,5 @@ def main():
     return 0
 
 if __name__ == "__main__":
-    rospy.init_node("vlm")
+    rospy.init_node("vlm_node")
     sys.exit(main())

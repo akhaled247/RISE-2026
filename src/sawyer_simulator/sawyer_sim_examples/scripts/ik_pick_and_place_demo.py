@@ -7,7 +7,7 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
-#._ModelStates
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -121,7 +121,6 @@ class PickAndPlace(object):
         if joint_angles:
             self._limb.set_joint_positions(joint_angles)
         else:
-            rospy.logerr("No solution for " + str(joint_angles))
             return False
         rospy.sleep(0.5)
 
@@ -245,17 +244,16 @@ def main():
                              w=0.00253311793936)
 
     # Move to the desired starting angles
-    print("Running. Ctrl-c to quit")
     pnp.move_to_start(starting_joint_angles)
     idx = 0
     while not rospy.is_shutdown():
-        print("\nPicking...")
+        print("Picking...")
         (translation, rotation) = listener.lookupTransform('sawyer', 'banana', rospy.Time(0))
         while pnp.pick(Pose(position=Point(x=translation[0]+0.02,y=translation[1],z=translation[2]), orientation=overhead_orientation)) is False:
-            rospy.logerr("Attempting picking again...")
+            print("Attempting picking again...")
             (translation, rotation) = listener.lookupTransform('sawyer', 'banana', rospy.Time(0))
 
-        print("\nPlacing...")
+        print("Placing...")
         pnp.place(Pose(position=Point(x=translation[0]+0.1,y=translation[1],z=translation[2]), orientation=overhead_orientation))
     return 0
 

@@ -1,6 +1,11 @@
 <launch>
   <node pkg="vlm"
-        type="vlm.py"
-        name="vlm"
+        type="vlm_node.py"
+        name="vlm_node"
+        output="screen" />
+
+  <node pkg="vlm"
+        type="instruction.py"
+        name="instruction"
         output="screen" />
 </launch>
