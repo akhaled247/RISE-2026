@@ -128,7 +128,6 @@ class PickAndPlace(object):
     def pick(self, pose):
         if rospy.is_shutdown():
             return
-        print("Picking to " + str(pose))
 
         approach = copy.deepcopy(pose)
         approach.position.z = approach.position.z + self._hover_distance
@@ -148,8 +147,6 @@ class PickAndPlace(object):
         
 
     def place(self, pose):
-        print("Placing to " + str(pose))
-
         approach = copy.deepcopy(pose)
         approach.position.z = approach.position.z + self._hover_distance
 
@@ -263,13 +260,5 @@ def main():
     return 0
 
 if __name__ == '__main__':
-    try:
-        sys.exit(main())
-    except rospy.exceptions.ROSInterruptException:
-        sys.exit(0)
-    except KeyboardInterrupt:
-        sys.exit(0)
-    except rospy.exceptions.ROSException as e:
-        print("rospy.exceptions.ROSException: " + e)
-        sys.exit(1)
+    sys.exit(main())
 	
