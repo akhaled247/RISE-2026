@@ -10,7 +10,6 @@
   <node name="spawn_cafe_table"
         pkg="gazebo_ros"
         type="spawn_model"
-        output="screen"
         args="-file $(find sawyer_sim_examples)/models/cafe_table/model.sdf
               -sdf
               -model cafe_table
@@ -23,7 +22,6 @@
   <node name="spawn_red_block_1"
         pkg="gazebo_ros"
         type="spawn_model"
-        output="screen"
         args="-file $(find sawyer_sim_examples)/models/red_block/model.urdf
               -urdf
               -model red_block_1
@@ -35,7 +33,6 @@
   <node name="spawn_blue_block_1"
         pkg="gazebo_ros"
         type="spawn_model"
-        output="screen"
         args="-file $(find sawyer_sim_examples)/models/blue_block/model.urdf
               -urdf
               -model blue_block_1
@@ -47,16 +44,40 @@
   <node name="spawn_banana"
         pkg="gazebo_ros"
         type="spawn_model"
-        output="screen"
         args="-file $(find sawyer_sim_examples)/models/plastic_banana/model.urdf
               -urdf
               -model banana
               -x 0.6
               -y -0.2
-              -z 0.9725
+              -z 0.7935
+              " />
+
+  <node name="spawn_white_mug"
+        pkg="gazebo_ros"
+        type="spawn_model"
+        output="screen"
+        args="-file $(find sawyer_sim_examples)/models/white_mug/model.sdf
+              -sdf
+              -model white_mug
+              -x 0.6
+              -y 0.2
+              -z 0.775
+              " />
+
+  <node name="spawn_plate"
+        pkg="gazebo_ros"
+        type="spawn_model"
+        output="screen"
+        args="-file $(find sawyer_sim_examples)/models/plate/model.sdf
+              -sdf
+              -model plate
+              -x 0.85
+              -y -0.18
+              -z 0.775
               " />
 
   <include file="$(find object_tf)/launch/object_tf.launch" />
+
   <include file="$(find vlm)/launch/vlm.launch" />
 
   <!-- Start the Sawyer pick and place demo -->

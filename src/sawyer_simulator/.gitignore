@@ -2,7 +2,7 @@
 *.slo
 *.lo
 *.o
-*.obj
+#*.obj # comment this out so model objects show up
 
 # Precompiled Headers
 *.gch
@@ -29,7 +29,3 @@
 
 # Linux
 *.swp
-
-
-!sawyer_sim_examples/models/plastic_banana/textured.obj
-!sawyer_sim_examples/models/plastic_banana/collision.obj

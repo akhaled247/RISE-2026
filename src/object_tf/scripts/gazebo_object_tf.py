@@ -7,9 +7,16 @@ import tf2_ros
 from gazebo_msgs.msg import ModelStates
 from geometry_msgs.msg import TransformStamped
 
-OBJECT_NAMES = ["red_block_1", "banana", "sawyer"]
+OBJECT_NAMES = [
+    "red_block_1",
+    "blue_block_1",
+    "banana",
+    "white_mug",
+    "plate",
+    "sawyer",
+]
 
-class GazeboObjectTFBroadcaster: 
+class GazeboObjectTFBroadcaster:
     def __init__(self):
         self.br = tf2_ros.TransformBroadcaster()
         self.last_stamp = rospy.Time(0)
@@ -39,7 +46,7 @@ class GazeboObjectTFBroadcaster:
             t.transform.translation.y = pose.position.y
             t.transform.translation.z = pose.position.z
 
-            if object_name == "block":
+            if object_name in ("red_block_1", "blue_block_1", "block"):
                 p = np.array([
                     pose.position.x,
                     pose.position.y,
