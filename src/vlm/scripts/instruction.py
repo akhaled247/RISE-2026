@@ -16,13 +16,14 @@ def main():
         msg.header.stamp = rospy.Time.now()
         msg.header.frame_id = "instruction"
         msg.data = """
-        Find the quadrant of the image that the banana is in.
+        Find the quadrant of the table that the banana is in.
 
         Your final answer is the last line of your response. It must be one of these phrases:
         - top left
         - top right
         - bottom left
         - bottom right
+        - none
         """
 
         instruction_pub.publish(msg)

@@ -27,6 +27,8 @@ class VLM:
         self.used_image_pub = rospy.Publisher("/vlm/used/image_raw", Image, queue_size=1, latch=True)
         self.used_instruction_pub = rospy.Publisher("/vlm/used/instruction", StampedString, queue_size=1, latch=True)
 
+        self.output_pub = rospy.Publisher("/vlm/output", StampedString, queue_size=1)
+
         self.latest_pair = None
 
         self.client = OpenAI(
@@ -53,7 +55,10 @@ class VLM:
 
         return base64.b64encode(buffer).decode("utf-8")
 
-    def get_response(self, instruction_msg, image_msg):
+    def process_raw_output(self, raw_output):
+        return raw_output.split("\n")[-1]
+
+    def output_response(self, instruction_msg, image_msg):
         self.used_instruction_pub.publish(instruction_msg)
         self.used_image_pub.publish(image_msg)
 
@@ -84,7 +89,17 @@ class VLM:
             ],
         )
 
-        return response.choices[0].message.content
+        raw_output = response.choices[0].message.content
+        output = self.process_raw_output(raw_output)
+
+        output_msg = StampedString()
+        output_msg.header.stamp = rospy.Time.now()
+        output_msg.header.frame_id = "output"
+        output_msg.data = output
+
+        self.output_pub.publish(output_msg)
+
+        return raw_output, output
 
     def get_current_prompt(self):
         pair = self.latest_pair
@@ -102,7 +117,7 @@ def main():
         model="Qwen/Qwen3.5-4B"
     )
 
-    rate = rospy.Rate(0.4)
+    rate = rospy.Rate(0.5)
 
     while not rospy.is_shutdown():
         print("Fetching response...")
@@ -113,9 +128,9 @@ def main():
 
         if image_msg is not None and instruction_msg is not None:
             try:
-                response = vlm.get_response(instruction_msg, image_msg)
+                raw_output, output  = vlm.output_response(instruction_msg, image_msg)
                 print("Response:")
-                print(response)
+                print(raw_output)
             except Exception as e:
                 rospy.logerr(f"VLM request failed: {e}")
         else:
