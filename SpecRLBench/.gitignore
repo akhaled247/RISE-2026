@@ -4,6 +4,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 
 script/fig/*
 envs/safety-gym/mujoco200_linux
