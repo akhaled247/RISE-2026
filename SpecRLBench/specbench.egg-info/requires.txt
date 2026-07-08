@@ -1,4 +1,0 @@
-gymnasium>=0.26
-pybullet
-numpy<2
-scipy

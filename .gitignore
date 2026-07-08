@@ -1,0 +1,5 @@
+# Python bytecode and cache directories (any depth)
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
