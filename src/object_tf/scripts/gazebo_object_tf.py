@@ -7,14 +7,6 @@ import tf2_ros
 from gazebo_msgs.msg import ModelStates
 from geometry_msgs.msg import TransformStamped
 
-OBJECT_NAMES = [
-    "red_block_1",
-    "blue_block_1",
-    "banana",
-    "white_mug",
-    "plate",
-    "sawyer",
-]
 
 class GazeboObjectTFBroadcaster:
     def __init__(self):
@@ -29,10 +21,8 @@ class GazeboObjectTFBroadcaster:
             return
         self.last_stamp = stamp
 
-        for object_name in OBJECT_NAMES:
-            if object_name not in msg.name:
-                rospy.logwarn_throttle(2.0, "Object '%s' not found in /gazebo/model_states", object_name)
-                continue
+        for idx in range(len(msg.name)):
+            object_name = msg.name[idx]
 
             idx = msg.name.index(object_name)
             pose = msg.pose[idx]
@@ -47,17 +37,13 @@ class GazeboObjectTFBroadcaster:
             t.transform.translation.z = pose.position.z
 
             if object_name in ("red_block_1", "blue_block_1", "block"):
-                p = np.array([
-                    pose.position.x,
-                    pose.position.y,
-                    pose.position.z
-                ])
+                p = np.array([pose.position.x, pose.position.y, pose.position.z])
 
                 q = [
                     pose.orientation.x,
                     pose.orientation.y,
                     pose.orientation.z,
-                    pose.orientation.w
+                    pose.orientation.w,
                 ]
 
                 R = quaternion_matrix(q)[:3, :3]
@@ -72,6 +58,7 @@ class GazeboObjectTFBroadcaster:
             t.transform.rotation = pose.orientation
 
             self.br.sendTransform(t)
+
 
 if __name__ == "__main__":
     rospy.init_node("gazebo_object_tf_broadcaster")

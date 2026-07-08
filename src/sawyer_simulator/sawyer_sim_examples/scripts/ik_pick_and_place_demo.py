@@ -103,11 +103,11 @@ class PickAndPlace(object):
         self._servo_to_pose(ik_pose)
 
     def _servo_to_pose(self, pose, time=2.0, steps=1.0):
-        rospy.sleep(0.5)
         ''' Cartesian move '''
+        rospy.sleep(0.5)
         if rospy.is_shutdown():
             return
-        d = 0
+
         ik_step = Pose()
         ik_step.position.x = pose.position.x
         ik_step.position.y = pose.position.y
@@ -245,7 +245,7 @@ def main():
 
     # Move to the desired starting angles
     pnp.move_to_start(starting_joint_angles)
-    idx = 0
+
     while not rospy.is_shutdown():
         print("Picking...")
         (translation, rotation) = listener.lookupTransform('sawyer', 'banana', rospy.Time(0))

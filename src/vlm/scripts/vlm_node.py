@@ -11,30 +11,34 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from openai import OpenAI
 
+
 class VLM:
     def __init__(self, base_url, model):
         self.bridge = CvBridge()
 
-        self.instruction_sub = message_filters.Subscriber("/vlm/instruction", StampedString)
-        self.image_sub = message_filters.Subscriber("/io/internal_camera/head_camera/image_raw", Image)
+        self.instruction_sub = message_filters.Subscriber(
+            "/vlm/instruction", StampedString
+        )
+        self.image_sub = message_filters.Subscriber(
+            "/io/internal_camera/head_camera/image_raw", Image
+        )
         self.sync = message_filters.ApproximateTimeSynchronizer(
-            [self.instruction_sub, self.image_sub],
-            queue_size=5,
-            slop=0.1
+            [self.instruction_sub, self.image_sub], queue_size=5, slop=0.1
         )
         self.sync.registerCallback(self.callback)
 
-        self.used_image_pub = rospy.Publisher("/vlm/used/image_raw", Image, queue_size=1, latch=True)
-        self.used_instruction_pub = rospy.Publisher("/vlm/used/instruction", StampedString, queue_size=1, latch=True)
+        self.used_image_pub = rospy.Publisher(
+            "/vlm/used/image_raw", Image, queue_size=1, latch=True
+        )
+        self.used_instruction_pub = rospy.Publisher(
+            "/vlm/used/instruction", StampedString, queue_size=1, latch=True
+        )
 
         self.output_pub = rospy.Publisher("/vlm/output", StampedString, queue_size=1)
 
         self.latest_pair = None
 
-        self.client = OpenAI(
-            api_key="dummy",
-            base_url=base_url
-        )
+        self.client = OpenAI(api_key="dummy", base_url=base_url)
         self.model = model
 
     def callback(self, instruction_msg, image_msg):
@@ -74,10 +78,7 @@ class VLM:
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "text",
-                            "text": instruction_msg.data
-                        },
+                        {"type": "text", "text": instruction_msg.data},
                         {
                             "type": "image_url",
                             "image_url": {
@@ -112,10 +113,7 @@ class VLM:
 
 
 def main():
-    vlm = VLM(
-        base_url="http://localhost:49173/v1",
-        model="Qwen/Qwen3.5-4B"
-    )
+    vlm = VLM(base_url="http://localhost:49173/v1", model="Qwen/Qwen3.5-4B")
 
     rate = rospy.Rate(0.5)
 
@@ -128,7 +126,7 @@ def main():
 
         if image_msg is not None and instruction_msg is not None:
             try:
-                raw_output, output  = vlm.output_response(instruction_msg, image_msg)
+                raw_output, output = vlm.output_response(instruction_msg, image_msg)
                 print("Response:")
                 print(raw_output)
             except Exception as e:
