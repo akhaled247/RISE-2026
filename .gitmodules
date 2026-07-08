@@ -1,0 +1,3 @@
+[submodule "SpecRLBench"]
+	path = SpecRLBench
+	url = git@github.com:akhaled247/SpecRLBench.git

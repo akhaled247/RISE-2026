@@ -1,6 +1,0 @@
-<launch>
-  <node pkg="object_tf"
-        type="gazebo_object_tf.py"
-        name="gazebo_object_tf_broadcaster"
-        output="screen" />
-</launch>
