@@ -117,32 +117,14 @@ env_names = [
 env_name = 'PointLTLMASAR2Debug-v0'
 steps = 750
 
-print(f"="*40)
-render_mode = "human" if 'Vision' not in env_name else None
-env = make_env(env_name, render_mode=render_mode)
-# env = FlattenObservation(gym.make(env_name, render_mode="human"))
-obs, info = env.reset(seed=seed)
-for i in range(steps):
-    try:
-        action = env.action_space.sample()
-    except:
-        action = {a: env.action_space(a).sample() for a in env.possible_agents}
-    obs, reward, terminated, truncated, info = env.step(action)
-    # env.render()
-
-    # if any(terminated.values()):
-    #     print('Terminated')
-    #     break
-
-# print(f"checked env: {env_name}")
-# for env_name in env_names:
-#     print(f"="*40)
-#     env = make_env(env_name, render_mode=None)
-#     obs, info = env.reset(seed=seed)
-#     for i in range(2):
-#         try:
-#             action = env.action_space.sample()
-#         except:
-#             action = {a: env.action_space(a).sample() for a in env.possible_agents}
-#         obs, reward, terminated, truncated, info = env.step(action)
-#     print(f"checked env: {env_name}")
+for env_name in env_names:
+    print(f"="*40)
+    env = make_env(env_name, render_mode=None)
+    obs, info = env.reset(seed=seed)
+    for i in range(2):
+        try:
+            action = env.action_space.sample()
+        except:
+            action = {a: env.action_space(a).sample() for a in env.possible_agents}
+        obs, reward, terminated, truncated, info = env.step(action)
+    print(f"checked env: {env_name}")
