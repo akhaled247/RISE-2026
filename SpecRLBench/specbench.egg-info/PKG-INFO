@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: specbench
+Version: 0.1.0
+Summary: SpecRLBench: A Benchmark for Generalization in Specification-Guided Reinforcement Learning
+Author: Zijian Guo, İlker Işık
+License-File: LICENSE
+Requires-Dist: gymnasium>=0.26
+Requires-Dist: pybullet
+Requires-Dist: numpy<2
+Requires-Dist: scipy
+Dynamic: author
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: summary
