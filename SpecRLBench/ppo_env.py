@@ -23,14 +23,14 @@ model = PPO(
     env,
     verbose=1,
     learning_rate=0.0003,
-    device="cpu"
+    device="cuda",
 )
 # 3. Train the agent
-model.learn(total_timesteps=50000)
+model.learn(total_timesteps=1000, progress_bar=True)
 
 # 4. Evaluate the trained agent
-env = make_env(env_name, render_mode="human")
-obs, info = env.reset(see=seed)
+env = make_env(env_name, render_mode="human", sb3=True)
+obs, info = env.reset(seed=seed)
 total_reward = 0
 episodes = 1
 for episode in range(episodes):

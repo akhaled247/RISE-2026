@@ -202,7 +202,7 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
         assert hasattr(self, 'goal'), 'Please make sure you have added goal into env.'
         return self.agent.dist_xy(self.goal.pos)  # pylint: disable=no-member
 
-    def calculate_cost(self) -> dict:
+    def calculate_cost(self, reset=False) -> dict:
         """Determine costs depending on the agent and obstacles."""
         # pylint: disable-next=no-member
         mujoco.mj_forward(self.model, self.data)  # Ensure positions and contacts are correct
@@ -211,9 +211,10 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
 
         # Calculate constraint violations
         for obstacle in self._obstacles:
-            # if obstacle.name == 'gremlins': continue
-                # # gremlins positions are not updated yet in the reset step
-                # cost = {f"agent_{i}": {"cost_collision": 0} for i in range(self.agent.agent_num)}
+            if obstacle.name == 'gremlins' and reset: 
+                cost = {f"agent_{i}": {"cost_collision": 0} for i in range(self.agent.agent_num)}
+                continue
+                # gremlins positions are not updated yet in the reset step
             obj_cost = obstacle.cal_cost()
             # print(f"DEBUG: obj_cost = {obj_cost}")
             # if 'agent_0' in obj_cost:

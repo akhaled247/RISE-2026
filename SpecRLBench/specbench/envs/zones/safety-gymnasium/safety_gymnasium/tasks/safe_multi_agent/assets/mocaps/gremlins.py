@@ -95,7 +95,7 @@ class Gremlins(Mocap):  # pylint: disable=too-many-instance-attributes
             for j in range(self.agent.agent_num):
                 if i == j: continue
                 h_dist = self.agent.dist_xy(j, h_pos)
-                # print(f"DEBUG: Agent {i} to Agent {j} distance: {h_dist}")
+                # print(f"DEBUG: dist(agent_{j}, gremlin_{i}) = {h_dist}")
                 # if h_dist <= self.dist_threshold:
                 if h_dist <= self.size + self.dist_threshold:
                     # print(f"DEBUG: COLLISION, episode terminated")

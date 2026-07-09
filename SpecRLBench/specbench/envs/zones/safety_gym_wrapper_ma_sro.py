@@ -163,6 +163,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[WrapperObsType, dict[str, Any]]:
         obs, info = super().reset(seed=seed, options=options)
+        # print("DEBUG: Environment Reset!")
         info['propositions'] = []
         # obs["agent_0"]['wall_sensor'] = np.array([0, 0, 0, 0])
         # obs["agent_1"]['wall_sensor1'] = np.array([0, 0, 0, 0])
