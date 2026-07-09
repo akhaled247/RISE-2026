@@ -31,8 +31,10 @@ def get_task_class_name(task_id):
         class_name = f'LTL{task_num}'
         if 'MA' in task_id:
             task_num = re.search(r'LTL(\d)', task_id).group(1)
-            class_name = f'LTL{task_num}'
             class_name = f'MultiGoal{task_num}'
+            if 'SAR' in task_id:
+                task_num = re.search(r'LTL(\d)', task_id).group(1)
+                class_name = f'MultiGoalSAR{task_num}'
     else:
         class_name = ''.join(re.findall('[A-Z][^A-Z]*', task_id.split('-')[0])[2:])
     return class_name[:-1] + 'Level' + class_name[-1]

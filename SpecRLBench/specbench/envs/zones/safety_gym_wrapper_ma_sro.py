@@ -134,8 +134,10 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 # terminated[a] = True
                 reward[f"agent_{i}"] += self._reward_inside_building
             else:
-                obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(obs[a][f'entrapped_casualtys_lidar_{i}'].size)
-                pass
+                try:
+                    obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(obs[a][f'entrapped_casualtys_lidar_{i}'].size)
+                except KeyError as e:
+                    pass
             if f'cost_casualtys_surface_{i}' in info['propositions']:
                 # print('Agent '+str(i)+' found entrapped casualty')
                 # terminated[a] = True

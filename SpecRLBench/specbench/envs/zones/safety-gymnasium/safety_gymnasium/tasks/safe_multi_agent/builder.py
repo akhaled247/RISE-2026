@@ -386,7 +386,7 @@ class Builder(gymnasium.Env, gymnasium.utils.EzPickle):
         ), 'When you use vision envs, you should not call this function explicitly.'
         return self.task.render(cost=self.cost, **asdict(self.render_parameters))
 
-    def action_space(self, agent: str) -> gymnasium.spaces.Box:
+    def action_space(self, agent: str) -> gymnasium.spaces.box.Box:
         """Helper to get action space."""
         return self.task.action_space[agent]
 
