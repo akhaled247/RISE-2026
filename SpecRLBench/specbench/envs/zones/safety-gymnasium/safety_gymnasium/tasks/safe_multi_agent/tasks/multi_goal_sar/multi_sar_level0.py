@@ -45,7 +45,7 @@ class MultiGoalSARLevel0(BaseTask):
     building_margin = 0.8
     casualty_keepout = 0.2
     agent_keepout = 0.25
-    max_dist = 3.5
+    max_dist = None
 
     def __init__(self, config) -> None:
         super().__init__(config=config)

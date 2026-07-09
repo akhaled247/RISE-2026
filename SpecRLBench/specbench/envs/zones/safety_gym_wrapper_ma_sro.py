@@ -86,7 +86,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
     _reward_find_casualty = 100
     _reward_collision = -10
     _reward_casualty_scalar = 0.25
-    _reward_termination = -50
+    _reward_termination = -1000
     def step(self, action: ActType):
         # print(action)
         if self.sb3: action = self.dictify_action(action)
@@ -160,7 +160,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             # if i == 0: print(lidar_keys)
             # if i == 0: print(arr)
             try:
-                reward[f"agent_{i}"]+=(sum(obs[a][f'surface_casualtys_lidar_{i}'])*self._reward_casualty_scalar)
+                # reward[f"agent_{i}"]+=(max(obs[a][f'surface_casualtys_lidar_{i}'])*self._reward_casualty_scalar)
                 pass
             except KeyError as e:
                 print(f"ERROR: {e} \n No surface casualtys") 
