@@ -105,6 +105,6 @@ for env_name in env_names:
         try:
             action = env.action_space.sample()
         except:
-            action = {a: env.action_space(a).sample() for a in env.possible_agents}
+            action = {a: env.action_space(a).sample() for a in env.unwrapped.possible_agents}
         obs, reward, terminated, truncated, info = env.step(action)
     print(f"checked env: {env_name}")

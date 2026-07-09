@@ -12,13 +12,15 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
     """
     A wrapper from safety gymnasium LTL environments to the gymnasium API.
     """
-
-    def __init__(self, env: Any, wall_sensor=True):
+    sb3 = False
+    action_dim = 2
+    def __init__(self, env: Any, wall_sensor=True, sb3=False):
         super().__init__(env)
-        self.render_parameters.camera_name = 'track'
-        self.render_parameters.width = 256
-        self.render_parameters.height = 256
+        self.unwrapped.render_parameters.camera_name = 'track'
+        self.unwrapped.render_parameters.width = 256
+        self.unwrapped.render_parameters.height = 256
         self.num_lidar_bins = env.unwrapped.task.lidar_conf.num_bins
+        self.sb3 = sb3
 
         # Robustly handle both property and method for observation_space
         obs_space = env.observation_space
@@ -30,14 +32,14 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         # print(f"DEBUG: obs_keys = {obs_keys}")
         self.colors = set()
         self.atomic_propositions = set()
-        self.num_agents = env.num_agents
+        self.num_agents = env.unwrapped.num_agents
         # self.num_agents = 1
         for key in obs_keys:
             # if key.endswith('zones_lidar'):
             if "zones" in key.split('_'):
                 color = key.split('_')[0]
                 self.colors.add(color)
-                for i in range(self.num_agents):
+                for i in range(self.num_agents*2):
                     self.atomic_propositions.add(color + '_' + str(i))
         # print(f"DEBUG: self.colors = {self.colors}")
         # print(f"DEBUG: self.atomic_propositions = {self.atomic_propositions}")
@@ -50,35 +52,49 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         if isinstance(obs_space, spaces.Dict):
             self.observation_space = obs_space
         else:
+            # print(f"DEBUG: init obs_space not dict = {obs_space}")
             self.observation_space = spaces.Dict(obs_space)
-        # self.observation_space = spaces.Dict(env.observation_space["agent_0"])  # copy the observation space
 
+        if self.sb3:
+            act_space = env.action_space
+            if callable(act_space):
+                act_space = Box(low=-1.0, high=1.0, shape=(self.num_agents*self.action_dim,))
+            if isinstance(act_space, spaces.Box):
+                self.action_space = act_space
+            else:
+                print(type(act_space))
+                self.observation_space = spaces.Box(act_space)
+        # print(self.observation_space)
         if wall_sensor:
-            for i, a in enumerate(self.env.possible_agents):
+            for i, a in enumerate(self.env.unwrapped.possible_agents):
                 self.observation_space[f'wall_sensor_{i}'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
             # self.observation_space['wall_sensor'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
             # self.observation_space['wall_sensor1'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
         # print(f"DEBUG: self.observation_space = {self.observation_space}")
         self.last_dist = None
 
-    _reward_inside_building = 0.05
-    _reward_find_casualty = 0.5
-    _reward_collision = -1.0
+    def dictify_action(self, action) -> dict:
+        action_dim = 2
+
+        actions = {
+            f"agent_{i}": action[i * action_dim:(i + 1) * action_dim]
+            for i in range(self.num_agents)
+        }
+        return actions
+
+    _reward_inside_building = 1
+    _reward_find_casualty = 50
+    _reward_collision = -100
     def step(self, action: ActType):
+        # print(action)
+        if self.sb3: action = self.dictify_action(action)
         obs, reward, cost, terminated, truncated, info = super().step(action)
         # print(f"DEBUG: info = {info}")
         # print(f"DEBUG: terminated = {terminated}, truncated = {truncated}")
-
         # print(f"DEBUG: obs = {obs}")
-        # print(f"DEBUG: info = {info}")
         # update env boundary wall sensor info
         if 'wall_sensor' in info["agent_0"]:
-            # obs["agent_0"]['wall_sensor']  = info["agent_0"]['wall_sensor']
-            # obs["agent_1"]['wall_sensor1'] = info["agent_1"]['wall_sensor']
-            # for i, a in enumerate(self.env.agents):
-            #     suffix = '' if i == 0 else str(i)
-            #     obs[a][f'wall_sensor{suffix}'] = info[a]['wall_sensor']
-            for i, agent in enumerate(self.env.possible_agents):
+            for i, agent in enumerate(self.env.unwrapped.possible_agents):
                 obs[agent][f'wall_sensor_{i}'] = info[agent]['wall_sensor']
             # print(f"DEBUG: obs wrapper = {obs}")
 
@@ -91,14 +107,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         # one agent may violate its own subgoal such that the whole spec cannot be satisfied 
         # (the episode should terminate), but it does not necessarily mean the other agent's action is not valid. 
         if 'cost_ltl_walls' in info["agent_0"]:
-
-            # terminated["agent_0"] = terminated["agent_0"] or \
-            #     info["agent_0"]['cost_ltl_walls'] > 0 or \
-            #     info["agent_0"]['cost_collision'] > 0
-            # terminated["agent_1"] = terminated["agent_1"] or \
-            #     info["agent_1"]['cost_ltl_walls'] > 0 or \
-            #     info["agent_1"]['cost_collision'] > 0
-            for i, a in enumerate(self.env.possible_agents):
+            for i, a in enumerate(self.env.unwrapped.possible_agents):
                 terminated[a] = terminated[a] or \
                     info[a]['cost_ltl_walls'] > 0
                 if info[a]['cost_ltl_walls'] > 0:
@@ -112,21 +121,16 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 # info['violation'] = True
 
         info['propositions'] = []
-        
-        for i, a in enumerate(self.env.possible_agents):
-            # suffix = '' if i == 0 else f"_{i}"
+        # print(f"DEBUG: action = {action}")
+        for i, a in enumerate(self.env.unwrapped.possible_agents):
             agent_info: dict = info[a]
             # print(zone_info) if i==0 else print('')
-            # active_props = [c + '_' + str(i) for c in self.colors if zone_info[f'cost_zone_{c}'] > 0]
-            # active_props = [cost for cost in zone_info.values() if cost > 0]
-            # info['propositions'].extend(active_props)
             active_props = {}
             for k, v in agent_info.items():
                 if (isinstance(v, (int, float))):
                     if v > 0 and "cost_sum" not in k:
                         # print((k, v))
                         active_props.update({f"{k}_{i}": v})
-            # ap = {k: v for k, v in zone_info.items() if v > 0}
             # print(active_props) if i==0 else print('')
             info['propositions'].extend(active_props)
             if f'cost_buildings_terracotta_{i}' in info['propositions']:
@@ -152,24 +156,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             # if i == 0: print(lidar_keys)
             # if i == 0: print(arr)
             # if i == 0: print(obs[a])
-
-        # print(obs["agent_0"]['surface_casualtys_lidar_0'])
-        # print(reward)
-        # print(info['propositions'])
-        # for i, a in enumerate(self.env.possible_agents):
-        #     if 'yellow_'+str(i) in info['propositions']:
-        #         print('Agent '+str(i)+' in yellow env')
-        #         terminated[a] = terminated[a] or \
-        #                 info[a]['cost_zones_yellow'] > 0
-
-        # zone_info = info["agent_0"]
-        # active_props = [c + '_0' for c in self.colors if zone_info[f'cost_zones_{c}'] > 0]
-        # info['propositions'].extend(active_props)
-
-        # zone_info = info["agent_1"]
-        # active_props = [c + '_1' for c in self.colors if zone_info[f'cost_zones_{c}'] > 0]
-        # info['propositions'].extend(active_props)
-
+        if self.sb3: obs = self.flatten_obs(obs); reward = sum(list(reward.values()))
         return obs, reward, terminated, truncated, info
 
     def reset(
@@ -179,12 +166,13 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         info['propositions'] = []
         # obs["agent_0"]['wall_sensor'] = np.array([0, 0, 0, 0])
         # obs["agent_1"]['wall_sensor1'] = np.array([0, 0, 0, 0])
-        for i, a in enumerate(self.env.possible_agents):
+        for i, a in enumerate(self.env.unwrapped.possible_agents):
             obs[a][f'wall_sensor_{i}'] = np.array([0, 0, 0, 0])
             # print(obs[a])
         # Ensure original_obs is set at reset
         self.env.unwrapped.task.original_obs = obs
-        # print(f"DEBUG: original_obs SafetyGymWrapper reset= {obs}")
+        if self.sb3: obs = self.flatten_obs(obs)
+        # print(f"DEBUG: obs reset= {obs}")
         return obs, info
 
     def get_propositions(self) -> list[str]:
@@ -216,3 +204,14 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
 
     def get_all_possible_assignments(self) -> list[Assignment]:
         return Assignment.all_possible_assignments(tuple(self.get_propositions()))
+
+    def flatten_obs(self, obs):
+            flat = {
+                k: v
+                for agent_obs in obs.values()
+                for k, v in agent_obs.items()
+            }
+            # print(f"DEBUG: flatten_obs flat = {flat}")
+            # if isinstance(flat, spaces.Dict):
+            return flat
+            

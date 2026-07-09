@@ -56,7 +56,7 @@ class SafetyGymWrapperMA(gymnasium.Wrapper):
         # self.observation_space = spaces.Dict(env.observation_space["agent_0"])  # copy the observation space
 
         if wall_sensor:
-            for i, a in enumerate(self.env.possible_agents):
+            for i, a in enumerate(self.unwrapped.possible_agents):
                 self.observation_space[f'wall_sensor_{i}'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
             # self.observation_space['wall_sensor'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
             # self.observation_space['wall_sensor1'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
@@ -77,7 +77,7 @@ class SafetyGymWrapperMA(gymnasium.Wrapper):
             # for i, a in enumerate(self.env.agents):
             #     suffix = '' if i == 0 else str(i)
             #     obs[a][f'wall_sensor{suffix}'] = info[a]['wall_sensor']
-            for i, agent in enumerate(self.env.possible_agents):
+            for i, agent in enumerate(self.unwrapped.possible_agents):
                 obs[agent][f'wall_sensor_{i}'] = info[agent]['wall_sensor']
             # print(f"DEBUG: obs wrapper = {obs}")
 
@@ -97,7 +97,7 @@ class SafetyGymWrapperMA(gymnasium.Wrapper):
             # terminated["agent_1"] = terminated["agent_1"] or \
             #     info["agent_1"]['cost_ltl_walls'] > 0 or \
             #     info["agent_1"]['cost_collision'] > 0
-            for i, a in enumerate(self.env.possible_agents):
+            for i, a in enumerate(self.unwrapped.possible_agents):
                 terminated[a] = terminated[a] or \
                     info[a]['cost_ltl_walls'] > 0 or \
                     info[a]['cost_collision'] > 0
@@ -111,7 +111,7 @@ class SafetyGymWrapperMA(gymnasium.Wrapper):
                 # info['violation'] = True
 
         info['propositions'] = []
-        for i, a in enumerate(self.env.possible_agents):
+        for i, a in enumerate(self.unwrapped.possible_agents):
             # suffix = '' if i == 0 else f"_{i}"
             zone_info = info[a]
             active_props = [c + '_' + str(i) for c in self.colors if zone_info[f'cost_zones_{c}'] > 0]
@@ -134,7 +134,7 @@ class SafetyGymWrapperMA(gymnasium.Wrapper):
         info['propositions'] = []
         # obs["agent_0"]['wall_sensor'] = np.array([0, 0, 0, 0])
         # obs["agent_1"]['wall_sensor1'] = np.array([0, 0, 0, 0])
-        for i, a in enumerate(self.env.possible_agents):
+        for i, a in enumerate(self.unwrapped.possible_agents):
             obs[a][f'wall_sensor_{i}'] = np.array([0, 0, 0, 0])
         # Ensure original_obs is set at reset
         self.env.unwrapped.task.original_obs = obs

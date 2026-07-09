@@ -4,7 +4,7 @@ import specbench
 import safety_gymnasium
 from gymnasium.wrappers import FlattenObservation
 
-def make_env(env_name, render_mode=None):
+def make_env(env_name, render_mode=None, sb3=False):
     if env_name.startswith("Letter"):
         env = gym.make(env_name, disable_env_checker=True, render_mode=render_mode)
     elif env_name.startswith("Panda"):
@@ -15,7 +15,7 @@ def make_env(env_name, render_mode=None):
         from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
         import safety_gymnasium
         env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
-        if "SAR" in env_name: env = SafetyGymWrapperMASAR(env)
+        if "SAR" in env_name: env = SafetyGymWrapperMASAR(env, sb3=sb3)
         elif "MA" in env_name: env = SafetyGymWrapperMA(env)
         else: SafetyGymWrapper(env)
     else:

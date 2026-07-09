@@ -6,7 +6,7 @@ from gymnasium.wrappers import FlattenObservation
 from utils.env_utils import *
 
 seed = 0
-env_name = 'PointLTL3MASAR5Debug-v0'
+env_name = 'PointLTL0MASAR2-v0'
 steps = 250
 
 print(f"="*40)
@@ -19,7 +19,7 @@ for i in range(steps):
     try:
         action = env.action_space.sample()
     except:
-        action = {a: env.action_space(a).sample() for a in env.possible_agents}
+        action = {a: env.action_space(a).sample() for a in env.unwrapped.possible_agents}
     obs, reward, terminated, truncated, info = env.step(action)
     # env.render()
 

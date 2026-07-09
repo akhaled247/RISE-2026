@@ -14,12 +14,12 @@ steps = 750
 
 print(f"="*40)
 render_mode = "human" if 'Vision' not in env_name else None
-env = make_env(env_name, render_mode=None)
+env = make_env(env_name, render_mode=None, sb3=True)
 
 # 2. Instantiate the PPO Agent 
 # "MlpPolicy" is used for feature vectors (like positions and velocities)
 model = PPO(
-    "MlpPolicy",
+    "MultiInputPolicy",
     env,
     verbose=1,
     learning_rate=0.0003,

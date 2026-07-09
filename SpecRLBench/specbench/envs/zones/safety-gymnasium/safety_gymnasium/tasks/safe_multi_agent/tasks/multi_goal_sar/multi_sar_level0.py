@@ -76,7 +76,7 @@ class MultiGoalSARLevel0(BaseTask):
         )
 
         self._add_mocaps(
-            Gremlins(num=config['agent_num'], size=0.15, dist_threshold=0.15, keepout=0.0)
+            Gremlins(num=config['agent_num'], size=0.15, dist_threshold=0.1, keepout=0.0)
         )
 
     def calculate_reward(self):
