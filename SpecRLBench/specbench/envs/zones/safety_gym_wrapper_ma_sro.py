@@ -83,8 +83,10 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         return actions
 
     _reward_inside_building = 1
-    _reward_find_casualty = 50
-    _reward_collision = -100
+    _reward_find_casualty = 100
+    _reward_collision = -10
+    _reward_casualty_scalar = 0.25
+    _reward_termination = -50
     def step(self, action: ActType):
         # print(action)
         if self.sb3: action = self.dictify_action(action)
@@ -112,8 +114,10 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                     info[a]['cost_ltl_walls'] > 0
                 if info[a]['cost_ltl_walls'] > 0:
                     print(f"DEBUG: wall collision detected for {a}!")
+                    reward[a] += self._reward_termination
                 if info[a]['cost_collision'] > 0:
                     reward[a] += self._reward_collision
+                    pass
                     # print(f"DEBUG: agent collision detected for {a}!")
             
             # if any(terminated.values()):
@@ -155,6 +159,11 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             arr = np.stack([obs[a][k] for k in lidar_keys])
             # if i == 0: print(lidar_keys)
             # if i == 0: print(arr)
+            try:
+                reward[f"agent_{i}"]+=(sum(obs[a][f'surface_casualtys_lidar_{i}'])*self._reward_casualty_scalar)
+                pass
+            except KeyError as e:
+                print(f"ERROR: {e} \n No surface casualtys") 
             # if i == 0: print(obs[a])
         # print(f"DEBUG: info = {info}")
         # print(f"DEBUG: truncated values = {list(truncated.values())}")

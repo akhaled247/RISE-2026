@@ -45,13 +45,14 @@ class MultiGoalSARLevel0(BaseTask):
     building_margin = 0.8
     casualty_keepout = 0.2
     agent_keepout = 0.25
+    max_dist = 3.5
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
 
         self.placements_conf.extents = [-3.5, -3.5, 3.5, 3.5]
         self.lidar_conf.num_bins = 16
-        self.lidar_conf.max_dist = 2.0
+        self.lidar_conf.max_dist = self.max_dist
         self.lidar_conf.exp_gain = 0.5
         self.lidar_conf.alias = True
         self.lidar_conf.type = 'pseudo_occluded'  # choices: 'pseudo' 'natural' 'pseudo_occluded'

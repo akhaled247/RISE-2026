@@ -27,7 +27,7 @@ model = PPO(
     # n_steps=1024
 )
 # 3. Train the agent
-model.learn(total_timesteps=10000, progress_bar=True)
+model.learn(total_timesteps=50_000, progress_bar=True)
 
 # 4. Evaluate the trained agent
 env = make_env(env_name, render_mode="human", sb3=True)
