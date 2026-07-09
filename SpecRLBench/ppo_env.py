@@ -10,7 +10,7 @@ seed = 0
 
 # 1. Initialize the standard Gymnasium environment
 env_name = 'PointLTL0MASAR2-v0'
-steps = 750
+steps = 10000
 
 print(f"="*40)
 render_mode = "human" if 'Vision' not in env_name else None
@@ -24,15 +24,16 @@ model = PPO(
     verbose=1,
     learning_rate=0.0003,
     device="cuda",
+    # n_steps=1024
 )
 # 3. Train the agent
-model.learn(total_timesteps=1000, progress_bar=True)
+model.learn(total_timesteps=10000, progress_bar=True)
 
 # 4. Evaluate the trained agent
 env = make_env(env_name, render_mode="human", sb3=True)
 obs, info = env.reset(seed=seed)
 total_reward = 0
-episodes = 1
+episodes = 10
 for episode in range(episodes):
     obs, info = env.reset()
     episode_reward = 0

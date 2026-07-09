@@ -156,7 +156,16 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             # if i == 0: print(lidar_keys)
             # if i == 0: print(arr)
             # if i == 0: print(obs[a])
-        if self.sb3: obs = self.flatten_obs(obs); reward = sum(list(reward.values()))
+        # print(f"DEBUG: info = {info}")
+        # print(f"DEBUG: truncated values = {list(truncated.values())}")
+        # print(f"DEBUG: terminated values = {list(terminated.values())}")
+        if self.sb3:
+            obs = self.flatten_obs(obs)
+            reward = sum(list(reward.values()))
+            truncated = any(list(truncated.values()))
+            terminated = any(list(terminated.values()))
+        # print(f"DEBUG: truncated = {truncated}")
+        # print(f"DEBUG: terminated = {terminated}")
         return obs, reward, terminated, truncated, info
 
     def reset(
