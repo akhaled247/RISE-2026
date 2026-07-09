@@ -4,7 +4,7 @@ import specbench
 import safety_gymnasium
 from gymnasium.wrappers import FlattenObservation
 
-def make_env(env_name, render_mode=None, sb3=False):
+def make_env(env_name, render_mode=None, sb3=False, steps=1000):
     if env_name.startswith("Letter"):
         env = gym.make(env_name, disable_env_checker=True, render_mode=render_mode)
     elif env_name.startswith("Panda"):

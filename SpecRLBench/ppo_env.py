@@ -27,11 +27,12 @@ model = PPO(
     # n_steps=1024
 )
 # 3. Train the agent
-model.learn(total_timesteps=500_000, progress_bar=True)
-model.save("models/ppo_sar2_run1") #BE SURE TO INCREMENT EACH TIME
+# model.learn(total_timesteps=500_000, progress_bar=True)
+# model.save("models/ppo_sar2_run1") #BE SURE TO INCREMENT EACH TIME
 
 # 4. Evaluate the trained agent
 env = make_env(env_name, render_mode="human", sb3=True)
+model = PPO.load("models/ppo_sar2_run1", env=env, device="cuda")
 obs, info = env.reset(seed=seed)
 total_reward = 0
 episodes = 10
