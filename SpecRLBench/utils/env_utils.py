@@ -12,7 +12,7 @@ def make_env(env_name, render_mode=None, sb3=False):
         env = gym.make(env_name, disable_env_checker=True, render_mode=render_mode)
     elif env_name.startswith("Point") or env_name.startswith("Car") or env_name.startswith("Ant"):
         from specbench.envs.zones.safety_gym_wrapper_ma import SafetyGymWrapperMA
-        from specbench.envs.zones.safety_gym_wrapper_ma_sro import SafetyGymWrapperMASAR
+        from specbench.envs.zones.safety_gym_wrapper_ma_sar import SafetyGymWrapperMASAR
         from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
         import safety_gymnasium
         env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)

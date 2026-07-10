@@ -8,7 +8,7 @@ from utils.env_utils import *
 
 # 1. Initialize the standard Gymnasium environment
 env_name = 'PointLTL0MASAR2-v0'
-run_num = 6 #INCREMENT EACH TIME
+run_num = 7 #INCREMENT EACH TIME
 MODEL_PATH = f"_models/ppo_{env_name}_run{run_num}"
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
 steps = 10000
@@ -28,14 +28,14 @@ model = PPO(
     verbose=1,
     learning_rate=0.0003,
     device="cuda:1",
-    # n_steps=1024,
+    n_steps=2048//8,
     tensorboard_log=TRAINING_LOG_PATH
 )
 # 3.1. Train the agent
-model.learn(total_timesteps=500_000, progress_bar=True)
-model.save(MODEL_PATH) #BE SURE TO INCREMENT EACH TIME
+# model.learn(total_timesteps=500_000, progress_bar=True)
+# model.save(MODEL_PATH) #BE SURE TO INCREMENT EACH TIME
 # 3.2. Load saved agent
-# model = PPO.load(MODEL_PATH, env=env, device="cuda")
+model = PPO.load(MODEL_PATH, env=env, device="cuda")
 
 # 4. Evaluate the trained agent
 env = make_env(env_name, sb3=True, render_mode="human")

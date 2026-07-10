@@ -89,8 +89,8 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
     _reward_inside_building = 1
     _reward_find_casualty = 1.0
     _reward_agent_collision = -0.05
-    _reward_casualty_scalar = 0.001 # * 1000 = 1.0 == _reward_find_casualty
-    _reward_wall_collision = -0.1
+    _reward_casualty_scalar = 0.0 # * 1000 = 1.0 == _reward_find_casualty
+    _reward_wall_collision = -0.5
     def step(self, action: ActType):
         # print(action)
         if self.sb3: action = self.dictify_action(action)
