@@ -74,15 +74,6 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         # print(f"DEBUG: self.observation_space = {self.observation_space}")
         self.last_dist = None
 
-    def dictify_action(self, action) -> dict:
-        action_dim = 2
-
-        actions = {
-            f"agent_{i}": action[i * action_dim:(i + 1) * action_dim]
-            for i in range(self.num_agents)
-        }
-        return actions
-
     # PPO Notes
     # Note: Keep reward scales between [-1, 1]
     # Dense rewards are better for PPO >> Better critic
@@ -239,4 +230,12 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             # print(f"DEBUG: flatten_obs flat = {flat}")
             # if isinstance(flat, spaces.Dict):
             return flat
+
+    def dictify_action(self, action) -> dict:
+        actions = {
+            f"agent_{i}": action[i * self.action_dim:(i + 1) * self.action_dim]
+            for i in range(self.num_agents)
+        }
+        return actions
+
             
