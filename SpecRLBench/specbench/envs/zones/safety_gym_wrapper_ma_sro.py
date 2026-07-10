@@ -14,6 +14,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
     """
     sb3 = False
     action_dim = 2
+    find_count = 0
     def __init__(self, env: Any, wall_sensor=True, sb3=False):
         super().__init__(env)
         self.unwrapped.render_parameters.camera_name = 'track'
@@ -82,11 +83,14 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         }
         return actions
 
+    # PPO Notes
+    # Note: Keep reward scales between [-1, 1]
+    # Dense rewards are better for PPO >> Better critic
     _reward_inside_building = 1
-    _reward_find_casualty = 100
-    _reward_collision = -10
-    _reward_casualty_scalar = 0.25
-    _reward_termination = -1000
+    _reward_find_casualty = 1.0
+    _reward_agent_collision = -0.05
+    _reward_casualty_scalar = 0.001 # * 1000 = 1.0 == _reward_find_casualty
+    _reward_wall_collision = -0.1
     def step(self, action: ActType):
         # print(action)
         if self.sb3: action = self.dictify_action(action)
@@ -110,13 +114,13 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         # (the episode should terminate), but it does not necessarily mean the other agent's action is not valid. 
         if 'cost_ltl_walls' in info["agent_0"]:
             for i, a in enumerate(self.env.unwrapped.possible_agents):
-                terminated[a] = terminated[a] or \
-                    info[a]['cost_ltl_walls'] > 0
+                # terminated[a] = terminated[a] or \
+                #     info[a]['cost_ltl_walls'] > 0
                 if info[a]['cost_ltl_walls'] > 0:
-                    print(f"DEBUG: wall collision detected for {a}!")
-                    reward[a] += self._reward_termination
+                    # print(f"DEBUG: wall collision detected for {a}!")
+                    reward[a] += self._reward_wall_collision
                 if info[a]['cost_collision'] > 0:
-                    reward[a] += self._reward_collision
+                    reward[a] += self._reward_agent_collision
                     pass
                     # print(f"DEBUG: agent collision detected for {a}!")
             
@@ -149,6 +153,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             if f'cost_casualtys_surface_{i}' in info['propositions']:
                 # print('Agent '+str(i)+' found entrapped casualty')
                 # terminated[a] = True
+                self.find_count+=1
                 reward[f"agent_{i}"] += self._reward_find_casualty
             if f'cost_casualtys_entrapped_{i}' in info['propositions']:
                 # print('Agent '+str(i)+' found entrapped casualty')
@@ -160,7 +165,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             # if i == 0: print(lidar_keys)
             # if i == 0: print(arr)
             try:
-                # reward[f"agent_{i}"]+=(max(obs[a][f'surface_casualtys_lidar_{i}'])*self._reward_casualty_scalar)
+                reward[f"agent_{i}"]+=(max(obs[a][f'surface_casualtys_lidar_{i}'])*self._reward_casualty_scalar)
                 pass
             except KeyError as e:
                 print(f"ERROR: {e} \n No surface casualtys") 
@@ -181,6 +186,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[WrapperObsType, dict[str, Any]]:
         obs, info = super().reset(seed=seed, options=options)
+        self.find_count = 0
         # print("DEBUG: Environment Reset!")
         info['propositions'] = []
         # obs["agent_0"]['wall_sensor'] = np.array([0, 0, 0, 0])

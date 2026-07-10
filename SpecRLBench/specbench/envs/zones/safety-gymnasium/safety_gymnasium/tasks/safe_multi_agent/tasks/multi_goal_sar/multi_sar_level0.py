@@ -65,7 +65,7 @@ class MultiGoalSARLevel0(BaseTask):
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
 
         self._add_geoms(
-            LtlWalls(),
+            LtlWalls(contype=1),
 
             #Surface Casualties
             Casualtys(
@@ -158,4 +158,5 @@ class MultiGoalSARLevel0(BaseTask):
 
     @property
     def goal_achieved(self):
+        # print(dir(self.data.geom('surface_casualty0')))
         return tuple(False for _ in range(self.agent_num))

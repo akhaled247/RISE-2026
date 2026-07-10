@@ -47,6 +47,7 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
     d_x: float = 0.0
     d_y: float = 0.0
     h_index: int = None
+    contype: int = 0
 
     def __post_init__(self) -> None:
         try:
@@ -90,25 +91,6 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
 
     def get_config(self, xy_pos, rot):  # pylint: disable=unused-argument
         """To facilitate get specific config for this object."""
-        # print(f"LOCATIONS: {self.locations}")
-
-        # body = {
-        #     'name': self.name,
-        #     'pos': np.r_[xy_pos, 0.25],
-        #     'rot': 0,
-        #     'geoms': [
-        #         {
-        #             'name': self.name,
-        #             'size': np.array([0.05, self.size, 0.3]),
-        #             'type': 'box',
-        #             'contype': 0,
-        #             'conaffinity': 0,
-        #             'group': self.group,
-        #             'rgba': self.color * np.array([1, 1, 1, self.alpha]),
-        #         },
-        #     ],
-        # }
-        # print(f"LOCATIONS: {self.locations}")
         rot = [np.arctan2(y - self.d_y, x - self.d_x) for x, y in self.locations][self.index]
         body = {
             'name': self.name,
@@ -116,7 +98,7 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
             'rot': rot,
             'size': np.array([0.025, self.size, self.height]),
             'type': 'box',
-            'contype': 0,
+            'contype': self.contype,
             'conaffinity': 0,
             'group': self.group,
             'rgba': self.color * np.array([1, 1, 1, self.alpha]),
