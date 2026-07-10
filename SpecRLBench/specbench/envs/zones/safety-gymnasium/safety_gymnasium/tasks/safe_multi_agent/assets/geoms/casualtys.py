@@ -50,6 +50,7 @@ class Casualtys(Geom):  # pylint: disable=too-many-instance-attributes
         self.color: np.array = self.CATEGORIES[self.color_name]
         self.group: int = GROUP['casualty']
         self.is_lidar_observed: bool = True
+        self.is_lidar_ids_observed: bool = True
         self.is_constrained: bool = True
         self.is_meshed: bool = False
         self.rescued = [False] * num
@@ -99,6 +100,7 @@ class Casualtys(Geom):  # pylint: disable=too-many-instance-attributes
 
                 if agent_h_dist <= self.size + 0.1:
                     # Mark as permanently handled
+                    print("DEBUG: SUCCESSFUL RESCUE!")
                     self.rescued[body_idx] = True
                     cost[f'agent_{agent_idx}'][f'cost_casualtys_{self.color_name}'] = 1.0
                     break

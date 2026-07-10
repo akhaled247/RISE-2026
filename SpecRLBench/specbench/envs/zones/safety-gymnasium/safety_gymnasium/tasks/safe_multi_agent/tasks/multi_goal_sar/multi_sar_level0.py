@@ -103,6 +103,19 @@ class MultiGoalSARLevel0(BaseTask):
     def _build(self):
         return super()._build()
 
+    def try_lidar_ids(self, obstacle, obs, i):
+        want_ids = getattr(obstacle, 'is_lidar_ids_observed', False)
+        if want_ids and self.lidar_conf.type == 'pseudo_occluded':
+            lidar, lidar_ids = self._obs_lidar_pseudo_occluded_new(
+                i, obstacle, return_ids=True,
+            )
+            obs[f"{obstacle.name}_lidar_{i}"] = lidar
+            obs[f"{obstacle.name}_lidar_ids_{i}"] = lidar_ids
+        else:
+            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_new(
+                i, obstacle.pos, obstacle.group, obstacle=obstacle,
+            )  
+
     def obs(self) -> dict | np.ndarray:
             """Return the observation of our agent."""
             # pylint: disable-next=no-member
@@ -133,10 +146,7 @@ class MultiGoalSARLevel0(BaseTask):
                         # print(f"DEBUG: obstacle names: {str(obstacle.name)}")
                     else:
                         for i in range(self.agent_num):
-                            name = f"{obstacle.name}_lidar_{i}"
-                            obs[name] = self._obs_lidar_new(
-                                i, obstacle.pos, obstacle.group, obstacle=obstacle,
-                            )                
+                            self.try_lidar_ids(obstacle, obs, i)            
     
                     
                 if hasattr(obstacle, 'is_comp_observed') and obstacle.is_comp_observed:

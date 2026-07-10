@@ -14,7 +14,6 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
     """
     sb3 = False
     action_dim = 2
-    find_count = 0
     def __init__(self, env: Any, wall_sensor=True, sb3=False):
         super().__init__(env)
         self.unwrapped.render_parameters.camera_name = 'track'
@@ -74,9 +73,9 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
     # Dense rewards are better for PPO >> Better critic
     # _reward_inside_building = 1
     _reward_find_casualty = 1.0
-    _reward_agent_collision = -0.1
-    _reward_casualty_scalar = 0.0 # * 1000 = 1.0 == _reward_find_casualty
-    _reward_wall_collision = -0.5
+    _reward_agent_collision = -0.001
+    _reward_casualty_scalar = 0.00001 # * 1000 = 1.0 == _reward_find_casualty
+    _reward_wall_collision = -0.01
     def step(self, action: ActType):
         # print(action)
         if self.sb3: action = self.dictify_action(action)
@@ -140,7 +139,6 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             if f'cost_casualtys_surface_{i}' in info['propositions']:
                 # print('Agent '+str(i)+' found entrapped casualty')
                 # terminated[a] = True
-                self.find_count+=1
                 reward[f"agent_{i}"] += self._reward_find_casualty
             if f'cost_casualtys_entrapped_{i}' in info['propositions']:
                 # print('Agent '+str(i)+' found entrapped casualty')
@@ -151,6 +149,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             arr = np.stack([obs[a][k] for k in lidar_keys])
             # if i == 0: print(lidar_keys)
             # if i == 0: print(arr)
+            # if i == 0: print(obs[a]['surface_casualtys_lidar_ids_0'])
             try:
                 reward[f"agent_{i}"]+=(max(obs[a][f'surface_casualtys_lidar_{i}'])*self._reward_casualty_scalar)
                 pass
@@ -159,7 +158,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             # if i == 0: print(obs[a])
         if self.sb3:
             obs = self.flatten_obs(obs)
-            reward = sum(list(reward.values()))
+            reward = sum(list(reward.values())) / (len(reward)/self.num_agents) #avg
             truncated = any(list(truncated.values()))
             terminated = any(list(terminated.values()))
         # print(f"DEBUG: truncated = {truncated}")
@@ -170,7 +169,6 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[WrapperObsType, dict[str, Any]]:
         obs, info = super().reset(seed=seed, options=options)
-        self.find_count = 0
         # print("DEBUG: Environment Reset!")
         info['propositions'] = []
         # obs["agent_0"]['wall_sensor'] = np.array([0, 0, 0, 0])

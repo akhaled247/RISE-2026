@@ -117,9 +117,8 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
                 pos[1] <= -self.collision_threshold
             cost[f'agent_{i}'] = {
                 f'wall_sensor': self.wall_sensor(pos[0], pos[1]),
-                f'cost_ltl_walls': cond * (not self.prev_contact[i])
+                f'cost_ltl_walls': cond * 1 #(not self.prev_contact[i])
             }
-            # if (cond * (not self.prev_contact[i])): print(f"DEBUG: Wall collision!")
             self.prev_contact[i] = cond
         return cost
 

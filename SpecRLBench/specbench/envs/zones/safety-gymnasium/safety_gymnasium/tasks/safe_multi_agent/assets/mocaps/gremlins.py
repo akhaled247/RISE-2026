@@ -103,10 +103,10 @@ class Gremlins(Mocap):  # pylint: disable=too-many-instance-attributes
                 # if h_dist <= self.dist_threshold:
                 if (h_dist <= self.size + self.dist_threshold):
                     is_in_contact = True
-                    if (not (self.prev_contact[i] or self.prev_contact[j])):
+                    # if (not (self.prev_contact[i] or self.prev_contact[j])):
                         # print(f"DEBUG: gremlin collision")
-                        cost[f"agent_{j}"]["cost_collision"] = 1.0  # Same cost structure
-                        cost[f"agent_{i}"]["cost_collision"] = 1.0
+                    cost[f"agent_{j}"]["cost_collision"] = 1.0  # Same cost structure
+                    cost[f"agent_{i}"]["cost_collision"] = 1.0
             self.prev_contact[i] = is_in_contact
                 # print(f"COST TRIGGERED for {self.color_name} zone {i}!")
         return cost
