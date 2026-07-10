@@ -29,7 +29,6 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             # If it's a method, call with None (or agent name if needed)
             obs_space = obs_space(None)
         obs_keys = obs_space.spaces.keys()
-        # obs_keys = env.observation_space["agent_0"].spaces.keys()
         # print(f"DEBUG: obs_keys = {obs_keys}")
         self.colors = set()
         self.atomic_propositions = set()
@@ -53,7 +52,6 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         if isinstance(obs_space, spaces.Dict):
             self.observation_space = obs_space
         else:
-            # print(f"DEBUG: init obs_space not dict = {obs_space}")
             self.observation_space = spaces.Dict(obs_space)
 
         if self.sb3:
@@ -65,21 +63,18 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             else:
                 print(type(act_space))
                 self.observation_space = spaces.Box(act_space)
-        # print(self.observation_space)
         if wall_sensor:
             for i, a in enumerate(self.env.unwrapped.possible_agents):
                 self.observation_space[f'wall_sensor_{i}'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
-            # self.observation_space['wall_sensor'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
-            # self.observation_space['wall_sensor1'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
         # print(f"DEBUG: self.observation_space = {self.observation_space}")
         self.last_dist = None
 
     # PPO Notes
     # Note: Keep reward scales between [-1, 1]
     # Dense rewards are better for PPO >> Better critic
-    _reward_inside_building = 1
+    # _reward_inside_building = 1
     _reward_find_casualty = 1.0
-    _reward_agent_collision = -0.05
+    _reward_agent_collision = -0.1
     _reward_casualty_scalar = 0.0 # * 1000 = 1.0 == _reward_find_casualty
     _reward_wall_collision = -0.5
     def step(self, action: ActType):
@@ -114,10 +109,10 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                     reward[a] += self._reward_agent_collision
                     pass
                     # print(f"DEBUG: agent collision detected for {a}!")
-            
-            # if any(terminated.values()):
-            #     print(f"DEBUG: collision detected!")
-                # info['violation'] = True
+        
+        # if any(terminated.values()):
+        #     print(f"DEBUG: collision detected!")
+            # info['violation'] = True
 
         info['propositions'] = []
         # print(f"DEBUG: action = {action}")
@@ -131,6 +126,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                         # print((k, v))
                         active_props.update({f"{k}_{i}": v})
             # print(active_props) if i==0 else print('')
+            
             info['propositions'].extend(active_props)
             if f'cost_buildings_terracotta_{i}' in info['propositions']:
                 # print('Agent '+str(i)+' in building')
@@ -161,9 +157,6 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             except KeyError as e:
                 print(f"ERROR: {e} \n No surface casualtys") 
             # if i == 0: print(obs[a])
-        # print(f"DEBUG: info = {info}")
-        # print(f"DEBUG: truncated values = {list(truncated.values())}")
-        # print(f"DEBUG: terminated values = {list(terminated.values())}")
         if self.sb3:
             obs = self.flatten_obs(obs)
             reward = sum(list(reward.values()))

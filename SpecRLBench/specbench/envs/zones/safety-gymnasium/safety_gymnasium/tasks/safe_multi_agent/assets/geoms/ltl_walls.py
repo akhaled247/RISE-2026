@@ -50,6 +50,7 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
     contype: int = 0
 
     def __post_init__(self) -> None:
+        self.prev_contact = [False] * self.num
         try:
             self.h_index = int(re.search(r"\d+", self.name).group())
             self.theta = self.rots[self.h_index]
@@ -107,17 +108,6 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
         return body
 
     def cal_cost(self):
-        # poses = [self.agent.pos_0, self.agent.pos_1]
-        # poses = [self.agent.get_agent_pos(i) for i in range(self.agent.agent_num)]
-        # cost = {
-        #     'agent_0': {
-        #         'wall_sensor': self.wall_sensor(poses[0][0], poses[0][1]),
-        #         'cost_ltl_walls': 0
-        #     }, 
-        #     'agent_1': {
-        #         'wall_sensor': self.wall_sensor(poses[1][0], poses[1][1]),
-        #         'cost_ltl_walls': 0
-        # }}
         cost = {}
         for i in range(self.agent.agent_num):
             pos = self.agent.get_agent_pos(i)
@@ -127,21 +117,10 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
                 pos[1] <= -self.collision_threshold
             cost[f'agent_{i}'] = {
                 f'wall_sensor': self.wall_sensor(pos[0], pos[1]),
-                f'cost_ltl_walls': cond * 1
+                f'cost_ltl_walls': cond * (not self.prev_contact[i])
             }
-        # for i, pos in enumerate(poses):
-        #     x, y = pos[0], pos[1]
-        #     if x >= self.collision_threshold or x <= -self.collision_threshold or y >= self.collision_threshold or y <= -self.collision_threshold:
-        #         cost[f'agent_{i}'][f'cost_ltl_walls'] = 1
-                # print(f"DEBUG: Agent hits boundary, episode terminated")
-        # x, y, _ = list(self.agent.pos_0)
-        # cost = {
-        #     'wall_sensor': self.wall_sensor(x, y),
-        #     'cost_ltl_walls': 0
-        # }
-        # if x >= self.collision_threshold or x <= -self.collision_threshold or y >= self.collision_threshold or y <= -self.collision_threshold:
-        #     cost['cost_ltl_walls'] = 1
-        # print(f"DEBUG: LtlWalls cost: {cost}")
+            # if (cond * (not self.prev_contact[i])): print(f"DEBUG: Wall collision!")
+            self.prev_contact[i] = cond
         return cost
 
     def wall_sensor(self, x, y):
