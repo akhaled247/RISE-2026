@@ -73,9 +73,9 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
     # Dense rewards are better for PPO >> Better critic
     # _reward_inside_building = 1
     _reward_find_casualty = 1.0
-    _reward_agent_collision = -0.001
-    _reward_casualty_scalar = 0.00001 # * 1000 = 1.0 == _reward_find_casualty
-    _reward_wall_collision = -0.01
+    _reward_agent_collision = -0.01
+    _reward_casualty_scalar = 0.001 # * 1000 = 1.0 == _reward_find_casualty
+    _reward_wall_collision = -0.02
     def step(self, action: ActType):
         # print(action)
         if self.sb3: action = self.dictify_action(action)

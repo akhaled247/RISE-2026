@@ -98,7 +98,7 @@ class Casualtys(Geom):  # pylint: disable=too-many-instance-attributes
             for agent_idx in range(self.agent.agent_num):
                 agent_h_dist = self.agent.dist_xy(agent_idx, h_pos)
 
-                if agent_h_dist <= self.size + 0.1:
+                if agent_h_dist <= self.size + 0.15:
                     # Mark as permanently handled
                     print("DEBUG: SUCCESSFUL RESCUE!")
                     self.rescued[body_idx] = True

@@ -8,7 +8,7 @@ from utils.env_utils import *
 
 # 1. Initialize the standard Gymnasium environment
 env_name = 'PointLTL0MASAR2-v0'
-run_num = 13 #INCREMENT EACH TIME
+run_num = 19 #INCREMENT EACH TIME
 MODEL_PATH = f"_models/ppo_{env_name}_run{run_num}"
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
 steps = 10000
