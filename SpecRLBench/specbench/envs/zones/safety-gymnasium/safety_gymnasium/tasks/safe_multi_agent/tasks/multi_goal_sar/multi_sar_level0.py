@@ -16,6 +16,7 @@
 
 import gymnasium
 import mujoco
+import numpy as np
 
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
@@ -46,6 +47,8 @@ class MultiGoalSARLevel0(BaseTask):
     casualty_keepout = 0.2
     agent_keepout = 0.25
     max_dist = None
+    reward_distance = 1.0
+    reward_goal = 1.0
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
@@ -59,33 +62,52 @@ class MultiGoalSARLevel0(BaseTask):
         self.cost_conf.constrain_indicator = False
         self.observation_flatten = False
         self.render_conf.lidar_markers = False
-        # self.render_conf.lidar_size = 1.0
+        self.mechanism_conf.continue_goal = False
+        self.last_dist_casualty = None
 
         # Spawn agents in a specified area
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
 
+        casualty_num = 1 if self.agent_num == 1 else self.agent_num
         self._add_geoms(
             LtlWalls(contype=1),
-
-            #Surface Casualties
             Casualtys(
                 category=list(Casualtys.CATEGORIES)[-2],
                 size=0.05,
-                num=self.agent_num,
+                num=casualty_num,
                 keepout=self.casualty_keepout,
             ),
         )
 
-        self._add_mocaps(
-            Gremlins(num=config['agent_num'], size=0.15, dist_threshold=0.10, keepout=0.0)
-        )
+        if self.agent_num > 1:
+            self._add_mocaps(
+                Gremlins(num=config['agent_num'], size=0.15, dist_threshold=0.10, keepout=0.0)
+            )
+
+    def _dist_to_casualty(self, agent_idx: int) -> float:
+        if not hasattr(self, 'surface_casualtys'):
+            return 0.0
+        casualty_pos = self.surface_casualtys.pos[0]
+        return self.agent.dist_xy(agent_idx, casualty_pos)
 
     def calculate_reward(self):
-        return {f'agent_{i}': 0.0 for i in range(self.agent_num)}
+        rewards = {}
+        touch_threshold = 0.0
+        if hasattr(self, 'surface_casualtys'):
+            touch_threshold = self.surface_casualtys.size + 0.15
+        for i in range(self.agent_num):
+            reward = 0.0
+            dist = self._dist_to_casualty(i)
+            if self.last_dist_casualty is not None:
+                reward += (self.last_dist_casualty[i] - dist) * self.reward_distance
+            self.last_dist_casualty[i] = dist
+            if dist <= touch_threshold:
+                reward += self.reward_goal
+            rewards[f'agent_{i}'] = reward
+        return rewards
 
     def specific_reset(self):
-        # print(f"GEOM KEYS: {(self._geoms.keys())}")
-        # print(f"BUILDING SIZE: {self._geoms.get('building_ltl_walls_0').size}")
+        self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
         return super().specific_reset()
 
     def specific_step(self):
@@ -168,5 +190,12 @@ class MultiGoalSARLevel0(BaseTask):
 
     @property
     def goal_achieved(self):
-        # print(dir(self.data.geom('surface_casualty0')))
-        return tuple(False for _ in range(self.agent_num))
+        if not hasattr(self, 'surface_casualtys'):
+            return tuple(False for _ in range(self.agent_num))
+        rescued = self.surface_casualtys.rescued
+        if self.agent_num == 1:
+            return (rescued[0],)
+        return tuple(
+            rescued[i] if i < len(rescued) else False
+            for i in range(self.agent_num)
+        )

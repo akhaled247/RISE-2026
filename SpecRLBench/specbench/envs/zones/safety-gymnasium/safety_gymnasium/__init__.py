@@ -391,6 +391,7 @@ multi_goal_tasks = {
     'LTL0MA3': {'agent_num': 3},
     'LTL0MA5': {'agent_num': 5},
     # 'LTLMASAR5': {'agent_num': 5},
+    'LTL0MASAR1': {'agent_num': 1},
     'LTL0MASAR2': {'agent_num': 2},
     'LTL1MASAR2': {'agent_num': 2},
     'LTL2MASAR2': {'agent_num': 2},

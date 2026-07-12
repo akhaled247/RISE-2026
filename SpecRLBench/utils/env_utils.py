@@ -1,9 +1,8 @@
 import gymnasium as gym
-from numpy import uint8
-import specbench
-import safety_gymnasium
-from gymnasium.wrappers import FlattenObservation
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import VecNormalize
+
 
 def make_env(env_name, render_mode=None, sb3=False):
     if env_name.startswith("Letter"):
@@ -16,20 +15,31 @@ def make_env(env_name, render_mode=None, sb3=False):
         from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
         import safety_gymnasium
         env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
-        if "SAR" in env_name: env = SafetyGymWrapperMASAR(env, sb3=sb3)
-        elif "MA" in env_name: env = SafetyGymWrapperMA(env)
-        else: env = SafetyGymWrapper(env)
+        if "SAR" in env_name:
+            env = SafetyGymWrapperMASAR(env, sb3=sb3)
+        elif "MA" in env_name:
+            env = SafetyGymWrapperMA(env)
+        else:
+            env = SafetyGymWrapper(env)
     else:
-        # env = gym.make(env_name, disable_env_checker=True, render_mode=render_mode)
         try:
             import safety_gymnasium
             env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
-        except Exception as e:
+        except Exception:
             raise ValueError(f"Unknown environment name: {env_name}")
     return env
 
-def make_vec(env_name, n_envs, render_mode=None, sb3=False):
-    return make_vec_env(
-        lambda: make_env(env_name, render_mode, sb3),
-        n_envs=n_envs
+
+def make_vec(env_name, n_envs, render_mode=None, sb3=False, normalize=True):
+    vec_env = make_vec_env(
+        lambda: Monitor(make_env(env_name, render_mode, sb3)),
+        n_envs=n_envs,
     )
+    if sb3 and normalize:
+        vec_env = VecNormalize(
+            vec_env,
+            norm_obs=True,
+            norm_reward=False,
+            clip_obs=10.0,
+        )
+    return vec_env
