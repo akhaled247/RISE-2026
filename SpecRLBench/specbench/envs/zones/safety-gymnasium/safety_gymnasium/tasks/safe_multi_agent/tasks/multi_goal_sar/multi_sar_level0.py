@@ -14,14 +14,10 @@
 # ==============================================================================
 """Multi Goal with a SAR environment."""
 
-import json
-import time
-from copy import deepcopy
-from pathlib import Path
-
 import gymnasium
 import mujoco
 import numpy as np
+from copy import deepcopy
 
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
@@ -116,24 +112,6 @@ class MultiGoalSARLevel0(BaseTask):
         self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
         return super().specific_reset()
 
-    # #region agent log
-    def _dbg_reset(self, hypothesis_id, message, data):
-        try:
-            root = next(p for p in Path(__file__).resolve().parents if (p / '.git').exists())
-            payload = {
-                'sessionId': 'b1323e',
-                'hypothesisId': hypothesis_id,
-                'location': 'multi_sar_level0.py:reset',
-                'message': message,
-                'data': data,
-                'timestamp': int(time.time() * 1000),
-            }
-            with open(root / 'debug-b1323e.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps(payload) + '\n')
-        except Exception:
-            pass
-    # #endregion
-
     def _apply_layout_from_config(self) -> None:
         """Update MuJoCo body poses without rebuilding the model from XML."""
         config = self.world_info.world_config_dict
@@ -172,15 +150,9 @@ class MultiGoalSARLevel0(BaseTask):
     def reset(self) -> None:
         """Reset task state; reuse MuJoCo model after the first build."""
         if self.world is None:
-            t0 = time.perf_counter()
             super().reset()
-            self._dbg_reset('H6', 'full reset completed', {
-                'path': 'full',
-                'elapsed_sec': round(time.perf_counter() - t0, 4),
-            })
             return
 
-        t0 = time.perf_counter()
         if self.placements_conf.placements is None:
             self._build_placements_dict()
             self.random_generator.set_placements_info(
@@ -200,10 +172,6 @@ class MultiGoalSARLevel0(BaseTask):
 
         self._apply_layout_from_config()
         self.world_info.reset_layout = deepcopy(self.world_info.layout)
-        self._dbg_reset('H6', 'fast reset completed', {
-            'path': 'fast',
-            'elapsed_sec': round(time.perf_counter() - t0, 4),
-        })
 
     def specific_step(self):
         return super().specific_step()

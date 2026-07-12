@@ -1,4 +1,4 @@
-import json
+import argparse
 import time
 from pathlib import Path
 
@@ -6,6 +6,8 @@ import numpy as np
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import sys
 
 ROOT = Path(__file__).resolve().parent
@@ -13,24 +15,6 @@ sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_env, make_vec
-
-
-# #region agent log
-def _dbg_train(hypothesis_id, message, data):
-    try:
-        root = next(p for p in Path(__file__).resolve().parents if (p / ".git").exists())
-        payload = {
-            "sessionId": "b1323e",
-            "hypothesisId": hypothesis_id,
-            "location": "ppo_env.py",
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open(root / "debug-b1323e.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload) + "\n")
-    except Exception:
-        pass
 
 
 class ThroughputCallback(BaseCallback):
@@ -56,39 +40,32 @@ class ThroughputCallback(BaseCallback):
             ep_len_mean = None
             if len(self.model.ep_info_buffer) > 0:
                 ep_len_mean = float(np.mean([e["l"] for e in self.model.ep_info_buffer]))
-            row = {
-                "timesteps": int(self.num_timesteps),
-                "rollout_fps": round(rollout_fps, 1),
-                "eta_minutes": round(eta_min, 1) if eta_min is not None else None,
-                "ep_len_mean": ep_len_mean,
-            }
-            _dbg_train("H7", "ppo rollout throughput", row)
             print(
-                f"[throughput] steps={row['timesteps']} "
-                f"fps={row['rollout_fps']} "
-                f"eta_min={row['eta_minutes']} "
-                f"ep_len={row['ep_len_mean']}"
+                f"[throughput] steps={self.num_timesteps} "
+                f"fps={rollout_fps:.1f} "
+                f"eta_min={eta_min:.1f} "
+                f"ep_len={ep_len_mean}"
             )
         self._last_time = now
         self._last_steps = self.num_timesteps
 
-# #endregion
 
 # Config
-env_name = 'PointLTL0MASAR1-v0'
+env_name = "PointLTL0MASAR1-v0"
 run_num = 1  # INCREMENT EACH TIME
 MODEL_PATH = f"_models/ppo_{env_name}_run{run_num}"
+VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
 TOTAL_TIMESTEPS = 500_000
-SMOKE_TIMESTEPS = 50_000
 seed = 0
 n_envs = 8
+eval_episodes = 10
 
 
-def main():
+def train():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("=" * 40)
-    print(f"env={env_name} device={device}")
+    print(f"train env={env_name} device={device}")
 
     env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
     print("Warming up vector envs (one-time MuJoCo build per worker)...")
@@ -115,25 +92,53 @@ def main():
         callback=ThroughputCallback(TOTAL_TIMESTEPS),
     )
     model.save(MODEL_PATH)
-    env.save(f"{MODEL_PATH}_vecnormalize.pkl")
+    env.save(VEC_NORM_PATH)
+    print(f"saved model: {MODEL_PATH}.zip")
+    print(f"saved vecnorm: {VEC_NORM_PATH}")
 
-    eval_env = make_env(env_name, sb3=True, render_mode=None)
-    obs, info = eval_env.reset(seed=seed)
-    episodes = 10
-    for episode in range(episodes):
-        obs, info = eval_env.reset()
+    env.close()
+
+
+def eval_model(render_mode=None):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print("=" * 40)
+    print(f"eval env={env_name} device={device}")
+    print(f"loading {MODEL_PATH}.zip")
+
+    base_env = make_env(env_name, sb3=True, render_mode=render_mode)
+    vec_env = DummyVecEnv([lambda: Monitor(base_env)])
+    vec_env = VecNormalize.load(VEC_NORM_PATH, vec_env)
+    vec_env.training = False
+    vec_env.norm_reward = False
+
+    model = PPO.load(MODEL_PATH, env=vec_env, device=device)
+
+    for episode in range(eval_episodes):
+        obs = vec_env.reset()
         episode_reward = 0.0
         done = False
         while not done:
             action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = eval_env.step(action)
-            episode_reward += reward
-            done = terminated or truncated
+            obs, reward, done, info = vec_env.step(action)
+            episode_reward += float(reward[0])
+            done = bool(done[0])
         print(f"Episode {episode + 1}: {episode_reward:.3f}")
 
-    eval_env.close()
-    env.close()
+    vec_env.close()
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Train or evaluate PPO on SAR0 env.")
+    parser.add_argument(
+        "mode",
+        nargs="?",
+        default="train",
+        choices=["train", "eval"],
+        help="train (default) or eval (load saved model)",
+    )
+    args = parser.parse_args()
+
+    if args.mode == "train":
+        train()
+    else:
+        eval_model()
