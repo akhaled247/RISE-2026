@@ -70,6 +70,40 @@ def _bench(vec_env_cls, label: str) -> float:
   return sps
 
 
+def _bench_with_resets(vec_env_cls, label: str, reset_every: int) -> float:
+  env = make_vec_env(
+      lambda: Monitor(make_env(ENV_NAME, render_mode=None, sb3=True)),
+      n_envs=N_ENVS,
+      vec_env_cls=vec_env_cls,
+  )
+  env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.0)
+  env.reset()
+  t0 = time.perf_counter()
+  step_in_ep = 0
+  reset_count = 0
+  for _ in range(WARMUP_STEPS + BENCH_STEPS):
+      action = env.action_space.sample()
+      env.step(action)
+      step_in_ep += 1
+      if step_in_ep >= reset_every:
+          env.reset()
+          step_in_ep = 0
+          reset_count += 1
+  elapsed = time.perf_counter() - t0
+  steps = BENCH_STEPS * N_ENVS
+  sps = steps / elapsed
+  env.close()
+  _dbg('H6', f'{label} throughput with periodic reset', {
+      'vec_env': label,
+      'reset_every': reset_every,
+      'reset_count_total': reset_count,
+      'elapsed_sec': round(elapsed, 3),
+      'steps_per_sec': round(sps, 2),
+      'eta_500k_hours': round((TOTAL_TIMESTEPS / sps) / 3600, 2),
+  })
+  return sps
+
+
 if __name__ == "__main__":
   print(f"Benchmarking {ENV_NAME} with n_envs={N_ENVS}")
   dummy_sps = _bench(DummyVecEnv, "DummyVecEnv")
@@ -78,6 +112,8 @@ if __name__ == "__main__":
       subproc_sps = _bench(SubprocVecEnv, "SubprocVecEnv")
       print(f"SubprocVecEnv: {subproc_sps:.1f} env-steps/s")
       print(f"Speedup: {subproc_sps / max(dummy_sps, 1e-6):.2f}x")
+      reset_sps = _bench_with_resets(DummyVecEnv, "DummyVecEnv", reset_every=176)
+      print(f"DummyVecEnv w/ reset@176: {reset_sps:.1f} env-steps/s")
   except Exception as exc:
       _dbg("H1", "SubprocVecEnv failed", {"error": str(exc)})
       print(f"SubprocVecEnv failed: {exc}")
