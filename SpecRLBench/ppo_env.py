@@ -36,13 +36,16 @@ def _dbg_train(hypothesis_id, message, data):
 class ThroughputCallback(BaseCallback):
     """Log real rollout FPS and ETA (progress bar rate can lie early on)."""
 
-    def __init__(self, total_timesteps: int):
-        super().__init__()
+    def __init__(self, total_timesteps: int, verbose: int = 0):
+        super().__init__(verbose)
         self.total_timesteps = total_timesteps
         self._last_time = None
         self._last_steps = 0
 
-    def _on_rollout_end(self) -> bool:
+    def _on_step(self) -> bool:
+        return True
+
+    def _on_rollout_end(self) -> None:
         now = time.perf_counter()
         if self._last_time is not None:
             dt = now - self._last_time
@@ -68,7 +71,7 @@ class ThroughputCallback(BaseCallback):
             )
         self._last_time = now
         self._last_steps = self.num_timesteps
-        return True
+
 # #endregion
 
 # Config
