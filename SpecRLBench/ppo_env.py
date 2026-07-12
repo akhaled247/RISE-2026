@@ -1,13 +1,75 @@
+import json
+import time
+from pathlib import Path
+
+import numpy as np
 import torch
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import BaseCallback
 import sys
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_env, make_vec
+
+
+# #region agent log
+def _dbg_train(hypothesis_id, message, data):
+    try:
+        root = next(p for p in Path(__file__).resolve().parents if (p / ".git").exists())
+        payload = {
+            "sessionId": "b1323e",
+            "hypothesisId": hypothesis_id,
+            "location": "ppo_env.py",
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        with open(root / "debug-b1323e.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload) + "\n")
+    except Exception:
+        pass
+
+
+class ThroughputCallback(BaseCallback):
+    """Log real rollout FPS and ETA (progress bar rate can lie early on)."""
+
+    def __init__(self, total_timesteps: int):
+        super().__init__()
+        self.total_timesteps = total_timesteps
+        self._last_time = None
+        self._last_steps = 0
+
+    def _on_rollout_end(self) -> bool:
+        now = time.perf_counter()
+        if self._last_time is not None:
+            dt = now - self._last_time
+            dsteps = self.num_timesteps - self._last_steps
+            rollout_fps = dsteps / dt if dt > 0 else 0.0
+            remaining = max(self.total_timesteps - self.num_timesteps, 0)
+            eta_min = (remaining / rollout_fps / 60.0) if rollout_fps > 0 else None
+            ep_len_mean = None
+            if len(self.model.ep_info_buffer) > 0:
+                ep_len_mean = float(np.mean([e["l"] for e in self.model.ep_info_buffer]))
+            row = {
+                "timesteps": int(self.num_timesteps),
+                "rollout_fps": round(rollout_fps, 1),
+                "eta_minutes": round(eta_min, 1) if eta_min is not None else None,
+                "ep_len_mean": ep_len_mean,
+            }
+            _dbg_train("H7", "ppo rollout throughput", row)
+            print(
+                f"[throughput] steps={row['timesteps']} "
+                f"fps={row['rollout_fps']} "
+                f"eta_min={row['eta_minutes']} "
+                f"ep_len={row['ep_len_mean']}"
+            )
+        self._last_time = now
+        self._last_steps = self.num_timesteps
+        return True
+# #endregion
 
 # 1. Initialize the standard Gymnasium environment
 env_name = 'PointLTL0MASAR1-v0'
@@ -24,6 +86,8 @@ print(f"env={env_name} device={device}")
 
 n_envs = 8
 env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
+print("Warming up vector envs (one-time MuJoCo build per worker)...")
+env.reset()
 
 # 2. Instantiate the PPO Agent
 model = PPO(
@@ -42,7 +106,11 @@ model = PPO(
 )
 
 # 3.1. Train the agent
-model.learn(total_timesteps=TOTAL_TIMESTEPS, progress_bar=True)
+model.learn(
+    total_timesteps=TOTAL_TIMESTEPS,
+    progress_bar=False,
+    callback=ThroughputCallback(TOTAL_TIMESTEPS),
+)
 model.save(MODEL_PATH)
 env.save(f"{MODEL_PATH}_vecnormalize.pkl")
 
