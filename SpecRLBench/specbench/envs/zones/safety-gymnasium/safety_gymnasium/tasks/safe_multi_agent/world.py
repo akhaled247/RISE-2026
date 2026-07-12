@@ -172,6 +172,14 @@ class World:  # pylint: disable=too-many-instance-attributes
             'agent_num': self._agent.agent_num,
             'body_name_count': self.xml_string.count('<body name="agent'),
         })
+        # xmltodict returns a dict (not list) when worldbody has a single <body>
+        if 'body' in worldbody and not isinstance(worldbody['body'], list):
+            worldbody['body'] = [worldbody['body']]
+        _dbg('H5', 'worldbody body after list normalization', {
+            'agent_num': self._agent.agent_num,
+            'body_is_list': isinstance(worldbody.get('body'), list),
+            'body_len': len(worldbody['body']) if isinstance(worldbody.get('body'), list) else None,
+        })
         # #endregion
 
         # # Move agent position to starting position
