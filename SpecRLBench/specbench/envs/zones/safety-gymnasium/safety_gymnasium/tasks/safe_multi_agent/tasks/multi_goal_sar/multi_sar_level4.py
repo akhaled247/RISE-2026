@@ -36,9 +36,12 @@ class MultiGoalSARLevel4(MultiGoalSARLevel0):
     
     def __init__(self, config) -> None:
         super().__init__(config=config)
+        self._add_geoms(
+            Walls(num=self.wall_count)
+        )
 
     def calculate_reward(self):
-        return {f'agent_{i}': 0.0 for i in range(self.agent_num)}
+        return super().calculate_reward()
 
     def specific_reset(self):
         # print(f"GEOM KEYS: {(self._geoms.keys())}")

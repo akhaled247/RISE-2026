@@ -53,6 +53,7 @@ class MultiGoalSARLevel2(MultiGoalSARLevel1):
             self._add_geoms(LtlWalls(name=f"building{i}_ltl_walls"))
 
         self._add_geoms(
+            Walls(num=self.wall_count),
             Buildings(
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout*0.75,

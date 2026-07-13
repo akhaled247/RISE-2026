@@ -201,7 +201,6 @@ class MultiGoalSARLevel0(BaseTask):
             # self.original_obs = obs
             if self.observation_flatten:
                 obs = gymnasium.spaces.utils.flatten(self.obs_info.obs_space_dict, obs)
-            print(f"obs: {obs}")
             return obs
 
     @property

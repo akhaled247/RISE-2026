@@ -111,7 +111,6 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             terminated = any(list(terminated.values())) or mission_complete
         elif mission_complete:
             terminated = {a: True for a in self.env.unwrapped.possible_agents}
-        print(self.observation_space.spaces.keys())
         return obs, reward, terminated, truncated, info
 
     def reset(
