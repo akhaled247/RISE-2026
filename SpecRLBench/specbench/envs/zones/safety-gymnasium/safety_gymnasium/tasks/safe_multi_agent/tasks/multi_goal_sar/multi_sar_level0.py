@@ -149,11 +149,16 @@ class MultiGoalSARLevel0(BaseTask):
             obs[f"{obstacle.name}_lidar_{i}"] = lidar
             obs[f"{obstacle.name}_lidar_ids_{i}"] = lidar_ids
         else:
-            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
-                i, obstacle,
-            )  
-            # vals = obs[f"{obstacle.name}_lidar_{i}"]
-            # print(f"{obstacle.name}_lidar_{i} = {vals}")
+            # Interior ring walls: many instances; pseudo lidar is enough and
+            # avoids per-wall mj_ray line-of-sight checks each step.
+            if obstacle.name == 'walls':
+                obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_new(
+                    i, obstacle.pos,
+                )
+            else:
+                obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
+                    i, obstacle,
+                )
 
     def obs(self) -> dict | np.ndarray:
             """Return the observation of our agent."""
