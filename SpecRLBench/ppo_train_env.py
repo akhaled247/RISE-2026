@@ -12,12 +12,12 @@ from utils.env_utils import ThroughputCallback, make_vec
 from ppo_load_env import eval_model
 
 # --- edit these before each run ---
-env_name = "PointLTL4MASAR1-v0"
+env_name = "PointLTL0MASAR1-v0"
 '''
-PointLTL0MASAR1-v0 >> run_num = 8
+PointLTL0MASAR1-v0 >> run_num = 9
 PointLTL4MASAR1-v0 >> run_num = 4
 '''
-run_num = 3  # INCREMENT EACH TIME;
+run_num = 8  # INCREMENT EACH TIME;
 MODEL_PATH = f"_models/ppo_{env_name}_run{run_num}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
@@ -40,7 +40,7 @@ def train():
         env,
         verbose=1,
         learning_rate=1e-4,
-        n_steps=1024,
+        n_steps=1024, #L0 = 512, L4 = 1024
         batch_size=256,
         n_epochs=4,
         ent_coef=0.01,
