@@ -66,6 +66,17 @@ class MultiGoalSARLevel0(BaseTask):
         self.mechanism_conf.continue_goal = False
         self.last_dist_casualty = None
         self.num_steps = 2500
+        # #region agent log
+        try:
+            import json, time
+            from pathlib import Path
+            _lp = Path(__file__).resolve().parents[9] / "debug-3376cb.log"
+            _lp.parent.mkdir(parents=True, exist_ok=True)
+            with _lp.open("a", encoding="utf-8") as _f:
+                _f.write(json.dumps({"sessionId":"3376cb","timestamp":int(time.time()*1000),"location":"multi_sar_level0.py:__init__","message":"sar_task_num_steps","data":{"num_steps":self.num_steps,"agent_num":self.agent_num},"hypothesisId":"H1","runId":"pre-fix"}) + "\n")
+        except Exception:
+            pass
+        # #endregion
 
         # Spawn agents in a specified area
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])

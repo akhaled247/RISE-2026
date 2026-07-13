@@ -52,6 +52,27 @@ def make_env(env_name, render_mode=None, sb3=False):
         from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
         import safety_gymnasium
         env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
+        # #region agent log
+        try:
+            from debug.debug_log import agent_log
+            unwrapped = env.unwrapped
+            while hasattr(unwrapped, "env"):
+                unwrapped = unwrapped.env
+            task = getattr(unwrapped, "task", None)
+            agent_log(
+                "env_utils.py:make_env",
+                "env_created",
+                {
+                    "env_name": env_name,
+                    "spec_max_episode_steps": getattr(getattr(env, "spec", None), "max_episode_steps", None),
+                    "task_num_steps": getattr(task, "num_steps", None),
+                    "task_class": type(task).__name__ if task else None,
+                },
+                "H4",
+            )
+        except Exception:
+            pass
+        # #endregion
         if "SAR" in env_name:
             env = SafetyGymWrapperMASAR(env, sb3=sb3)
         elif "MA" in env_name:
