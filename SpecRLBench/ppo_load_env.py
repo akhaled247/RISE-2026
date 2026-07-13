@@ -50,4 +50,4 @@ def eval_model(render_mode=None):
 
 
 if __name__ == "__main__":
-    eval_model()
+    eval_model(render_mode="human")
