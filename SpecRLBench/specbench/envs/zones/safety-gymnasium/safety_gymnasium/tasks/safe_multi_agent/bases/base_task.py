@@ -179,7 +179,7 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
         """
         super().__init__(config=config)
 
-        self.num_steps = 1000  # Maximum number of environment steps in an episode
+        self.num_steps = int(config.get('max_episode_steps', 1000))
 
         self.lidar_conf = LidarConf()
         self.compass_conf = CompassConf()

@@ -40,9 +40,9 @@ def train():
         env,
         verbose=1,
         learning_rate=1e-4,
-        n_steps=2048,
+        n_steps=1024,
         batch_size=256,
-        n_epochs=10,
+        n_epochs=4,
         ent_coef=0.01,
         target_kl=0.02,
         device=device,
@@ -53,7 +53,7 @@ def train():
     model.learn(
         total_timesteps=TOTAL_TIMESTEPS,
         progress_bar=True,
-        # callback=ThroughputCallback(TOTAL_TIMESTEPS),
+        callback=ThroughputCallback(TOTAL_TIMESTEPS),
     )
     model.save(MODEL_PATH)
     env.save(VEC_NORM_PATH)

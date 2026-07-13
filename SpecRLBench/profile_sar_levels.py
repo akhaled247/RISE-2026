@@ -90,7 +90,8 @@ def _profile_env(env_name: str) -> dict:
             "env": env_name,
             "ms_per_step": round(step_s * 1000, 2),
             "fps_1env": round(1.0 / step_s, 1),
-            "eta_500k_8env_min": round((500_000 / (1.0 / step_s * 8)) / 60, 1),
+            "eta_500k_sequential_min": round((500_000 / (1.0 / step_s)) / 60, 1),
+            "eta_500k_parallel_upper_min": round((500_000 / (1.0 / step_s * 8)) / 60, 1),
         },
     )
     # #endregion

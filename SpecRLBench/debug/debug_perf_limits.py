@@ -39,6 +39,7 @@ def main():
         "benchmark_start",
         {"env_name": ENV_NAME, "n_envs": N_ENVS, "rollout_steps": ROLLOUT_STEPS},
         "H5",
+        "post-fix",
     )
 
     vec_cls = DummyVecEnv
@@ -48,7 +49,7 @@ def main():
         vec_env_cls=vec_cls,
     )
     limits = _episode_limits_from_env(env.envs[0])
-    agent_log("debug_perf_limits.py:main", "env_limits", limits, "H1")
+    agent_log("debug_perf_limits.py:main", "env_limits", limits, "H1", "post-fix")
 
     env.reset()
     ep_lengths = []
@@ -94,6 +95,7 @@ def main():
             **limits,
         },
         "H2",
+        "post-fix",
     )
     print(
         f"limits={limits} sps={sps:.1f} "

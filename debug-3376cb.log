@@ -1,1 +1,0 @@
-{"sessionId": "3376cb", "timestamp": 1783974366822, "location": "debug_perf_limits.py:main", "message": "benchmark_start", "data": {"env_name": "PointLTL4MASAR1-v0", "n_envs": 8, "rollout_steps": 512}, "hypothesisId": "H5", "runId": "pre-fix"}

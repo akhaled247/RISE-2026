@@ -339,7 +339,10 @@ def __combine_multi(tasks, agents, max_episode_steps):
             env_id = f'{robot_name}{task_name}-{VERSION}'
             # env_id = f'{PREFIX}{robot_name}{task_name}-{VERSION}'
             combined_config = copy.deepcopy(task_config)
-            combined_config.update({'agent_name': robot_name})
+            combined_config.update({
+                'agent_name': robot_name,
+                'max_episode_steps': max_episode_steps,
+            })
 
             __register_helper(
                 env_id=env_id,

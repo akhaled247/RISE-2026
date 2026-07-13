@@ -1,3 +1,4 @@
+import sys
 import time
 
 import gymnasium as gym
@@ -37,6 +38,24 @@ class ThroughputCallback(BaseCallback):
                 f"eta_min={eta_min:.1f} "
                 f"ep_len={ep_len_mean}"
             )
+            # #region agent log
+            try:
+                from debug.debug_log import agent_log
+                agent_log(
+                    "env_utils.py:ThroughputCallback",
+                    "rollout_end",
+                    {
+                        "num_timesteps": int(self.num_timesteps),
+                        "rollout_fps": round(rollout_fps, 1),
+                        "eta_min": round(eta_min, 1) if eta_min is not None else None,
+                        "ep_len_mean": ep_len_mean,
+                    },
+                    "T3",
+                    "ppo-bench",
+                )
+            except Exception:
+                pass
+            # #endregion
         self._last_time = now
         self._last_steps = self.num_timesteps
 
@@ -69,6 +88,7 @@ def make_env(env_name, render_mode=None, sb3=False):
                     "task_class": type(task).__name__ if task else None,
                 },
                 "H4",
+                "post-fix",
             )
         except Exception:
             pass
@@ -88,13 +108,29 @@ def make_env(env_name, render_mode=None, sb3=False):
     return env
 
 
-def make_vec(env_name, n_envs, render_mode=None, sb3=False, normalize=True, parallel=True):
-    """Vectorized env factory: SubprocVecEnv for parallel rollouts, optional VecNormalize."""
-    vec_env_cls = SubprocVecEnv if parallel and n_envs > 1 else DummyVecEnv
+def make_vec(
+    env_name,
+    n_envs,
+    render_mode=None,
+    sb3=False,
+    normalize=True,
+    parallel=True,
+    vec_env_kwargs=None,
+):
+    """Vectorized env factory. Uses SubprocVecEnv on Linux with fork for real parallelism."""
+    vec_env_kwargs = dict(vec_env_kwargs or {})
+    if parallel and n_envs > 1:
+        vec_env_cls = SubprocVecEnv
+        if sys.platform != "win32" and "start_method" not in vec_env_kwargs:
+            vec_env_kwargs["start_method"] = "fork"
+    else:
+        vec_env_cls = DummyVecEnv
+        vec_env_kwargs = {}
     vec_env = make_vec_env(
         lambda: Monitor(make_env(env_name, render_mode, sb3)),
         n_envs=n_envs,
         vec_env_cls=vec_env_cls,
+        vec_env_kwargs=vec_env_kwargs if vec_env_kwargs else None,
     )
     if sb3 and normalize:
         vec_env = VecNormalize(
