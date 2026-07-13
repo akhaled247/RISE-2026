@@ -9,10 +9,15 @@ sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import ThroughputCallback, make_vec
+from ppo_load_env import eval_model
 
 # --- edit these before each run ---
-env_name = "PointLTL0MASAR1-v0"
-run_num = 1  # INCREMENT EACH TIME
+env_name = "PointLTL4MASAR1-v0"
+'''
+PointLTL0MASAR1-v0 >> run_num = 8
+PointLTL4MASAR1-v0 >> run_num = 1
+'''
+run_num = 1  # INCREMENT EACH TIME;
 MODEL_PATH = f"_models/ppo_{env_name}_run{run_num}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
@@ -27,7 +32,7 @@ def train():
     print(f"train env={env_name} device={device}")
 
     env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
-    print("Warming up vector envs (one-time MuJoCo build per worker)...")
+    print("Warming up vector envs...")
     env.reset()
 
     model = PPO(
@@ -59,4 +64,7 @@ def train():
 
 
 if __name__ == "__main__":
+    print('Did you change the run number? Be sure to do so before starting!')
+    breakpoint()
     train()
+    eval_model(render_mode="human")

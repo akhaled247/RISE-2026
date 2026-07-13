@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import numpy as np
 from safety_gymnasium.tasks.safe_multi_agent.utils.random_generator import RandomGenerator
+from typing import TYPE_CHECKING
+
 
 
 def ring_locations(radius: float, n: int) -> list[tuple[float, float]]:
@@ -135,3 +137,28 @@ def size_randomization(
         y-y_margin, y+y_margin, n),
         random_generator.uniform(
         z-z_margin, z+z_margin, n)]).transpose()
+
+if TYPE_CHECKING:
+    from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
+
+_CASUALTY_GEOM_NAMES = ('surface_casualtys', 'entrapped_casualtys')
+
+
+def all_casualties_rescued(task: BaseTask) -> bool:
+    """Return True when every surface and entrapped casualty (if present) is rescued."""
+    found_any = False
+    for attr in _CASUALTY_GEOM_NAMES:
+        if not hasattr(task, attr):
+            continue
+        geom = getattr(task, attr)
+        found_any = True
+        if not all(geom.rescued):
+            return False
+    return found_any
+
+
+def mission_goal_achieved(task: BaseTask) -> tuple[bool, ...]:
+    """Shared goal_achieved tuple: same team mission flag for each agent."""
+    mission_complete = all_casualties_rescued(task)
+    return tuple(mission_complete for _ in range(task.agent_num))
+

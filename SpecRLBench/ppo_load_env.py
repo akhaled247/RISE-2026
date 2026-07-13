@@ -14,10 +14,10 @@ from utils.env_utils import make_env
 
 # --- must match the train run ---
 env_name = "PointLTL0MASAR1-v0"
-run_num = 1
+run_num = 4
 MODEL_PATH = f"_models/ppo_{env_name}_run{run_num}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
-eval_episodes = 10
+eval_episodes = 20
 seed = 0
 
 
@@ -50,4 +50,6 @@ def eval_model(render_mode=None):
 
 
 if __name__ == "__main__":
+    print('Did you change the run number? Be sure to do so before starting!')
+    breakpoint()
     eval_model(render_mode="human")

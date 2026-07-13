@@ -399,6 +399,7 @@ __combine_multi(multi_goal_tasks, robots, max_episode_steps=1000)
 multi_goal_sar_tasks = {
     # 'LTLMASAR5': {'agent_num': 5},
     'LTL0MASAR1': {'agent_num': 1},
+    'LTL4MASAR1': {'agent_num': 1},
     'LTL0MASAR2': {'agent_num': 2},
     'LTL1MASAR2': {'agent_num': 2},
     'LTL2MASAR2': {'agent_num': 2},

@@ -25,7 +25,7 @@ from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.zones import Zones
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Buildings
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
-from safety_gymnasium.tasks.safe_multi_agent.utils.sar_goal_utils import mission_goal_achieved
+from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import *
 from safety_gymnasium.tasks.safe_multi_agent import agents
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_object import Geom
 
@@ -49,6 +49,7 @@ class MultiGoalSARLevel0(BaseTask):
     max_dist = None
     reward_distance = 1.0
     reward_goal = 1.0
+    time_alive_decay = 0.0
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
@@ -69,13 +70,13 @@ class MultiGoalSARLevel0(BaseTask):
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
 
         # One surface casualty for solo training; otherwise one per agent.
-        casualty_num = 1 if self.agent_num == 1 else self.agent_num
+        self.casualty_num = self.agent_num
         self._add_geoms(
             LtlWalls(contype=1),
             Casualtys(
                 category=list(Casualtys.CATEGORIES)[-2],
                 size=0.05,
-                num=casualty_num,
+                num=self.casualty_num,
                 keepout=self.casualty_keepout,
             ),
         )
@@ -91,6 +92,12 @@ class MultiGoalSARLevel0(BaseTask):
         casualty_pos = self.surface_casualtys.pos[0]
         return self.agent.dist_xy(agent_idx, casualty_pos)
 
+    def _dist_to_casualtys(self, agent_idx: int) -> float:
+            if not hasattr(self, 'surface_casualtys'):
+                return 0.0
+            casualty_poses = (self.surface_casualtys.pos[i] for i in range(self.casualty_num))
+            return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
+
     def calculate_reward(self):
         """Task-native shaping: distance delta toward casualty plus touch bonus."""
         rewards = {}
@@ -98,12 +105,13 @@ class MultiGoalSARLevel0(BaseTask):
         if hasattr(self, 'surface_casualtys'):
             touch_threshold = self.surface_casualtys.size + 0.15
         for i in range(self.agent_num):
-            reward = 0.0
-            dist = self._dist_to_casualty(i)
+            reward = self.time_alive_decay
+            dists: list = self._dist_to_casualtys(i)
             if self.last_dist_casualty is not None:
-                reward += (self.last_dist_casualty[i] - dist) * self.reward_distance
-            self.last_dist_casualty[i] = dist
-            if dist <= touch_threshold:
+                min_dist = min(dist for dist in dists)
+                reward += (self.last_dist_casualty[i] - min_dist) * self.reward_distance
+            self.last_dist_casualty[i] = min_dist
+            if min_dist <= touch_threshold:
                 reward += self.reward_goal
             rewards[f'agent_{i}'] = reward
         return rewards
