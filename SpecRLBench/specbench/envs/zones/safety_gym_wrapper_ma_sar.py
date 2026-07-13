@@ -8,12 +8,18 @@ from gymnasium.spaces import Box
 
 from specbench.utils.ltl.logic import Assignment
 
+
 class SafetyGymWrapperMASAR(gymnasium.Wrapper):
     """
     A wrapper from safety gymnasium LTL environments to the gymnasium API.
     """
     sb3 = False
     action_dim = 2
+
+    # PPO notes (rewards live in the task — not applied here):
+    # - Keep reward scales roughly in [-1, 1] when shaping in the task
+    # - Dense progress shaping helps the critic more than sparse-only events
+
     def __init__(self, env: Any, wall_sensor=True, sb3=False):
         super().__init__(env)
         self.unwrapped.render_parameters.camera_name = 'track'
@@ -34,7 +40,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             if "zones" in key.split('_'):
                 color = key.split('_')[0]
                 self.colors.add(color)
-                for i in range(self.num_agents*2):
+                for i in range(self.num_agents * 2):
                     self.atomic_propositions.add(color + '_' + str(i))
 
         obs_space = env.observation_space
@@ -48,28 +54,35 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         if self.sb3:
             act_space = env.action_space
             if callable(act_space):
-                act_space = Box(low=-1.0, high=1.0, shape=(self.num_agents*self.action_dim,))
+                act_space = Box(low=-1.0, high=1.0, shape=(self.num_agents * self.action_dim,))
             if isinstance(act_space, spaces.Box):
                 self.action_space = act_space
             else:
                 raise TypeError(f"Expected Box action space for SB3, got {type(act_space)}")
         if wall_sensor:
             for i, a in enumerate(self.env.unwrapped.possible_agents):
-                self.observation_space[f'wall_sensor_{i}'] = Box(low=0.0, high=1.0, shape=(4,), dtype=np.float64)
+                self.observation_space[f'wall_sensor_{i}'] = Box(
+                    low=0.0, high=1.0, shape=(4,), dtype=np.float64,
+                )
 
     def step(self, action: ActType):
         if self.sb3:
             action = self.dictify_action(action)
         obs, reward, cost, terminated, truncated, info = super().step(action)
 
+        # Update env boundary wall sensor info
         if 'wall_sensor' in info["agent_0"]:
             for i, agent in enumerate(self.env.unwrapped.possible_agents):
                 obs[agent][f'wall_sensor_{i}'] = info[agent]['wall_sensor']
 
         self.env.unwrapped.task.original_obs = obs
 
+        # TODO: may need to have separate termination for each agent,
+        # one agent may violate its own subgoal such that the whole spec cannot be satisfied
+        # (the episode should terminate), but it does not necessarily mean the other agent's
+        # action is not valid.
+
         info['propositions'] = []
-        rescue_detected = False
         for i, a in enumerate(self.env.unwrapped.possible_agents):
             agent_info: dict = info[a]
             active_props = {}
@@ -79,31 +92,30 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
 
             info['propositions'].extend(active_props.keys())
 
-            if f'cost_casualtys_surface_{i}' in info['propositions']:
-                rescue_detected = True
-                terminated[a] = True
-
             # Level 1+ building logic: mask entrapped lidar when not inside building
             if f'cost_buildings_terracotta_{i}' not in info['propositions']:
                 try:
                     obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(
-                        obs[a][f'entrapped_casualtys_lidar_{i}'].size
+                        obs[a][f'entrapped_casualtys_lidar_{i}'].size,
                     )
                 except KeyError:
                     pass
+
+        # Collaborative SAR: end episode only when the full team mission is complete
+        mission_complete = all(self.env.unwrapped.task.goal_achieved)
 
         if self.sb3:
             obs = self.flatten_obs(obs)
             reward = float(np.mean(list(reward.values())))
             truncated = any(list(truncated.values()))
-            terminated = any(list(terminated.values())) or rescue_detected
-        elif rescue_detected:
+            terminated = any(list(terminated.values())) or mission_complete
+        elif mission_complete:
             terminated = {a: True for a in self.env.unwrapped.possible_agents}
 
         return obs, reward, terminated, truncated, info
 
     def reset(
-            self, *, seed: int | None = None, options: dict[str, Any] | None = None
+            self, *, seed: int | None = None, options: dict[str, Any] | None = None,
     ) -> tuple[WrapperObsType, dict[str, Any]]:
         obs, info = super().reset(seed=seed, options=options)
         info['propositions'] = []
@@ -118,6 +130,8 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         return sorted(self.atomic_propositions)
 
     def get_possible_assignments(self) -> list[Assignment]:
+        # For multi-agent: allow at most one proposition per agent to be true, but allow
+        # different agents' props to be true simultaneously
         assignments = []
         agent_props = {}
         for prop in self.atomic_propositions:

@@ -67,6 +67,3 @@ class MultiGoalSARLevel3(MultiGoalSARLevel2):
     def _build(self):            
         return super()._build()
 
-    @property
-    def goal_achieved(self):
-        return tuple(False for _ in range(self.agent_num))

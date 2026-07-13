@@ -267,7 +267,9 @@ class Builder(gymnasium.Env, gymnasium.utils.EzPickle):
             self.task.specific_step()
 
             # Goal processing
-            if any(self.task.goal_achieved):
+            # Collaborative SAR mission: all agents share the same mission-complete flag.
+            # continue_goal=False on SAR tasks means no respawn after full rescue.
+            if all(self.task.goal_achieved):
                 info['goal_met'] = True
                 if self.task.mechanism_conf.continue_goal:
                     # Update the internal layout

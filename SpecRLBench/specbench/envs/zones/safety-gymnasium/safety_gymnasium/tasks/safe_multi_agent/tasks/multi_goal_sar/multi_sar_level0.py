@@ -17,7 +17,6 @@
 import gymnasium
 import mujoco
 import numpy as np
-from copy import deepcopy
 
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
@@ -26,8 +25,7 @@ from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.zones import Zones
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Buildings
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
-from safety_gymnasium.tasks.safe_multi_agent.utils.common_utils import rot2quat
-from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import *
+from safety_gymnasium.tasks.safe_multi_agent.utils.sar_goal_utils import mission_goal_achieved
 from safety_gymnasium.tasks.safe_multi_agent import agents
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_object import Geom
 
@@ -70,6 +68,7 @@ class MultiGoalSARLevel0(BaseTask):
         # Spawn agents in a specified area
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
 
+        # One surface casualty for solo training; otherwise one per agent.
         casualty_num = 1 if self.agent_num == 1 else self.agent_num
         self._add_geoms(
             LtlWalls(contype=1),
@@ -93,6 +92,7 @@ class MultiGoalSARLevel0(BaseTask):
         return self.agent.dist_xy(agent_idx, casualty_pos)
 
     def calculate_reward(self):
+        """Task-native shaping: distance delta toward casualty plus touch bonus."""
         rewards = {}
         touch_threshold = 0.0
         if hasattr(self, 'surface_casualtys'):
@@ -109,69 +109,13 @@ class MultiGoalSARLevel0(BaseTask):
         return rewards
 
     def specific_reset(self):
-        self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
-        return super().specific_reset()
-
-    def _apply_layout_from_config(self) -> None:
-        """Update MuJoCo body poses without rebuilding the model from XML."""
-        config = self.world_info.world_config_dict
-        agent_xy = config['agent_xy']
-        if isinstance(agent_xy, list):
-            agent_positions = [np.asarray(pos, dtype=float) for pos in agent_xy]
-        else:
-            agent_positions = [np.asarray(agent_xy, dtype=float)]
-
-        agent_rot = config['agent_rot']
-        if np.isscalar(agent_rot):
-            agent_rots = [float(agent_rot)] * self.agent_num
-        else:
-            agent_rots = [float(r) for r in agent_rot]
-
-        mujoco.mj_resetData(self.model, self.data)  # pylint: disable=no-member
-        z = self.agent.z_height
-        for i in range(self.agent_num):
-            body_name = f'agent_{i}'
-            xy = agent_positions[i][:2]
-            self.model.body(body_name).pos[:2] = xy
-            self.model.body(body_name).pos[2] = z
-            self.model.body(body_name).quat[:] = rot2quat(agent_rots[i])
-
-        for geom_name, geom_cfg in config.get('geoms', {}).items():
-            pos = np.asarray(geom_cfg['pos'], dtype=float)
-            self._set_goal(geom_name, pos[:2])
-            if pos.shape[0] >= 3:
-                self.model.body(geom_name).pos[2] = pos[2]
-
-        self.data.qvel[:] = 0
-        if self.model.na:
-            self.data.act[:] = 0
-        mujoco.mj_forward(self.model, self.data)  # pylint: disable=no-member
-
-    def reset(self) -> None:
-        """Reset task state; reuse MuJoCo model after the first build."""
-        if self.world is None:
-            super().reset()
-            return
-
-        if self.placements_conf.placements is None:
-            self._build_placements_dict()
-            self.random_generator.set_placements_info(
-                self.placements_conf.placements,
-                self.placements_conf.extents,
-                self.placements_conf.margin,
-            )
-        if self.random_generator.agent_num is None:
-            self.random_generator.agent_num = self.agent.agent_num
-
-        self.world_info.layout = self.random_generator.build_layout()
-        self.world_info.world_config_dict = self._build_world_config(self.world_info.layout)
-
+        """Reset SAR-specific episode state after layout resample."""
         if hasattr(self, 'surface_casualtys'):
             self.surface_casualtys.rescued = [False] * self.surface_casualtys.num
-        self.last_dist_casualty = None
-
-        self._apply_layout_from_config()
-        self.world_info.reset_layout = deepcopy(self.world_info.layout)
+        if hasattr(self, 'entrapped_casualtys'):
+            self.entrapped_casualtys.rescued = [False] * self.entrapped_casualtys.num
+        self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
+        return super().specific_reset()
 
     def specific_step(self):
         return super().specific_step()
@@ -253,12 +197,4 @@ class MultiGoalSARLevel0(BaseTask):
 
     @property
     def goal_achieved(self):
-        if not hasattr(self, 'surface_casualtys'):
-            return tuple(False for _ in range(self.agent_num))
-        rescued = self.surface_casualtys.rescued
-        if self.agent_num == 1:
-            return (rescued[0],)
-        return tuple(
-            rescued[i] if i < len(rescued) else False
-            for i in range(self.agent_num)
-        )
+        return mission_goal_achieved(self)
