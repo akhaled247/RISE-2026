@@ -149,9 +149,11 @@ class MultiGoalSARLevel0(BaseTask):
             obs[f"{obstacle.name}_lidar_{i}"] = lidar
             obs[f"{obstacle.name}_lidar_ids_{i}"] = lidar_ids
         else:
-            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_new(
-                i, obstacle.pos, obstacle.group, obstacle=obstacle,
+            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
+                i, obstacle,
             )  
+            # vals = obs[f"{obstacle.name}_lidar_{i}"]
+            # print(f"{obstacle.name}_lidar_{i} = {vals}")
 
     def obs(self) -> dict | np.ndarray:
             """Return the observation of our agent."""
@@ -183,12 +185,10 @@ class MultiGoalSARLevel0(BaseTask):
                         # print(f"DEBUG: obstacle names: {str(obstacle.name)}")
                     else:
                         for i in range(self.agent_num):
-                            self.try_lidar_ids(obstacle, obs, i)            
-    
+                            self.try_lidar_ids(obstacle, obs, i)
                     
                 if hasattr(obstacle, 'is_comp_observed') and obstacle.is_comp_observed:
                     obs[obstacle.name + '_comp'] = self._obs_compass(obstacle.pos)
-    
             if self.observe_vision:
                 for i in range(self.agent_num):
                     name = f'vision_{i}'
@@ -201,6 +201,7 @@ class MultiGoalSARLevel0(BaseTask):
             # self.original_obs = obs
             if self.observation_flatten:
                 obs = gymnasium.spaces.utils.flatten(self.obs_info.obs_space_dict, obs)
+            print(f"obs: {obs}")
             return obs
 
     @property
