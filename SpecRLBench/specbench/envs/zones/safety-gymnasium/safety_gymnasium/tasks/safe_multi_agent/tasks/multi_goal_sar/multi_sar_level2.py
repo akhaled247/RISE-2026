@@ -148,7 +148,4 @@ class MultiGoalSARLevel2(MultiGoalSARLevel1):
                 collision_threshold=8.0))
             
         return super()._build()
-    
-    @property
-    def goal_achieved(self):
-        return tuple(False for _ in range(self.agent_num))
+
