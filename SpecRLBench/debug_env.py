@@ -7,7 +7,7 @@ from utils.env_utils import *
 
 seed = 0
 env_name = 'PointLTL4MASAR1Debug-v0'
-steps = 1000
+steps = 2500
 
 print(f"="*40)
 print(f"environment: {env_name}")

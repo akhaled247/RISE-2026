@@ -13,8 +13,8 @@ import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_env
 
 # --- must match the train run ---
-env_name = "PointLTL0MASAR1-v0"
-run_num = 4
+env_name = "PointLTL4MASAR1-v0"
+run_num = 3
 MODEL_PATH = f"_models/ppo_{env_name}_run{run_num}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 eval_episodes = 20
@@ -50,6 +50,6 @@ def eval_model(render_mode=None):
 
 
 if __name__ == "__main__":
-    print('Did you change the run number? Be sure to do so before starting!')
+    print(f'Did you change the run number? Current run_num = {run_num}')
     breakpoint()
     eval_model(render_mode="human")

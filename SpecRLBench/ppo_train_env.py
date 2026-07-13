@@ -15,9 +15,9 @@ from ppo_load_env import eval_model
 env_name = "PointLTL4MASAR1-v0"
 '''
 PointLTL0MASAR1-v0 >> run_num = 8
-PointLTL4MASAR1-v0 >> run_num = 1
+PointLTL4MASAR1-v0 >> run_num = 4
 '''
-run_num = 1  # INCREMENT EACH TIME;
+run_num = 3  # INCREMENT EACH TIME;
 MODEL_PATH = f"_models/ppo_{env_name}_run{run_num}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
@@ -40,7 +40,7 @@ def train():
         env,
         verbose=1,
         learning_rate=1e-4,
-        n_steps=512,
+        n_steps=2048,
         batch_size=256,
         n_epochs=10,
         ent_coef=0.01,
@@ -64,7 +64,7 @@ def train():
 
 
 if __name__ == "__main__":
-    print('Did you change the run number? Be sure to do so before starting!')
+    print(f'Did you change the run number? Current run_num = {run_num}')
     breakpoint()
     train()
     eval_model(render_mode="human")
