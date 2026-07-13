@@ -44,6 +44,9 @@ class Gremlins(Mocap):  # pylint: disable=too-many-instance-attributes
     is_lidar_observed: bool = True
     is_constrained: bool = True
 
+    def __post_init__(self) -> None:
+        self.prev_contact = [False] * self.num
+
     def get_config(self, xy_pos, rot):
         """To facilitate get specific config for this object"""
         return {'obj': self.get_obj(xy_pos, rot), 'mocap': self.get_mocap(xy_pos, rot)}
@@ -92,15 +95,19 @@ class Gremlins(Mocap):  # pylint: disable=too-many-instance-attributes
             return cost
         
         for i, h_pos in enumerate(self.pos):
+            is_in_contact = False
             for j in range(self.agent.agent_num):
                 if i == j: continue
                 h_dist = self.agent.dist_xy(j, h_pos)
-                # print(f"DEBUG: Agent {i} to Agent {j} distance: {h_dist}")
+                # print(f"DEBUG: dist(agent_{j}, gremlin_{i}) = {h_dist}")
                 # if h_dist <= self.dist_threshold:
-                if h_dist <= self.size + self.dist_threshold:
-                    # print(f"DEBUG: COLLISION, episode terminated")
+                if (h_dist <= self.size + self.dist_threshold):
+                    is_in_contact = True
+                    # if (not (self.prev_contact[i] or self.prev_contact[j])):
+                        # print(f"DEBUG: gremlin collision")
                     cost[f"agent_{j}"]["cost_collision"] = 1.0  # Same cost structure
                     cost[f"agent_{i}"]["cost_collision"] = 1.0
+            self.prev_contact[i] = is_in_contact
                 # print(f"COST TRIGGERED for {self.color_name} zone {i}!")
         return cost
 

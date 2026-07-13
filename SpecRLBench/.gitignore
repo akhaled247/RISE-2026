@@ -19,7 +19,8 @@ envs/safety-gym/mujoco200_linux
 **/logs/**
 **/logs**/**
 **/misc/**
-
+_training_logs/
+_models/
 *.pth
 
 

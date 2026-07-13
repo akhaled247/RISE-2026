@@ -382,7 +382,6 @@ def __combine_multi(tasks, agents, max_episode_steps):
 # ----------------------------------------
 # Safety Multi-Agent
 # ----------------------------------------
-
 # Multi Goal Environments
 # ----------------------------------------
 # multi_goal_tasks = {'MultiGoal0': {}, 'MultiGoal1': {}, 'MultiGoal2': {}}
@@ -390,8 +389,22 @@ def __combine_multi(tasks, agents, max_episode_steps):
 multi_goal_tasks = {
     'LTL0MA3': {'agent_num': 3},
     'LTL0MA5': {'agent_num': 5},
-    'LTLMASAR5': {'agent_num': 5},
-    'LTLMASAR2': {'agent_num': 2},
 }
 robots = ['Point']
 __combine_multi(multi_goal_tasks, robots, max_episode_steps=1000)
+
+# ----------------------------------------
+# Multi Goal Sar Environments
+# ----------------------------------------
+multi_goal_sar_tasks = {
+    # 'LTLMASAR5': {'agent_num': 5},
+    'LTL0MASAR1': {'agent_num': 1},
+    'LTL0MASAR2': {'agent_num': 2},
+    'LTL1MASAR2': {'agent_num': 2},
+    'LTL2MASAR2': {'agent_num': 2},
+    'LTL3MASAR2': {'agent_num': 2},
+    'LTL3MASAR5': {'agent_num': 5}, # == 'LTLMASAR5'
+
+}
+sar_robots = ['Point']
+__combine_multi(multi_goal_sar_tasks, sar_robots, max_episode_steps=2500)

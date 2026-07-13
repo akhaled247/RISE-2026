@@ -202,7 +202,7 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
         assert hasattr(self, 'goal'), 'Please make sure you have added goal into env.'
         return self.agent.dist_xy(self.goal.pos)  # pylint: disable=no-member
 
-    def calculate_cost(self) -> dict:
+    def calculate_cost(self, reset=False) -> dict:
         """Determine costs depending on the agent and obstacles."""
         # pylint: disable-next=no-member
         mujoco.mj_forward(self.model, self.data)  # Ensure positions and contacts are correct
@@ -211,9 +211,10 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
 
         # Calculate constraint violations
         for obstacle in self._obstacles:
-            # if obstacle.name == 'gremlins': continue
-                # # gremlins positions are not updated yet in the reset step
-                # cost = {f"agent_{i}": {"cost_collision": 0} for i in range(self.agent.agent_num)}
+            if obstacle.name == 'gremlins' and reset: 
+                cost = {f"agent_{i}": {"cost_collision": 0} for i in range(self.agent.agent_num)}
+                continue
+                # gremlins positions are not updated yet in the reset step
             obj_cost = obstacle.cal_cost()
             # print(f"DEBUG: obj_cost = {obj_cost}")
             # if 'agent_0' in obj_cost:
@@ -271,6 +272,13 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
                         1.0,
                         (self.lidar_conf.num_bins,),
                         dtype=np.float64,
+                    )
+            if hasattr(obstacle, 'is_lidar_ids_observed') and obstacle.is_lidar_ids_observed:
+                high = max(int(obstacle.num) - 1, 0)
+                for i in range(self.agent.agent_num):
+                    name = f"{obstacle.name}_lidar_ids_{i}"
+                    obs_space_dict[name] = gymnasium.spaces.Box(
+                        -1, high, (self.lidar_conf.num_bins,), dtype=np.int32,
                     )
             if hasattr(obstacle, 'is_comp_observed') and obstacle.is_comp_observed:
                 for i in range(self.agent.agent_num):
@@ -704,33 +712,37 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
 
     def _accumulate_pseudo_lidar_reading(
         self,
-        obs: np.ndarray,
+        vals: np.ndarray,
         agent_idx: int,
         pos: np.ndarray,
+        ids: np.ndarray | None = None,
+        instance_id: int | None = None,
     ) -> None:
-        """Add one position's pseudo-lidar contribution into obs (in-place)."""
         pos = np.asarray(pos)
         if pos.shape == (3,):
             pos = pos[:2]
-        # pylint: disable-next=invalid-name
         z = complex(*self._ego_xy_new(agent_idx, pos))
         dist = np.abs(z)
         angle = np.angle(z) % (np.pi * 2)
         bin_size = (np.pi * 2) / self.lidar_conf.num_bins
-        bin = int(angle / bin_size)  # pylint: disable=redefined-builtin
+        bin = int(angle / bin_size)
         bin_angle = bin_size * bin
         if self.lidar_conf.max_dist is None:
             sensor = np.exp(-self.lidar_conf.exp_gain * dist)
         else:
             sensor = max(0, self.lidar_conf.max_dist - dist) / self.lidar_conf.max_dist
-        obs[bin] = max(obs[bin], sensor)
+
+        def _write(b: int, value: float) -> None:
+            if value > vals[b]:
+                vals[b] = value
+                if ids is not None and instance_id is not None:
+                    ids[b] = instance_id
+
+        _write(bin, sensor)
         if self.lidar_conf.alias:
             alias = (angle - bin_angle) / bin_size
-            assert 0 <= alias <= 1, f'bad alias {alias}, dist {dist}, angle {angle}, bin {bin}'
-            bin_plus = (bin + 1) % self.lidar_conf.num_bins
-            bin_minus = (bin - 1) % self.lidar_conf.num_bins
-            obs[bin_plus] = max(obs[bin_plus], alias * sensor)
-            obs[bin_minus] = max(obs[bin_minus], (1 - alias) * sensor)
+            _write((bin + 1) % self.lidar_conf.num_bins, alias * sensor)
+            _write((bin - 1) % self.lidar_conf.num_bins, (1 - alias) * sensor)
 
     def _natural_lidar_sensor(self, dist: float) -> float:
         """Distance-to-sensor encoding shared by natural lidar variants."""
@@ -819,9 +831,15 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
                 obs[i] = self._natural_lidar_sensor(dist)
         return obs
 
-    def _obs_lidar_pseudo_occluded_new(self, agent_idx: int, obstacle) -> np.ndarray:
+    def _obs_lidar_pseudo_occluded_new(
+        self, agent_idx: int, obstacle, return_ids: bool = False,
+    ):
         """Pseudo lidar with alias, gated by geom-surface line of sight per instance."""
-        obs = np.zeros(self.lidar_conf.num_bins)
+        vals = np.zeros(self.lidar_conf.num_bins)
+        ids = (
+            np.full(self.lidar_conf.num_bins, -1, dtype=np.int32)
+            if return_ids else None
+        )
         skip_self = 'gremlins' in obstacle.name
         for row in range(obstacle.num):
             if skip_self and row == agent_idx:
@@ -831,8 +849,12 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
             pos = obstacle.pos[row]
             if not self._lidar_line_of_sight(agent_idx, pos, obstacle, row):
                 continue
-            self._accumulate_pseudo_lidar_reading(obs, agent_idx, pos)
-        return obs
+            self._accumulate_pseudo_lidar_reading(
+                vals, agent_idx, pos, ids=ids, instance_id=row,
+            )
+        if return_ids:
+            return vals, ids
+        return vals
 
     def _obs_lidar_natural(self, group: int) -> np.ndarray:
         """Natural lidar casts rays based on the ego-frame of the agent.
