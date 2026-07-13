@@ -177,9 +177,11 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
             config (dict): Configuration dictionary, used to pre-config some attributes
               according to tasks via :meth:`safety_gymnasium.register`.
         """
+        config = dict(config)
+        max_episode_steps = int(config.pop('max_episode_steps', 1000))
         super().__init__(config=config)
 
-        self.num_steps = int(config.get('max_episode_steps', 1000))
+        self.num_steps = max_episode_steps
 
         self.lidar_conf = LidarConf()
         self.compass_conf = CompassConf()

@@ -72,7 +72,7 @@ class MultiGoalSARLevel0(BaseTask):
             _lp = Path(__file__).resolve().parents[9] / "debug-3376cb.log"
             _lp.parent.mkdir(parents=True, exist_ok=True)
             with _lp.open("a", encoding="utf-8") as _f:
-                _f.write(json.dumps({"sessionId":"3376cb","timestamp":int(time.time()*1000),"location":"multi_sar_level0.py:__init__","message":"sar_task_num_steps","data":{"num_steps":self.num_steps,"agent_num":self.agent_num,"config_max_episode_steps":config.get("max_episode_steps")},"hypothesisId":"H1","runId":"post-fix"}) + "\n")
+                _f.write(json.dumps({"sessionId":"3376cb","timestamp":int(time.time()*1000),"location":"multi_sar_level0.py:__init__","message":"sar_task_num_steps","data":{"num_steps":self.num_steps,"agent_num":self.agent_num},"hypothesisId":"H1","runId":"post-fix"}) + "\n")
         except Exception:
             pass
         # #endregion
