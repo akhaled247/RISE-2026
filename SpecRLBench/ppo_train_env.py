@@ -47,8 +47,8 @@ def train():
 
     model.learn(
         total_timesteps=TOTAL_TIMESTEPS,
-        progress_bar=False,
-        callback=ThroughputCallback(TOTAL_TIMESTEPS),
+        progress_bar=True,
+        # callback=ThroughputCallback(TOTAL_TIMESTEPS),
     )
     model.save(MODEL_PATH)
     env.save(VEC_NORM_PATH)

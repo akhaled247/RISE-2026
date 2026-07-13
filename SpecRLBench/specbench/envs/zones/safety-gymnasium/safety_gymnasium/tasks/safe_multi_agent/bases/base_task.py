@@ -273,7 +273,7 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
                         (self.lidar_conf.num_bins,),
                         dtype=np.float64,
                     )
-            if getattr(obstacle, 'is_lidar_ids_observed', False):
+            if hasattr(obstacle, 'is_lidar_ids_observed') and obstacle.is_lidar_ids_observed:
                 high = max(int(obstacle.num) - 1, 0)
                 for i in range(self.agent.agent_num):
                     name = f"{obstacle.name}_lidar_ids_{i}"
@@ -712,7 +712,7 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
 
     def _accumulate_pseudo_lidar_reading(
         self,
-        obs: np.ndarray,
+        vals: np.ndarray,
         agent_idx: int,
         pos: np.ndarray,
         ids: np.ndarray | None = None,
@@ -733,8 +733,8 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
             sensor = max(0, self.lidar_conf.max_dist - dist) / self.lidar_conf.max_dist
 
         def _write(b: int, value: float) -> None:
-            if value > obs[b]:
-                obs[b] = value
+            if value > vals[b]:
+                vals[b] = value
                 if ids is not None and instance_id is not None:
                     ids[b] = instance_id
 
@@ -834,7 +834,8 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
     def _obs_lidar_pseudo_occluded_new(
         self, agent_idx: int, obstacle, return_ids: bool = False,
     ):
-        obs = np.zeros(self.lidar_conf.num_bins)
+        """Pseudo lidar with alias, gated by geom-surface line of sight per instance."""
+        vals = np.zeros(self.lidar_conf.num_bins)
         ids = (
             np.full(self.lidar_conf.num_bins, -1, dtype=np.int32)
             if return_ids else None
@@ -849,11 +850,11 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
             if not self._lidar_line_of_sight(agent_idx, pos, obstacle, row):
                 continue
             self._accumulate_pseudo_lidar_reading(
-                obs, agent_idx, pos, ids=ids, instance_id=row,
+                vals, agent_idx, pos, ids=ids, instance_id=row,
             )
         if return_ids:
-            return obs, ids
-        return obs
+            return vals, ids
+        return vals
 
     def _obs_lidar_natural(self, group: int) -> np.ndarray:
         """Natural lidar casts rays based on the ego-frame of the agent.
