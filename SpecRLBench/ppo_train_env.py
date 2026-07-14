@@ -33,7 +33,7 @@ clip_range = 0.2
 
 def train() -> tuple[str, str]:
     print(f"Logging to {TRAINING_LOG_PATH}...")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda:1" if torch.cuda.is_available() else "cpu"
     print("=" * 40)
     print(f"train env={env_name} device={device} steps={TOTAL_TIMESTEPS}")
     rollout_steps = n_steps * n_envs

@@ -43,7 +43,7 @@ def eval_model(
     model_path = m_path if m_path is not None else MODEL_PATH
     vec_norm_path = f"{model_path}_vecnormalize.pkl"
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda:1" if torch.cuda.is_available() else "cpu"
     print("=" * 40)
     print(f"eval env={env_name} device={device}")
     print(f"loading {model_path}.zip")
@@ -138,5 +138,5 @@ if __name__ == "__main__":
         run_num=run_num,
         render_mode=render_mode,
         eval_episodes=eval_episodes,
-        m_path="_models/ppo_20260714_1606_PointLTL4MASAR1-v0_run9"
+        m_path="_models/ppo_20260714_1623_PointLTL4MASAR1-v0_run9"
     )
