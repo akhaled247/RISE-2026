@@ -123,6 +123,8 @@ class MultiGoalSARLevel0(BaseTask):
             min_dist = min(dists) if dists else 0.0
             if min_dist <= touch_threshold:
                 reward += self.reward_goal
+            # else:
+            #     reward += self.last_dist_casualty[i]-min_dist
             self.last_dist_casualty[i] = min_dist
 
             rewards[a] = reward
@@ -168,28 +170,28 @@ class MultiGoalSARLevel0(BaseTask):
             )
             path = "pseudo_occluded"
         # #region agent log
-        c = getattr(self, "_dbg_lidar_path_counts", None)
-        if c is None:
-            c = {}
-            self._dbg_lidar_path_counts = c
-        c[path] = c.get(path, 0) + 1
-        if sum(c.values()) % 2048 == 1:
-            try:
-                from debug.debug_log import agent_log
-                agent_log(
-                    "multi_sar_level0.py:try_lidar_ids",
-                    "lidar_path_sample",
-                    {
-                        "counts": dict(c),
-                        "lidar_type": self.lidar_conf.type,
-                        "last_obstacle": obstacle.name,
-                        "last_path": path,
-                    },
-                    "H1",
-                    "post-revert",
-                )
-            except Exception:
-                pass
+        # c = getattr(self, "_dbg_lidar_path_counts", None)
+        # if c is None:
+        #     c = {}
+        #     self._dbg_lidar_path_counts = c
+        # c[path] = c.get(path, 0) + 1
+        # if sum(c.values()) % 2048 == 1:
+        #     try:
+        #         from debug.debug_log import agent_log
+        #         agent_log(
+        #             "multi_sar_level0.py:try_lidar_ids",
+        #             "lidar_path_sample",
+        #             {
+        #                 "counts": dict(c),
+        #                 "lidar_type": self.lidar_conf.type,
+        #                 "last_obstacle": obstacle.name,
+        #                 "last_path": path,
+        #             },
+        #             "H1",
+        #             "post-revert",
+        #         )
+        #     except Exception:
+        #         pass
         # #endregion
 
     def obs(self) -> dict | np.ndarray:

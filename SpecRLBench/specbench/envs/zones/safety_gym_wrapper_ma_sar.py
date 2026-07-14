@@ -101,7 +101,6 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                         obs[a][f'entrapped_casualtys_lidar_{i}'].size,
                     )
 
-            
             # Casualty visibility logic
             if (
                 f'surface_casualtys_lidar_{i}' in obs[a]

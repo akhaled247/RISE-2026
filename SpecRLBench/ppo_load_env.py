@@ -20,7 +20,7 @@ run_num = 9
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 MODEL_PATH = f"_models/ppo_{name_time}_{env_name}_run{run_num}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
-eval_episodes = 20
+eval_episodes = 50
 seed = 0
 render_mode=None
 
@@ -138,5 +138,5 @@ if __name__ == "__main__":
         run_num=run_num,
         render_mode=render_mode,
         eval_episodes=eval_episodes,
-        m_path="_models/ppo_20260714_1208_PointLTL4MASAR1-v0_run9"
+        m_path="_models/ppo_20260714_1606_PointLTL4MASAR1-v0_run9"
     )

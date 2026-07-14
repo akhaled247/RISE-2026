@@ -39,22 +39,22 @@ class ThroughputCallback(BaseCallback):
                 f"ep_len={ep_len_mean}"
             )
             # #region agent log
-            try:
-                from debug.debug_log import agent_log
-                agent_log(
-                    "env_utils.py:ThroughputCallback",
-                    "rollout_end",
-                    {
-                        "num_timesteps": int(self.num_timesteps),
-                        "rollout_fps": round(rollout_fps, 1),
-                        "rollout_seconds": round(dt, 2),
-                        "ep_len_mean": ep_len_mean,
-                    },
-                    "H4",
-                    "train",
-                )
-            except Exception:
-                pass
+            # try:
+            #     from debug.debug_log import agent_log
+            #     agent_log(
+            #         "env_utils.py:ThroughputCallback",
+            #         "rollout_end",
+            #         {
+            #             "num_timesteps": int(self.num_timesteps),
+            #             "rollout_fps": round(rollout_fps, 1),
+            #             "rollout_seconds": round(dt, 2),
+            #             "ep_len_mean": ep_len_mean,
+            #         },
+            #         "H4",
+            #         "train",
+            #     )
+            # except Exception:
+            #     pass
             # #endregion
         self._last_time = now
         self._last_steps = self.num_timesteps
@@ -105,23 +105,23 @@ def make_vec(
         vec_env_cls = DummyVecEnv
         vec_env_kwargs = {}
     # #region agent log
-    try:
-        from debug.debug_log import agent_log
-        agent_log(
-            "env_utils.py:make_vec",
-            "vec_env_config",
-            {
-                "env_name": env_name,
-                "n_envs": n_envs,
-                "vec_env_cls": vec_env_cls.__name__,
-                "vec_env_kwargs": vec_env_kwargs,
-                "platform": sys.platform,
-            },
-            "H2",
-            "train",
-        )
-    except Exception:
-        pass
+    # try:
+    #     from debug.debug_log import agent_log
+    #     agent_log(
+    #         "env_utils.py:make_vec",
+    #         "vec_env_config",
+    #         {
+    #             "env_name": env_name,
+    #             "n_envs": n_envs,
+    #             "vec_env_cls": vec_env_cls.__name__,
+    #             "vec_env_kwargs": vec_env_kwargs,
+    #             "platform": sys.platform,
+    #         },
+    #         "H2",
+    #         "train",
+    #     )
+    # except Exception:
+    #     pass
     # #endregion
     vec_env = make_vec_env(
         lambda: Monitor(make_env(env_name, render_mode, sb3)),
