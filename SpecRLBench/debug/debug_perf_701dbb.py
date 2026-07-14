@@ -30,6 +30,13 @@ BENCH_STEPS = 150
 MINI_STEPS = 16384
 
 
+def _first_raw_env(vec_env):
+    v = vec_env
+    while hasattr(v, "venv"):
+        v = v.venv
+    return v.envs[0]
+
+
 def _log(hid: str, msg: str, data: dict) -> None:
     agent_log(f"debug_perf_701dbb.py:{msg}", msg, data, hid, "diag")
 
@@ -159,43 +166,56 @@ def _mini_ppo(env_name: str, n_steps: int) -> dict:
 
 
 def main() -> None:
+    summary = {}
     _log("H0", "diag_start", {"platform": sys.platform, "cuda": torch.cuda.is_available()})
 
     env = make_vec("PointLTL4MASAR1-v0", n_envs=N_ENVS, sb3=True)
     venv = env.venv
-    _log(
-        "H2",
-        "make_vec_path",
-        {
-            "vec_cls": type(venv).__name__,
-            "start_method": getattr(venv, "start_method", None),
-            **_task_info(env.envs[0]),
-        },
-    )
+    summary["make_vec"] = {
+        "vec_cls": type(venv).__name__,
+        "start_method": getattr(venv, "start_method", None),
+        **_task_info(_first_raw_env(env)),
+    }
+    _log("H2", "make_vec_path", summary["make_vec"])
     env.close()
 
+    summary["vec_bench"] = {}
     for label, cls, kw in (
         ("dummy", DummyVecEnv, {}),
         ("subproc_fork", SubprocVecEnv, {"start_method": "fork"}),
     ):
         try:
             sps = _bench_vec("PointLTL4MASAR1-v0", cls, kw)
+            summary["vec_bench"][label] = round(sps, 1)
             _log("H2", "vec_bench", {"label": label, "env_steps_per_sec": round(sps, 1)})
             print(label, sps)
         except Exception as exc:
             _log("H2", "vec_bench_fail", {"label": label, "error": str(exc)})
+            summary["vec_bench"][label] = f"error: {exc}"
 
+    summary["obs_paths"] = {}
     for name in ("PointLTL0MASAR1-v0", "PointLTL4MASAR1-v0"):
         row = _bench_obs_paths(name)
         row["env_name"] = name
+        summary["obs_paths"][name] = row
         _log("H1", "obs_paths", row)
         print(name, row)
 
+    summary["mini_ppo"] = {}
     for name, ns in (("PointLTL0MASAR1-v0", 512), ("PointLTL4MASAR1-v0", 2048)):
         row = _mini_ppo(name, ns)
+        summary["mini_ppo"][f"{name}@n{ns}"] = row
         _log("H4", "mini_ppo", row)
         print("ppo", row)
 
+    l0 = summary["mini_ppo"].get("PointLTL0MASAR1-v0@n512", {})
+    l4 = summary["mini_ppo"].get("PointLTL4MASAR1-v0@n2048", {})
+    if l0.get("iter_per_sec") and l4.get("iter_per_sec"):
+        summary["iter_ratio_l4_over_l0"] = round(
+            l4["iter_per_sec"] / l0["iter_per_sec"], 2
+        )
+    _log("H4", "diag_summary", summary, )
+    print("SUMMARY", summary)
     print(f"Wrote {ROOT.parent / 'debug-701dbb.log'}")
 
 

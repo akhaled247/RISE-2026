@@ -36,6 +36,11 @@ def train() -> tuple[str, str]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("=" * 40)
     print(f"train env={env_name} device={device} steps={TOTAL_TIMESTEPS}")
+    rollout_steps = n_steps * n_envs
+    print(
+        f"PPO iter = {rollout_steps} env steps collect + {n_epochs} epochs x "
+        f"{rollout_steps // batch_size} minibatches — SB3 iters/s scales ~1/n_steps"
+    )
 
     env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
     print("Warming up vector envs...")
