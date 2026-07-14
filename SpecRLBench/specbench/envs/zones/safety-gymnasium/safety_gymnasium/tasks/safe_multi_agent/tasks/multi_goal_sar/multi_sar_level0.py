@@ -17,6 +17,7 @@
 import gymnasium
 import mujoco
 import numpy as np
+import time
 
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
@@ -70,14 +71,17 @@ class MultiGoalSARLevel0(BaseTask):
         self._casualty_sticky_remaining = None
         self._casualty_visible_sticky = None
         self._prev_casualty_visible_sticky = None
+        self._dbg_step_count = 0
         # #region agent log
         try:
-            import json, time
-            from pathlib import Path
-            _lp = Path(__file__).resolve().parents[9] / "debug-3376cb.log"
-            _lp.parent.mkdir(parents=True, exist_ok=True)
-            with _lp.open("a", encoding="utf-8") as _f:
-                _f.write(json.dumps({"sessionId":"3376cb","timestamp":int(time.time()*1000),"location":"multi_sar_level0.py:__init__","message":"sar_task_num_steps","data":{"num_steps":self.num_steps,"agent_num":self.agent_num},"hypothesisId":"H1","runId":"post-fix"}) + "\n")
+            from debug.debug_log import agent_log
+            agent_log(
+                "multi_sar_level0.py:__init__",
+                "sar_task_init",
+                {"num_steps": self.num_steps, "agent_num": self.agent_num, "lidar_type": self.lidar_conf.type},
+                "H1",
+                "diag",
+            )
         except Exception:
             pass
         # #endregion
@@ -128,6 +132,9 @@ class MultiGoalSARLevel0(BaseTask):
 
     def _refresh_casualty_visibility(self) -> None:
         """Update per-agent sticky visibility once per env step."""
+        sample = getattr(self, "_dbg_step_count", 0) % 512 == 1
+        if sample:
+            _t_vis0 = time.perf_counter()
         n = self.agent_num
         if self._casualty_visible_sticky is None:
             self._casualty_sticky_remaining = [0] * n
@@ -242,6 +249,11 @@ class MultiGoalSARLevel0(BaseTask):
     def obs(self) -> dict | np.ndarray:
             """Return the observation of our agent."""
             # pylint: disable-next=no-member
+            sample_timing = False
+            self._dbg_step_count = getattr(self, "_dbg_step_count", 0) + 1
+            if self._dbg_step_count % 512 == 1:
+                sample_timing = True
+                _t_obs0 = time.perf_counter()
             mujoco.mj_forward(self.model, self.data)  # Needed to get sensor's data correct
             obs = {}
     
@@ -291,6 +303,25 @@ class MultiGoalSARLevel0(BaseTask):
             # self.original_obs = obs
             if self.observation_flatten:
                 obs = gymnasium.spaces.utils.flatten(self.obs_info.obs_space_dict, obs)
+            # #region agent log
+            if sample_timing:
+                try:
+                    from debug.debug_log import agent_log
+                    agent_log(
+                        "multi_sar_level0.py:obs",
+                        "obs_sample",
+                        {
+                            "step": self._dbg_step_count,
+                            "obs_ms": round((time.perf_counter() - _t_obs0) * 1000, 2),
+                            "wall_count": getattr(getattr(self, "walls", None), "num", 0),
+                            "lidar_type": self.lidar_conf.type,
+                        },
+                        "H2",
+                        "train",
+                    )
+                except Exception:
+                    pass
+            # #endregion
             return obs
 
     @property

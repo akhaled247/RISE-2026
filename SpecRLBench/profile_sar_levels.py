@@ -11,8 +11,8 @@ sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_env
 
-LOG_PATH = ROOT.parent / "debug-968999.log"
-SESSION_ID = "968999"
+LOG_PATH = ROOT.parent / "debug-701dbb.log"
+SESSION_ID = "701dbb"
 WARMUP = 20
 STEPS = 100
 

@@ -1,10 +1,10 @@
-"""Compact NDJSON logger for debug session 3376cb."""
+"""Compact NDJSON logger for debug session 701dbb."""
 import json
 import time
 from pathlib import Path
 
-_LOG_PATH = Path(__file__).resolve().parents[1].parent / "debug-3376cb.log"
-_SESSION = "3376cb"
+_LOG_PATH = Path(__file__).resolve().parents[1].parent / "debug-701dbb.log"
+_SESSION = "701dbb"
 
 
 def agent_log(location: str, message: str, data: dict, hypothesis_id: str, run_id: str = "pre-fix") -> None:

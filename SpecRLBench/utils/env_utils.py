@@ -126,6 +126,26 @@ def make_vec(
     else:
         vec_env_cls = DummyVecEnv
         vec_env_kwargs = {}
+    # #region agent log
+    try:
+        from debug.debug_log import agent_log
+        agent_log(
+            "env_utils.py:make_vec",
+            "vec_env_config",
+            {
+                "env_name": env_name,
+                "n_envs": n_envs,
+                "parallel": parallel,
+                "vec_env_cls": vec_env_cls.__name__,
+                "vec_env_kwargs": vec_env_kwargs,
+                "platform": sys.platform,
+            },
+            "H3",
+            "diag",
+        )
+    except Exception:
+        pass
+    # #endregion
     vec_env = make_vec_env(
         lambda: Monitor(make_env(env_name, render_mode, sb3)),
         n_envs=n_envs,

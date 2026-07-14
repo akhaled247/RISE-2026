@@ -300,11 +300,20 @@ class Builder(gymnasium.Env, gymnasium.utils.EzPickle):
         # #region agent log
         if self.terminated or self.truncated:
             try:
-                import json, time
-                from pathlib import Path
-                _lp = Path(__file__).resolve().parents[4] / "debug-3376cb.log"
-                with _lp.open("a", encoding="utf-8") as _f:
-                    _f.write(json.dumps({"sessionId":"3376cb","timestamp":int(time.time()*1000),"location":"builder.py:step","message":"episode_end","data":{"steps":self.steps,"task_num_steps":self.task.num_steps,"terminated":bool(self.terminated),"truncated":bool(self.truncated),"goal_met":bool(info.get("goal_met",False))},"hypothesisId":"H1" if self.truncated else "H3","runId":"post-fix"}) + "\n")
+                from debug.debug_log import agent_log
+                agent_log(
+                    "builder.py:step",
+                    "episode_end",
+                    {
+                        "steps": self.steps,
+                        "task_num_steps": self.task.num_steps,
+                        "terminated": bool(self.terminated),
+                        "truncated": bool(self.truncated),
+                        "goal_met": bool(info.get("goal_met", False)),
+                    },
+                    "H1" if self.truncated else "H3",
+                    "train",
+                )
             except Exception:
                 pass
         # #endregion
