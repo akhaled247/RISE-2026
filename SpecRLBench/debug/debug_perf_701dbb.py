@@ -2,19 +2,18 @@
 
 Run from SpecRLBench/ on the Linux training host:
     python debug/debug_perf_701dbb.py
-    python debug/debug_perf_701dbb.py --stage 0
-    python debug/debug_perf_701dbb.py --stage 1
+    python debug/debug_perf_701dbb.py --config l0
+    python debug/debug_perf_701dbb.py --config l4
+    python debug/debug_perf_701dbb.py --config current
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
@@ -23,19 +22,50 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNorm
 
 ROOT = Path(__file__).resolve().parent.parent
 LOG_PATH = ROOT.parent / "debug-701dbb.log"
-SESSION = "701dbb"
 sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
 sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
 from debug.debug_log import agent_log
-from ppo_train_env import CURRICULUM
 from utils.env_utils import make_env, make_vec
 
 N_ENVS = 8
 WARMUP = 30
 BENCH_STEPS = 200
-MINI_TRAIN_STEPS = 8192
+MINI_TRAIN_STEPS = 16_384
+
+# Compare configs that explain ~2k vs ~200 iters/s
+PPO_CONFIGS = {
+    "l0": {
+        "env_name": "PointLTL0MASAR1-v0",
+        "n_steps": 512,
+        "n_epochs": 10,
+        "learning_rate": 3e-4,
+        "ent_coef": 0.01,
+        "target_kl": 0.02,
+    },
+    "l4": {
+        "env_name": "PointLTL4MASAR1-v0",
+        "n_steps": 2048,
+        "n_epochs": 10,
+        "learning_rate": 5e-5,
+        "ent_coef": 0.02,
+        "target_kl": 0.03,
+    },
+    "current": None,  # filled from ppo_train_env at runtime
+}
+
+
+def _load_current_config() -> dict:
+    import ppo_train_env as train_mod
+    return {
+        "env_name": train_mod.env_name,
+        "n_steps": train_mod.n_steps,
+        "n_epochs": train_mod.n_epochs,
+        "learning_rate": train_mod.learning_rate,
+        "ent_coef": train_mod.ent_coef,
+        "target_kl": 0.03,
+    }
 
 
 def _log(hypothesis_id: str, message: str, data: dict, run_id: str = "diag") -> None:
@@ -136,9 +166,8 @@ def _bench_single_env_obs(env_name: str) -> dict:
     }
 
 
-def _bench_ppo_stage(stage_idx: int) -> dict:
-    stage = CURRICULUM[stage_idx]
-    env_name = stage["env_name"]
+def _bench_mini_ppo(label: str, cfg: dict) -> dict:
+    env_name = cfg["env_name"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
     env = make_vec(env_name, n_envs=N_ENVS, render_mode=None, sb3=True, normalize=True)
     limits = _task_limits(env.envs[0])
@@ -147,26 +176,27 @@ def _bench_ppo_stage(stage_idx: int) -> dict:
         "MultiInputPolicy",
         env,
         verbose=0,
-        learning_rate=stage["learning_rate"],
-        n_steps=stage["n_steps"],
+        learning_rate=cfg["learning_rate"],
+        n_steps=cfg["n_steps"],
         batch_size=256,
-        n_epochs=stage["n_epochs"],
-        ent_coef=0.02,
-        target_kl=stage["target_kl"],
+        n_epochs=cfg["n_epochs"],
+        ent_coef=cfg["ent_coef"],
+        target_kl=cfg["target_kl"],
         device=device,
         seed=0,
     )
     t0 = time.perf_counter()
     model.learn(total_timesteps=MINI_TRAIN_STEPS, progress_bar=False)
     elapsed = time.perf_counter() - t0
-    iters = MINI_TRAIN_STEPS // (stage["n_steps"] * N_ENVS)
+    iters = MINI_TRAIN_STEPS // (cfg["n_steps"] * N_ENVS)
     env.close()
     return {
-        "stage_idx": stage_idx,
+        "label": label,
         "env_name": env_name,
         "device": device,
-        "n_steps": stage["n_steps"],
-        "n_epochs": stage["n_epochs"],
+        "n_steps": cfg["n_steps"],
+        "n_epochs": cfg["n_epochs"],
+        "ent_coef": cfg["ent_coef"],
         "mini_train_steps": MINI_TRAIN_STEPS,
         "ppo_iterations": iters,
         "seconds": round(elapsed, 2),
@@ -178,12 +208,19 @@ def _bench_ppo_stage(stage_idx: int) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", type=int, default=None, help="Also run mini PPO for curriculum stage")
+    parser.add_argument(
+        "--config",
+        choices=["l0", "l4", "current", "all"],
+        default="all",
+        help="Which PPO config to mini-benchmark (default: all)",
+    )
     args = parser.parse_args()
+
+    PPO_CONFIGS["current"] = _load_current_config()
 
     _log("H0", "diag_start", {"platform": sys.platform, "cuda": torch.cuda.is_available()}, "diag")
 
-    # H3: vec-env parallelism
+    # H3: vec-env parallelism (L0 env, isolate vec-env effect)
     for cls, kwargs, label in (
         (DummyVecEnv, {}, "dummy"),
         (SubprocVecEnv, {}, "subproc_default"),
@@ -198,7 +235,7 @@ def main() -> None:
             _log("H3", "vec_env_bench_failed", {"label": label, "error": str(exc)}, "diag")
             print("vec_env FAILED", label, exc)
 
-    # H2: per-step obs / LOS cost
+    # H2: per-step obs / pseudo_occluded cost
     for env_name in ("PointLTL0MASAR1-v0", "PointLTL4MASAR1-v0"):
         try:
             row = _bench_single_env_obs(env_name)
@@ -208,23 +245,31 @@ def main() -> None:
             _log("H2", "single_env_failed", {"env_name": env_name, "error": str(exc)}, "diag")
             print("breakdown FAILED", env_name, exc)
 
-    # H4: PPO stage hyperparams dominate iteration time
-    stages = [args.stage] if args.stage is not None else list(range(len(CURRICULUM)))
-    for stage_idx in stages:
+    # H4: PPO hyperparams dominate iteration rate (not ent_coef)
+    configs_to_run = (
+        list(PPO_CONFIGS.keys()) if args.config == "all" else [args.config]
+    )
+    for label in configs_to_run:
+        cfg = PPO_CONFIGS[label]
         try:
-            row = _bench_ppo_stage(stage_idx)
+            row = _bench_mini_ppo(label, cfg)
             _log("H4", "mini_ppo", row, "diag")
             print("mini_ppo", row)
         except Exception as exc:
-            _log("H4", "mini_ppo_failed", {"stage_idx": stage_idx, "error": str(exc)}, "diag")
-            print("mini_ppo FAILED", stage_idx, exc)
+            _log("H4", "mini_ppo_failed", {"label": label, "error": str(exc)}, "diag")
+            print("mini_ppo FAILED", label, exc)
 
-    # make_vec path used by training
+    # H3: actual make_vec path used by ppo_train_env
     try:
-        env = make_vec("PointLTL0MASAR1-v0", n_envs=N_ENVS, sb3=True)
+        env = make_vec(PPO_CONFIGS["current"]["env_name"], n_envs=N_ENVS, sb3=True)
         vec_cls = type(env.venv).__name__
         start_method = getattr(env.venv, "start_method", None)
-        _log("H3", "make_vec_training_path", {"vec_cls": vec_cls, "start_method": start_method}, "diag")
+        _log(
+            "H3",
+            "make_vec_training_path",
+            {"vec_cls": vec_cls, "start_method": start_method, "env_name": PPO_CONFIGS["current"]["env_name"]},
+            "diag",
+        )
         print("make_vec", vec_cls, start_method)
         env.close()
     except Exception as exc:

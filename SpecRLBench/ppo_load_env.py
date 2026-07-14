@@ -12,15 +12,17 @@ sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_env
+from datetime import datetime
 
 # --- must match the train run ---
 env_name = "PointLTL4MASAR1-v0"
-run_num = 5
-MODEL_PATH = f"_models/ppo_{env_name}_run{run_num}"
+run_num = 9
+name_time = datetime.now().strftime("%Y%m%d_%H%M")
+MODEL_PATH = f"_models/ppo_{name_time}_{env_name}_run{run_num}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 eval_episodes = 20
 seed = 0
-
+render_mode=None
 
 def _get_task(vec_env):
     base = vec_env.venv.envs[0]
@@ -36,8 +38,9 @@ def eval_model(
     eval_episodes: int = eval_episodes,
     seed: int = seed,
     deterministic: bool = True,
+    m_path: str = None
 ):
-    model_path = f"_models/ppo_{env_name}_run{run_num}"
+    model_path = m_path if m_path is not None else MODEL_PATH
     vec_norm_path = f"{model_path}_vecnormalize.pkl"
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -55,69 +58,85 @@ def eval_model(
     task = _get_task(vec_env)
 
     episode_rewards = []
+    totals_steps = []
+    casualty_visible_step_0s = []
     rescue_count = 0
-    visible_step_frac = []
+    rescues = []
 
     for episode in range(eval_episodes):
         obs = vec_env.reset()
         episode_reward = 0.0
-        visible_steps = 0
         total_steps = 0
         rescued = False
+        casualty_visible_step_0 = False
         done = False
 
         while not done:
             action, _ = model.predict(obs, deterministic=deterministic)
             obs, reward, done, info = vec_env.step(action)
-            episode_reward += float(reward[0])
-            total_steps += 1
-
-            if getattr(task, "_casualty_visible_sticky", None):
-                if task._casualty_visible_sticky[0]:
-                    visible_steps += 1
 
             prop_keys = info[0].get("propositions", [])
+            casualty_visible_step_0 = (
+                (total_steps == 0) 
+                * (info[0].get("casualty_visible", False)) 
+                + casualty_visible_step_0)
+            
             if any("cost_casualtys_surface" in k for k in prop_keys):
                 rescued = True
 
+            episode_reward += float(reward[0])
+            total_steps += 1
             done = bool(done[0])
 
         episode_rewards.append(episode_reward)
+        totals_steps.append(total_steps)
+        casualty_visible_step_0s.append(casualty_visible_step_0)
+        rescues.append(int(rescued))
         if rescued:
             rescue_count += 1
-        frac = visible_steps / max(total_steps, 1)
-        visible_step_frac.append(frac)
         print(
             f"Episode {episode + 1}: reward={episode_reward:.3f} "
-            f"rescued={rescued} visible_frac={frac:.2%}"
+            f"rescued={rescued} "
+            f"total_steps={total_steps} "
+            f"casualty_visible_step_0={casualty_visible_step_0} "
         )
 
     vec_env.close()
 
+    visible_step_0_rescues = [
+        rescues[i]
+        for i, v in enumerate(casualty_visible_step_0s)
+        if v == 1
+        ]
+    invisible_step_0_rescues = [
+        rescues[i]
+        for i, v in enumerate(casualty_visible_step_0s)
+        if v == 0
+        ]
+
     print("-" * 40)
-    print(f"Mean reward:      {np.mean(episode_rewards):.3f} +/- {np.std(episode_rewards):.3f}")
-    print(f"Rescue rate:      {rescue_count}/{eval_episodes} "
+    print(f"Mean reward:        {np.mean(episode_rewards):.3f} +/- {np.std(episode_rewards):.3f}")
+    print(f"Rescue rate:        {rescue_count}/{eval_episodes} "
           f"({100 * rescue_count / eval_episodes:.1f}%)")
-    print(f"Mean visible %:   {100 * np.mean(visible_step_frac):.1f}%")
+    print(f"s0-Vis rescue %:    {sum(visible_step_0_rescues)}/{len(visible_step_0_rescues)} "
+    f"({100 * sum(visible_step_0_rescues) / len(visible_step_0_rescues):.1f}%)"
+    )
+    print(f"s0-Invis rescue %:  {sum(invisible_step_0_rescues)}/{len(invisible_step_0_rescues)} "
+        f"({100 * sum(invisible_step_0_rescues) / len(invisible_step_0_rescues):.1f}%)"
+        )
+    print(f"Mean ep_len:        {np.mean(totals_steps):.3f} +/- {np.std(totals_steps):.3f} ")
+    print(f"Mean reward:        {np.mean(episode_rewards):.3f} +/- {np.std(episode_rewards):.3f}")
     return {
         "mean_reward": float(np.mean(episode_rewards)),
         "rescue_rate": rescue_count / eval_episodes,
-        "mean_visible_frac": float(np.mean(visible_step_frac)),
     }
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Eval PPO SAR model")
-    parser.add_argument("--env", default=env_name)
-    parser.add_argument("--run-num", type=int, default=run_num)
-    parser.add_argument("--episodes", type=int, default=eval_episodes)
-    parser.add_argument("--render", action="store_true")
-    args = parser.parse_args()
     eval_model(
-        env_name=args.env,
-        run_num=args.run_num,
-        render_mode="human" if args.render else None,
-        eval_episodes=args.episodes,
+        env_name=env_name,
+        run_num=run_num,
+        render_mode=render_mode,
+        eval_episodes=eval_episodes,
+        m_path="_models/ppo_20260714_1208_PointLTL4MASAR1-v0_run9"
     )
