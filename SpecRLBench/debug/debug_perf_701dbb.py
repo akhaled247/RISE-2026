@@ -30,11 +30,32 @@ BENCH_STEPS = 150
 MINI_STEPS = 16384
 
 
-def _first_raw_env(vec_env):
+def _task_info(env) -> dict:
+    u = env.unwrapped
+    while hasattr(u, "env"):
+        u = u.env
+    t = getattr(u, "task", None)
+    return {
+        "task_class": type(t).__name__ if t else None,
+        "num_steps": getattr(t, "num_steps", None),
+        "lidar_type": getattr(getattr(t, "lidar_conf", None), "type", None),
+        "wall_count": getattr(getattr(t, "walls", None), "num", 0),
+    }
+
+
+def _task_info_for_env_name(env_name: str) -> dict:
+    env = make_env(env_name, sb3=True)
+    try:
+        return _task_info(env)
+    finally:
+        env.close()
+
+
+def _vec_env_inner(vec_env):
     v = vec_env
     while hasattr(v, "venv"):
         v = v.venv
-    return v.envs[0]
+    return v
 
 
 def _log(hid: str, msg: str, data: dict) -> None:
@@ -170,11 +191,11 @@ def main() -> None:
     _log("H0", "diag_start", {"platform": sys.platform, "cuda": torch.cuda.is_available()})
 
     env = make_vec("PointLTL4MASAR1-v0", n_envs=N_ENVS, sb3=True)
-    venv = env.venv
+    inner = _vec_env_inner(env)
     summary["make_vec"] = {
-        "vec_cls": type(venv).__name__,
-        "start_method": getattr(venv, "start_method", None),
-        **_task_info(_first_raw_env(env)),
+        "vec_cls": type(inner).__name__,
+        "start_method": getattr(inner, "start_method", None),
+        **_task_info_for_env_name("PointLTL4MASAR1-v0"),
     }
     _log("H2", "make_vec_path", summary["make_vec"])
     env.close()
