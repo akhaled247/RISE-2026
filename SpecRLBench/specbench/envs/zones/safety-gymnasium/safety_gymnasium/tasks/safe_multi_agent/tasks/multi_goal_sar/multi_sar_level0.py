@@ -17,7 +17,6 @@
 import gymnasium
 import mujoco
 import numpy as np
-import time
 
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
@@ -66,24 +65,6 @@ class MultiGoalSARLevel0(BaseTask):
         self.render_conf.lidar_markers = False
         self.mechanism_conf.continue_goal = False
         self.last_dist_casualty = None
-        self._dbg_step_count = 0
-        # #region agent log
-        try:
-            from debug.debug_log import agent_log
-            agent_log(
-                "multi_sar_level0.py:__init__",
-                "sar_task_init",
-                {
-                    "num_steps": self.num_steps,
-                    "agent_num": self.agent_num,
-                    "lidar_type": self.lidar_conf.type,
-                },
-                "H1",
-                "diag",
-            )
-        except Exception:
-            pass
-        # #endregion
 
         # Spawn agents in a specified area
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
@@ -194,10 +175,6 @@ class MultiGoalSARLevel0(BaseTask):
     def obs(self) -> dict | np.ndarray:
         """Return the observation of our agent."""
         # pylint: disable-next=no-member
-        self._dbg_step_count += 1
-        sample_timing = self._dbg_step_count % 512 == 1
-        if sample_timing:
-            _t_obs0 = time.perf_counter()
         mujoco.mj_forward(self.model, self.data)  # Needed to get sensor's data correct
         obs = {}
 
@@ -234,25 +211,6 @@ class MultiGoalSARLevel0(BaseTask):
                 obs[name] = self._obs_vision(camera_name=name)
         if self.observation_flatten:
             obs = gymnasium.spaces.utils.flatten(self.obs_info.obs_space_dict, obs)
-        # #region agent log
-        if sample_timing:
-            try:
-                from debug.debug_log import agent_log
-                agent_log(
-                    "multi_sar_level0.py:obs",
-                    "obs_sample",
-                    {
-                        "step": self._dbg_step_count,
-                        "obs_ms": round((time.perf_counter() - _t_obs0) * 1000, 2),
-                        "wall_count": getattr(getattr(self, "walls", None), "num", 0),
-                        "lidar_type": self.lidar_conf.type,
-                    },
-                    "H2",
-                    "train",
-                )
-            except Exception:
-                pass
-        # #endregion
         return obs
 
     @property

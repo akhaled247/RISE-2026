@@ -36,30 +36,6 @@ def train() -> tuple[str, str]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("=" * 40)
     print(f"train env={env_name} device={device} steps={TOTAL_TIMESTEPS}")
-    # #region agent log
-    try:
-        from debug.debug_log import agent_log
-        agent_log(
-            "ppo_train_env.py:train",
-            "train_start",
-            {
-                "env_name": env_name,
-                "device": device,
-                "n_envs": n_envs,
-                "ent_coef": ent_coef,
-                "n_steps": n_steps,
-                "n_epochs": n_epochs,
-                "batch_size": batch_size,
-                "learning_rate": learning_rate,
-                "total_timesteps": TOTAL_TIMESTEPS,
-                "run_num": run_num,
-            },
-            "H4",
-            "train",
-        )
-    except Exception:
-        pass
-    # #endregion
 
     env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
     print("Warming up vector envs...")

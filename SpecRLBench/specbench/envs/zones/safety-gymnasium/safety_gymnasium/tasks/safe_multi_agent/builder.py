@@ -297,27 +297,6 @@ class Builder(gymnasium.Env, gymnasium.utils.EzPickle):
         if self.steps >= self.task.num_steps:
             self.truncated = True  # Maximum number of steps in an episode reached
 
-        # #region agent log
-        if self.terminated or self.truncated:
-            try:
-                from debug.debug_log import agent_log
-                agent_log(
-                    "builder.py:step",
-                    "episode_end",
-                    {
-                        "steps": self.steps,
-                        "task_num_steps": self.task.num_steps,
-                        "terminated": bool(self.terminated),
-                        "truncated": bool(self.truncated),
-                        "goal_met": bool(info.get("goal_met", False)),
-                    },
-                    "H1" if self.truncated else "H3",
-                    "train",
-                )
-            except Exception:
-                pass
-        # #endregion
-
         if self.render_parameters.mode == 'human':
             self.render()
 
