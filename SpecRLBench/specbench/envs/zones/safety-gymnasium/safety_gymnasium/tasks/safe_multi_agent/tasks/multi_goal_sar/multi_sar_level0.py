@@ -49,9 +49,7 @@ class MultiGoalSARLevel0(BaseTask):
     max_dist = None
     reward_distance = 1.0
     reward_goal = 1.0
-    reward_visibility_bonus = 0.05
     time_alive_decay = 0.0
-    visibility_sticky_steps = 4
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
@@ -67,20 +65,6 @@ class MultiGoalSARLevel0(BaseTask):
         self.render_conf.lidar_markers = False
         self.mechanism_conf.continue_goal = False
         self.last_dist_casualty = None
-        self._casualty_sticky_remaining = None
-        self._casualty_visible_sticky = None
-        self._prev_casualty_visible_sticky = None
-        # #region agent log
-        try:
-            import json, time
-            from pathlib import Path
-            _lp = Path(__file__).resolve().parents[9] / "debug-3376cb.log"
-            _lp.parent.mkdir(parents=True, exist_ok=True)
-            with _lp.open("a", encoding="utf-8") as _f:
-                _f.write(json.dumps({"sessionId":"3376cb","timestamp":int(time.time()*1000),"location":"multi_sar_level0.py:__init__","message":"sar_task_num_steps","data":{"num_steps":self.num_steps,"agent_num":self.agent_num},"hypothesisId":"H1","runId":"post-fix"}) + "\n")
-        except Exception:
-            pass
-        # #endregion
 
         # Spawn agents in a specified area
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
@@ -114,53 +98,8 @@ class MultiGoalSARLevel0(BaseTask):
         casualty_poses = (self.surface_casualtys.pos[i] for i in range(self.casualty_num))
         return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
 
-    def _nearest_casualty_row(self, agent_idx: int) -> int:
-        dists = self._dist_to_casualtys(agent_idx)
-        if not dists:
-            return 0
-        return int(np.argmin(dists))
-
-    def _casualty_los_visible(self, agent_idx: int, row: int) -> bool:
-        if not hasattr(self, 'surface_casualtys'):
-            return False
-        pos = self.surface_casualtys.pos[row]
-        return self._lidar_line_of_sight(agent_idx, pos, self.surface_casualtys, row)
-
-    def _refresh_casualty_visibility(self) -> None:
-        """Update per-agent sticky visibility once per env step."""
-        n = self.agent_num
-        if self._casualty_visible_sticky is None:
-            self._casualty_sticky_remaining = [0] * n
-            self._casualty_visible_sticky = [False] * n
-            self._prev_casualty_visible_sticky = [False] * n
-        for i in range(n):
-            self._prev_casualty_visible_sticky[i] = self._casualty_visible_sticky[i]
-            row = self._nearest_casualty_row(i)
-            raw = self._casualty_los_visible(i, row)
-            if raw:
-                self._casualty_visible_sticky[i] = True
-                self._casualty_sticky_remaining[i] = self.visibility_sticky_steps
-            elif self._casualty_sticky_remaining[i] > 0:
-                self._casualty_sticky_remaining[i] -= 1
-            else:
-                self._casualty_visible_sticky[i] = False
-
-    def _casualty_compass_obs(self, agent_idx: int) -> np.ndarray:
-        if not self._casualty_visible_sticky[agent_idx] or not hasattr(self, 'surface_casualtys'):
-            return np.zeros(self.compass_conf.shape, dtype=np.float64)
-        row = self._nearest_casualty_row(agent_idx)
-        pos = self.surface_casualtys.pos[row][:2]
-        return self._obs_compass_new(agent_idx, pos)
-
     def build_observation_space(self) -> gymnasium.spaces.Dict:
         super().build_observation_space()
-        for i in range(self.agent_num):
-            self.obs_info.obs_space_dict[f'surface_casualtys_visible_{i}'] = gymnasium.spaces.Box(
-                0.0, 1.0, (1,), dtype=np.float64,
-            )
-            self.obs_info.obs_space_dict[f'surface_casualtys_comp_{i}'] = gymnasium.spaces.Box(
-                -1.0, 1.0, (self.compass_conf.shape,), dtype=np.float64,
-            )
         if self.observation_flatten:
             self.observation_space = gymnasium.spaces.utils.flatten_space(
                 self.obs_info.obs_space_dict,
@@ -170,25 +109,27 @@ class MultiGoalSARLevel0(BaseTask):
         return self.observation_space
 
     def calculate_reward(self):
-        """Distance delta toward visible casualty, visibility bonus, touch bonus."""
-        self._refresh_casualty_visibility()
+        """Distance delta toward visible casualty and touch bonus."""
         rewards = {}
         touch_threshold = 0.0
         if hasattr(self, 'surface_casualtys'):
             touch_threshold = self.surface_casualtys.size + 0.15
         for i in range(self.agent_num):
+            a = f'agent_{i}'
             reward = self.time_alive_decay
+
+            # Distance-based reward shaping
             dists = self._dist_to_casualtys(i)
             min_dist = min(dists) if dists else 0.0
-            visible = self._casualty_visible_sticky[i]
-            if visible and self.last_dist_casualty is not None:
-                reward += (self.last_dist_casualty[i] - min_dist) * self.reward_distance
-            if visible and not self._prev_casualty_visible_sticky[i]:
-                reward += self.reward_visibility_bonus
-            self.last_dist_casualty[i] = min_dist
             if min_dist <= touch_threshold:
                 reward += self.reward_goal
-            rewards[f'agent_{i}'] = reward
+            # else:
+            #     # reward += (self.last_dist_casualty[i] - min_dist)
+            self.last_dist_casualty[i] = min_dist
+
+            # Checking visibility of casualty            
+
+            rewards[a] = reward
         return rewards
 
     def specific_reset(self):
@@ -198,10 +139,6 @@ class MultiGoalSARLevel0(BaseTask):
         if hasattr(self, 'entrapped_casualtys'):
             self.entrapped_casualtys.rescued = [False] * self.entrapped_casualtys.num
         self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
-        self._casualty_sticky_remaining = [0] * self.agent_num
-        self._casualty_visible_sticky = [False] * self.agent_num
-        self._prev_casualty_visible_sticky = [False] * self.agent_num
-        self._refresh_casualty_visibility()
         return super().specific_reset()
 
     def specific_step(self):
@@ -240,58 +177,47 @@ class MultiGoalSARLevel0(BaseTask):
                 )
 
     def obs(self) -> dict | np.ndarray:
-            """Return the observation of our agent."""
-            # pylint: disable-next=no-member
-            mujoco.mj_forward(self.model, self.data)  # Needed to get sensor's data correct
-            obs = {}
-    
-            obs.update(self.agent.obs_sensor())
-    
-            # observations of obstacles
-            inside_building = False
-            for obstacle in self._obstacles:
-                if "terracotta" in obstacle.name and "building" in obstacle.name and any(obstacle.cal_cost())>0:
-                    inside_building = True
-                # print(f"obstacle.name: {obstacle.name}, obstacle.pos: {obstacle.pos}, obstacle.group: {obstacle.group}")
-                if obstacle.is_lidar_observed:
-                    if 'gremlins' in obstacle.name:
-                        for i in range(self.agent_num):
-                            name = f"{obstacle.name}_lidar_{i}"
-                            poses = obstacle.pos.copy()
-                            del poses[i]
-                            obs[name] = self._obs_lidar_new(
-                                i, poses, obstacle.group, obstacle=obstacle,
-                            )
-                    elif inside_building and ("entrapped" in obstacle.name or obstacle.name == "walls"):
-                        for i in range(self.agent_num):
-                            name = f"{obstacle.name}_lidar_{i}"
-                            obs[name] = self._obs_lidar_pseudo_new(i, obstacle.pos)
-                        # print(f"DEBUG: obstacle names: {str(obstacle.name)}")
-                    else:
-                        for i in range(self.agent_num):
-                            self.try_lidar_ids(obstacle, obs, i)
-                    
-                if hasattr(obstacle, 'is_comp_observed') and obstacle.is_comp_observed:
-                    obs[obstacle.name + '_comp'] = self._obs_compass(obstacle.pos)
-            if self.observe_vision:
-                for i in range(self.agent_num):
-                    name = f'vision_{i}'
-                    obs[name] = self._obs_vision(camera_name=name)
-            if self._casualty_visible_sticky is not None:
-                for i in range(self.agent_num):
-                    obs[f'surface_casualtys_visible_{i}'] = np.array(
-                        [float(self._casualty_visible_sticky[i])], dtype=np.float64,
-                    )
-                    obs[f'surface_casualtys_comp_{i}'] = self._casualty_compass_obs(i)
-            # print(f"DEBUG: obs before flatten: {obs}")
-            # assert self.obs_info.obs_space_dict.contains(
-            #     obs,
-            # ), f'Bad obs {obs} {self.obs_info.obs_space_dict}'
-            # print(f"obs: {obs}")
-            # self.original_obs = obs
-            if self.observation_flatten:
-                obs = gymnasium.spaces.utils.flatten(self.obs_info.obs_space_dict, obs)
-            return obs
+        """Return the observation of our agent."""
+        # pylint: disable-next=no-member
+        mujoco.mj_forward(self.model, self.data)  # Needed to get sensor's data correct
+        obs = {}
+
+        obs.update(self.agent.obs_sensor())
+
+        # observations of obstacles
+        inside_building = False
+        for obstacle in self._obstacles:
+            if "terracotta" in obstacle.name and "building" in obstacle.name and any(obstacle.cal_cost())>0:
+                inside_building = True
+            # print(f"obstacle.name: {obstacle.name}, obstacle.pos: {obstacle.pos}, obstacle.group: {obstacle.group}")
+            if obstacle.is_lidar_observed:
+                if 'gremlins' in obstacle.name:
+                    for i in range(self.agent_num):
+                        name = f"{obstacle.name}_lidar_{i}"
+                        poses = obstacle.pos.copy()
+                        del poses[i]
+                        obs[name] = self._obs_lidar_new(
+                            i, poses, obstacle.group, obstacle=obstacle,
+                        )
+                elif inside_building and ("entrapped" in obstacle.name or obstacle.name == "walls"):
+                    for i in range(self.agent_num):
+                        name = f"{obstacle.name}_lidar_{i}"
+                        obs[name] = self._obs_lidar_pseudo_new(i, obstacle.pos)
+                    # print(f"DEBUG: obstacle names: {str(obstacle.name)}")
+                else:
+                    for i in range(self.agent_num):
+                        self.try_lidar_ids(obstacle, obs, i)
+                
+            if hasattr(obstacle, 'is_comp_observed') and obstacle.is_comp_observed:
+                obs[obstacle.name + '_comp'] = self._obs_compass(obstacle.pos)
+
+        if self.observe_vision:
+            for i in range(self.agent_num):
+                name = f'vision_{i}'
+                obs[name] = self._obs_vision(camera_name=name)
+        if self.observation_flatten:
+            obs = gymnasium.spaces.utils.flatten(self.obs_info.obs_space_dict, obs)
+        return obs
 
     @property
     def goal_achieved(self):

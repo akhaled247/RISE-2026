@@ -27,6 +27,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         self.unwrapped.render_parameters.height = 256
         self.num_lidar_bins = env.unwrapped.task.lidar_conf.num_bins
         self.sb3 = sb3
+        self.prev_casualty_visible = False
 
         # Robustly handle both property and method for observation_space
         obs_space = env.observation_space
@@ -83,6 +84,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         # action is not valid.
 
         info['propositions'] = []
+        info['casualty_visible'] = False
         for i, a in enumerate(self.env.unwrapped.possible_agents):
             agent_info: dict = info[a]
             active_props = {}
@@ -93,17 +95,27 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             info['propositions'].extend(active_props.keys())
 
             # Level 1+ building logic: mask entrapped lidar when not inside building
-            if f'cost_buildings_terracotta_{i}' not in info['propositions']:
-                try:
+            if hasattr(obs[a], f'entrapped_casualtys_lidar_{i}') \
+                and (f'cost_buildings_terracotta_{i}' not in info['propositions']):
                     obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(
                         obs[a][f'entrapped_casualtys_lidar_{i}'].size,
                     )
-                except KeyError:
-                    pass
 
+            
+            # Casualty visibility logic
+            if (f'surface_casualtys_lidar_{i}' in obs[a].keys()
+                and max(obs[a][f'surface_casualtys_lidar_{i}'])!=0.
+                and not self.prev_casualty_visible):
+                info['casualty_visible'] = True
+            #     self.prev_casualty_visible = True
+            # else:
+            #     # self.prev_casualty_visible = False
+            #     pass
+                
         # Collaborative SAR: end episode only when the full team mission is complete
         mission_complete = all(self.env.unwrapped.task.goal_achieved)
 
+        # SB3-specific logic for type matching
         if self.sb3:
             obs = self.flatten_obs(obs)
             reward = float(np.mean(list(reward.values())))
@@ -111,6 +123,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             terminated = any(list(terminated.values())) or mission_complete
         elif mission_complete:
             terminated = {a: True for a in self.env.unwrapped.possible_agents}
+
         return obs, reward, terminated, truncated, info
 
     def reset(
@@ -118,6 +131,9 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
     ) -> tuple[WrapperObsType, dict[str, Any]]:
         obs, info = super().reset(seed=seed, options=options)
         info['propositions'] = []
+        info['casualty_visible'] = False
+        self.prev_casualty_visible = False
+
         for i, a in enumerate(self.env.unwrapped.possible_agents):
             obs[a][f'wall_sensor_{i}'] = np.array([0, 0, 0, 0])
         self.env.unwrapped.task.original_obs = obs

@@ -10,45 +10,33 @@ sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import ThroughputCallback, make_vec
 from ppo_load_env import eval_model
+import time
+from datetime import datetime
 
-# --- curriculum: L0 open arena then L4 with interior walls ---
-CURRICULUM = [
-    {
-        "env_name": "PointLTL0MASAR1-v0",
-        "total_timesteps": 300_000,
-        "run_num": 10,
-        "learning_rate": 3e-4,
-        "n_steps": 512,
-        "n_epochs": 4,
-        "target_kl": 0.05,
-    },
-    {
-        "env_name": "PointLTL4MASAR1-v0",
-        "total_timesteps": 700_000,
-        "run_num": 5,
-        "learning_rate": 1e-4,
-        "n_steps": 2048,
-        "n_epochs": 10,
-        "target_kl": 0.05,
-    },
-]
-
+# --- edit these before each run ---
+env_name = "PointLTL4MASAR1-v0"
+run_num = 9 # INCREMENT EACH TIME <<Level4 = 9, Level0 = 13>>
+name_time = datetime.now().strftime("%Y%m%d_%H%M")
+MODEL_PATH = f"_models/ppo_{name_time}_{env_name}_run{run_num}"
+VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
+TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
+TOTAL_TIMESTEPS = 5_000_000
 seed = 0
 n_envs = 8
-ent_coef = 0.01
+ent_coef = 0.02
+learning_rate = 5e-5
+n_steps = 2048  #512 Level0, 2048 Level4
+batch_size = 256
+n_epochs = 10
+clip_range=0.2
 
 
-def train_stage(stage: dict) -> tuple[str, str]:
-    env_name = stage["env_name"]
-    run_num = stage["run_num"]
-    total_timesteps = stage["total_timesteps"]
-    model_path = f"_models/ppo_{env_name}_run{run_num}"
-    vec_norm_path = f"{model_path}_vecnormalize.pkl"
-    log_path = f"./_training_logs/ppo_{env_name}_tensorboard/"
 
+def train() -> tuple[str, str]:
+    print(f'Logging to {TRAINING_LOG_PATH}...')
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("=" * 40)
-    print(f"train env={env_name} device={device} steps={total_timesteps}")
+    print(f"train env={env_name} device={device} steps={TOTAL_TIMESTEPS}")
 
     env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
     print("Warming up vector envs...")
@@ -58,57 +46,49 @@ def train_stage(stage: dict) -> tuple[str, str]:
         "MultiInputPolicy",
         env,
         verbose=1,
-        learning_rate=stage["learning_rate"],
-        n_steps=stage["n_steps"],
-        batch_size=256,
-        n_epochs=stage["n_epochs"],
+        learning_rate=learning_rate,
+        n_steps=n_steps,
+        batch_size=batch_size,
+        n_epochs=n_epochs,
         ent_coef=ent_coef,
-        target_kl=stage["target_kl"],
+        target_kl=0.03,
         device=device,
-        tensorboard_log=log_path,
+        tensorboard_log=TRAINING_LOG_PATH,
         seed=seed,
+        clip_range=clip_range
     )
 
     model.learn(
-        total_timesteps=total_timesteps,
+        total_timesteps=TOTAL_TIMESTEPS,
         progress_bar=True,
-        callback=ThroughputCallback(total_timesteps),
+        callback=ThroughputCallback(TOTAL_TIMESTEPS),
+        tb_log_name=(
+            f"PPO_t{name_time}"
+            f"_st{n_steps}"
+            f"_bs{batch_size}"
+            f"_tt{TOTAL_TIMESTEPS/1_000_000:.1f}M"
+            f"_ec{ent_coef}"
+            f"_lr{learning_rate}"
+            f"_ep{n_epochs}"
+            f"_cr{clip_range}"
+        )
     )
-    model.save(model_path)
-    env.save(vec_norm_path)
-    print(f"saved model: {model_path}.zip")
-    print(f"saved vecnorm: {vec_norm_path}")
-    env.close()
-    return model_path, vec_norm_path
-
-
-def train_curriculum():
-    for i, stage in enumerate(CURRICULUM):
-        print(f"\n>>> Curriculum stage {i + 1}/{len(CURRICULUM)}: {stage['env_name']}")
-        train_stage(stage)
+    model.save(MODEL_PATH)
+    env.save(VEC_NORM_PATH)
+    print(f"saved model: {MODEL_PATH}.zip")
+    print(f"saved vecnorm: {VEC_NORM_PATH}")
 
 
 if __name__ == "__main__":
-    import argparse
+    print(f"Make sure <<<run_num = {run_num}>>> is correct before continuing! Will continue in 7 seconds.")
+    print(f"<<<{(n_steps*n_envs)/batch_size}>>> minibatches per rollout")
+    print(f"Policy will update <<<{TOTAL_TIMESTEPS//(n_steps*n_envs)}>>> times.")
+    time.sleep(7.0)
+    train()
 
-    parser = argparse.ArgumentParser(description="PPO SAR curriculum training")
-    parser.add_argument(
-        "--stage",
-        type=int,
-        default=None,
-        help="Run single curriculum stage index (0=L0, 1=L4); default runs full curriculum",
+    eval_model(
+        env_name=env_name,
+        run_num=run_num,
+        render_mode='human',
+        m_path=MODEL_PATH
     )
-    parser.add_argument("--eval", action="store_true", help="Eval L4 model after training")
-    args = parser.parse_args()
-
-    if args.stage is not None:
-        train_stage(CURRICULUM[args.stage])
-    else:
-        train_curriculum()
-
-    if args.eval:
-        eval_model(
-            env_name=CURRICULUM[-1]["env_name"],
-            run_num=CURRICULUM[-1]["run_num"],
-            render_mode=None,
-        )
