@@ -107,10 +107,11 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 and max(obs[a][f'surface_casualtys_lidar_{i}'])!=0.
                 and not self.prev_casualty_visible):
                 info['casualty_visible'] = True
-            #     self.prev_casualty_visible = True
-            # else:
+                # self.prev_casualty_visible = True
+                reward[a] += 1.0
+            else:
             #     # self.prev_casualty_visible = False
-            #     pass
+                pass
                 
         # Collaborative SAR: end episode only when the full team mission is complete
         mission_complete = all(self.env.unwrapped.task.goal_achieved)

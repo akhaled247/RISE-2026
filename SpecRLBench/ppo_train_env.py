@@ -28,7 +28,7 @@ learning_rate = 5e-5
 n_steps = 2048  # 512 Level0, 2048 Level4
 batch_size = 256
 n_epochs = 10
-clip_range = 0.2
+clip_range = 0.1
 
 
 def train() -> tuple[str, str]:
@@ -69,7 +69,7 @@ def train() -> tuple[str, str]:
             f"_ec{ent_coef}"
             f"_lr{learning_rate}"
             f"_ep{n_epochs}"
-            f"_cr{clip_range}"
+            f"_cr{clip_range}_dense"
         ),
     )
     model.save(MODEL_PATH)
