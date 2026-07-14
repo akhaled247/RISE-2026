@@ -154,6 +154,16 @@ class MultiGoalSARLevel0(BaseTask):
 
     def try_lidar_ids(self, obstacle, obs, i):
         want_ids = getattr(obstacle, 'is_lidar_ids_observed', False)
+        # Fast path: ring walls and casualties skip per-instance mj_ray LoS (dominant step cost).
+        if obstacle.name == 'walls' or 'casualtys' in obstacle.name:
+            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_new(
+                i, obstacle.pos,
+            )
+            if want_ids and self.lidar_conf.type == 'pseudo_occluded':
+                obs[f"{obstacle.name}_lidar_ids_{i}"] = np.full(
+                    self.lidar_conf.num_bins, -1, dtype=np.int32,
+                )
+            return
         if want_ids and self.lidar_conf.type == 'pseudo_occluded':
             lidar, lidar_ids = self._obs_lidar_pseudo_occluded_new(
                 i, obstacle, return_ids=True,
@@ -161,16 +171,9 @@ class MultiGoalSARLevel0(BaseTask):
             obs[f"{obstacle.name}_lidar_{i}"] = lidar
             obs[f"{obstacle.name}_lidar_ids_{i}"] = lidar_ids
         else:
-            # Interior ring walls: many instances; pseudo lidar is enough and
-            # avoids per-wall mj_ray line-of-sight checks each step.
-            if obstacle.name == 'walls':
-                obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_new(
-                    i, obstacle.pos,
-                )
-            else:
-                obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
-                    i, obstacle,
-                )
+            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
+                i, obstacle,
+            )
 
     def obs(self) -> dict | np.ndarray:
         """Return the observation of our agent."""
