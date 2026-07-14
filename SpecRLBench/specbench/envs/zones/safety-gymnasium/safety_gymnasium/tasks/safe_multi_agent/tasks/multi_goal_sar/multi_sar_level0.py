@@ -49,7 +49,9 @@ class MultiGoalSARLevel0(BaseTask):
     max_dist = None
     reward_distance = 1.0
     reward_goal = 1.0
+    reward_visibility_bonus = 0.05
     time_alive_decay = 0.0
+    visibility_sticky_steps = 4
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
@@ -65,6 +67,9 @@ class MultiGoalSARLevel0(BaseTask):
         self.render_conf.lidar_markers = False
         self.mechanism_conf.continue_goal = False
         self.last_dist_casualty = None
+        self._casualty_sticky_remaining = None
+        self._casualty_visible_sticky = None
+        self._prev_casualty_visible_sticky = None
         # #region agent log
         try:
             import json, time
@@ -103,24 +108,83 @@ class MultiGoalSARLevel0(BaseTask):
         casualty_pos = self.surface_casualtys.pos[0]
         return self.agent.dist_xy(agent_idx, casualty_pos)
 
-    def _dist_to_casualtys(self, agent_idx: int) -> float:
-            if not hasattr(self, 'surface_casualtys'):
-                return 0.0
-            casualty_poses = (self.surface_casualtys.pos[i] for i in range(self.casualty_num))
-            return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
+    def _dist_to_casualtys(self, agent_idx: int) -> list[float]:
+        if not hasattr(self, 'surface_casualtys'):
+            return []
+        casualty_poses = (self.surface_casualtys.pos[i] for i in range(self.casualty_num))
+        return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
+
+    def _nearest_casualty_row(self, agent_idx: int) -> int:
+        dists = self._dist_to_casualtys(agent_idx)
+        if not dists:
+            return 0
+        return int(np.argmin(dists))
+
+    def _casualty_los_visible(self, agent_idx: int, row: int) -> bool:
+        if not hasattr(self, 'surface_casualtys'):
+            return False
+        pos = self.surface_casualtys.pos[row]
+        return self._lidar_line_of_sight(agent_idx, pos, self.surface_casualtys, row)
+
+    def _refresh_casualty_visibility(self) -> None:
+        """Update per-agent sticky visibility once per env step."""
+        n = self.agent_num
+        if self._casualty_visible_sticky is None:
+            self._casualty_sticky_remaining = [0] * n
+            self._casualty_visible_sticky = [False] * n
+            self._prev_casualty_visible_sticky = [False] * n
+        for i in range(n):
+            self._prev_casualty_visible_sticky[i] = self._casualty_visible_sticky[i]
+            row = self._nearest_casualty_row(i)
+            raw = self._casualty_los_visible(i, row)
+            if raw:
+                self._casualty_visible_sticky[i] = True
+                self._casualty_sticky_remaining[i] = self.visibility_sticky_steps
+            elif self._casualty_sticky_remaining[i] > 0:
+                self._casualty_sticky_remaining[i] -= 1
+            else:
+                self._casualty_visible_sticky[i] = False
+
+    def _casualty_compass_obs(self, agent_idx: int) -> np.ndarray:
+        if not self._casualty_visible_sticky[agent_idx] or not hasattr(self, 'surface_casualtys'):
+            return np.zeros(self.compass_conf.shape, dtype=np.float64)
+        row = self._nearest_casualty_row(agent_idx)
+        pos = self.surface_casualtys.pos[row][:2]
+        return self._obs_compass_new(agent_idx, pos)
+
+    def build_observation_space(self) -> gymnasium.spaces.Dict:
+        super().build_observation_space()
+        for i in range(self.agent_num):
+            self.obs_info.obs_space_dict[f'surface_casualtys_visible_{i}'] = gymnasium.spaces.Box(
+                0.0, 1.0, (1,), dtype=np.float64,
+            )
+            self.obs_info.obs_space_dict[f'surface_casualtys_comp_{i}'] = gymnasium.spaces.Box(
+                -1.0, 1.0, (self.compass_conf.shape,), dtype=np.float64,
+            )
+        if self.observation_flatten:
+            self.observation_space = gymnasium.spaces.utils.flatten_space(
+                self.obs_info.obs_space_dict,
+            )
+        else:
+            self.observation_space = self.obs_info.obs_space_dict
+        return self.observation_space
 
     def calculate_reward(self):
-        """Task-native shaping: distance delta toward casualty plus touch bonus."""
+        """Distance delta toward visible casualty, visibility bonus, touch bonus."""
+        self._refresh_casualty_visibility()
         rewards = {}
         touch_threshold = 0.0
         if hasattr(self, 'surface_casualtys'):
             touch_threshold = self.surface_casualtys.size + 0.15
         for i in range(self.agent_num):
             reward = self.time_alive_decay
-            dists: list = self._dist_to_casualtys(i)
-            if self.last_dist_casualty is not None:
-                min_dist = min(dist for dist in dists)
+            dists = self._dist_to_casualtys(i)
+            min_dist = min(dists) if dists else 0.0
+            visible = self._casualty_visible_sticky[i]
+            if visible and self.last_dist_casualty is not None:
                 reward += (self.last_dist_casualty[i] - min_dist) * self.reward_distance
+            if visible and not self._prev_casualty_visible_sticky[i]:
+                reward += self.reward_visibility_bonus
             self.last_dist_casualty[i] = min_dist
             if min_dist <= touch_threshold:
                 reward += self.reward_goal
@@ -134,6 +198,10 @@ class MultiGoalSARLevel0(BaseTask):
         if hasattr(self, 'entrapped_casualtys'):
             self.entrapped_casualtys.rescued = [False] * self.entrapped_casualtys.num
         self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
+        self._casualty_sticky_remaining = [0] * self.agent_num
+        self._casualty_visible_sticky = [False] * self.agent_num
+        self._prev_casualty_visible_sticky = [False] * self.agent_num
+        self._refresh_casualty_visibility()
         return super().specific_reset()
 
     def specific_step(self):
@@ -209,6 +277,12 @@ class MultiGoalSARLevel0(BaseTask):
                 for i in range(self.agent_num):
                     name = f'vision_{i}'
                     obs[name] = self._obs_vision(camera_name=name)
+            if self._casualty_visible_sticky is not None:
+                for i in range(self.agent_num):
+                    obs[f'surface_casualtys_visible_{i}'] = np.array(
+                        [float(self._casualty_visible_sticky[i])], dtype=np.float64,
+                    )
+                    obs[f'surface_casualtys_comp_{i}'] = self._casualty_compass_obs(i)
             # print(f"DEBUG: obs before flatten: {obs}")
             # assert self.obs_info.obs_space_dict.contains(
             #     obs,

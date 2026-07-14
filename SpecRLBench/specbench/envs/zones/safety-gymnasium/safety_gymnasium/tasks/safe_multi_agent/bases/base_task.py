@@ -1016,6 +1016,18 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
         assert vec.shape == (self.compass_conf.shape,), f'Bad vec {vec}'
         return vec
 
+    def _obs_compass_new(self, agent_idx: int, pos: np.ndarray) -> np.ndarray:
+        """Egocentric unit compass vector from agent_idx to pos (XY)."""
+        pos = np.asarray(pos)
+        if pos.shape == (2,):
+            pos = np.concatenate([pos, [0.0]])
+        agent_3vec = self.agent.get_agent_pos(agent_idx)
+        agent_mat = self.agent.get_agent_mat(agent_idx)
+        vec = pos - agent_3vec
+        vec = np.matmul(vec, agent_mat)[: self.compass_conf.shape]
+        vec /= np.sqrt(np.sum(np.square(vec))) + 0.001
+        return vec
+
     def _obs_vision(self, camera_name='vision') -> np.ndarray:
         """Return pixels from the agent camera.
 
