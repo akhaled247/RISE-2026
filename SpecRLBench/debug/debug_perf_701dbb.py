@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
@@ -86,10 +87,12 @@ def _bench_vec(env_name: str, cls, kwargs=None) -> float:
     env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.0)
     env.reset()
     for _ in range(WARMUP):
-        env.step(env.action_space.sample())
+        actions = np.array([env.action_space.sample() for _ in range(N_ENVS)])
+        env.step(actions)
     t0 = time.perf_counter()
     for _ in range(BENCH_STEPS):
-        env.step(env.action_space.sample())
+        actions = np.array([env.action_space.sample() for _ in range(N_ENVS)])
+        env.step(actions)
     sps = (BENCH_STEPS * N_ENVS) / (time.perf_counter() - t0)
     env.close()
     return sps

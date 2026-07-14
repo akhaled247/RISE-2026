@@ -153,54 +153,43 @@ class MultiGoalSARLevel0(BaseTask):
         return super()._build()
 
     def try_lidar_ids(self, obstacle, obs, i):
+        """pseudo_occluded lidar with per-instance line-of-sight (walls block view)."""
         want_ids = getattr(obstacle, 'is_lidar_ids_observed', False)
-        # Fast path: ring walls and casualties skip per-instance mj_ray LoS (dominant step cost).
-        if obstacle.name == 'walls' or 'casualtys' in obstacle.name:
-            branch = "fast_pseudo"
-            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_new(
-                i, obstacle.pos,
-            )
-            if want_ids and self.lidar_conf.type == 'pseudo_occluded':
-                obs[f"{obstacle.name}_lidar_ids_{i}"] = np.full(
-                    self.lidar_conf.num_bins, -1, dtype=np.int32,
-                )
-            # #region agent log
-            c = getattr(self, "_dbg_lidar_branch_counts", None)
-            if c is None:
-                c = {}
-                self._dbg_lidar_branch_counts = c
-            c[branch] = c.get(branch, 0) + 1
-            if sum(c.values()) % 2048 == 1:
-                try:
-                    from debug.debug_log import agent_log
-                    agent_log(
-                        "multi_sar_level0.py:try_lidar_ids",
-                        "lidar_branch_sample",
-                        {"counts": dict(c), "last_obstacle": obstacle.name},
-                        "H1",
-                        "train",
-                    )
-                except Exception:
-                    pass
-            # #endregion
-            return
-        branch = "slow_occluded_ids" if want_ids else "slow_occluded"
         if want_ids and self.lidar_conf.type == 'pseudo_occluded':
             lidar, lidar_ids = self._obs_lidar_pseudo_occluded_new(
                 i, obstacle, return_ids=True,
             )
             obs[f"{obstacle.name}_lidar_{i}"] = lidar
             obs[f"{obstacle.name}_lidar_ids_{i}"] = lidar_ids
+            path = "pseudo_occluded_ids"
         else:
             obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
                 i, obstacle,
             )
+            path = "pseudo_occluded"
         # #region agent log
-        c = getattr(self, "_dbg_lidar_branch_counts", None)
+        c = getattr(self, "_dbg_lidar_path_counts", None)
         if c is None:
             c = {}
-            self._dbg_lidar_branch_counts = c
-        c[branch] = c.get(branch, 0) + 1
+            self._dbg_lidar_path_counts = c
+        c[path] = c.get(path, 0) + 1
+        if sum(c.values()) % 2048 == 1:
+            try:
+                from debug.debug_log import agent_log
+                agent_log(
+                    "multi_sar_level0.py:try_lidar_ids",
+                    "lidar_path_sample",
+                    {
+                        "counts": dict(c),
+                        "lidar_type": self.lidar_conf.type,
+                        "last_obstacle": obstacle.name,
+                        "last_path": path,
+                    },
+                    "H1",
+                    "post-revert",
+                )
+            except Exception:
+                pass
         # #endregion
 
     def obs(self) -> dict | np.ndarray:
@@ -227,8 +216,7 @@ class MultiGoalSARLevel0(BaseTask):
                         )
                 elif inside_building and ("entrapped" in obstacle.name or obstacle.name == "walls"):
                     for i in range(self.agent_num):
-                        name = f"{obstacle.name}_lidar_{i}"
-                        obs[name] = self._obs_lidar_pseudo_new(i, obstacle.pos)
+                        self.try_lidar_ids(obstacle, obs, i)
                 else:
                     for i in range(self.agent_num):
                         self.try_lidar_ids(obstacle, obs, i)
