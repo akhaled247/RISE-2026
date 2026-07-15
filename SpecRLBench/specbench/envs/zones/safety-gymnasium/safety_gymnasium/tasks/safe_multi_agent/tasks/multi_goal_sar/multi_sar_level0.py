@@ -209,6 +209,7 @@ class MultiGoalSARLevel0(BaseTask):
             wall = getattr(self, name)
             center_xy = layout[f'{building_prefix}{wall_idx}']
             rot = self._cached_building_rots[wall_idx]
+            wall.rots = [rot] * wall.num
             self._sync_building_ltl_wall_site(wall, center_xy, rot)
             for seg_idx, loc in enumerate(wall.locations):
                 layout[f'building{wall_idx}_ltl_wall{seg_idx}'] = np.asarray(loc, dtype=float)
