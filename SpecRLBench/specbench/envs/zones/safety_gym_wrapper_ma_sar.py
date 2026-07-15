@@ -109,7 +109,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             ):
                 info['casualty_visible'] = True
                 self.prev_casualty_visible = True
-                reward[a] += 1.0
+                # reward[a] += 1.0
                 
         # Collaborative SAR: end episode only when the full team mission is complete
         mission_complete = all(self.env.unwrapped.task.goal_achieved)
@@ -131,7 +131,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         if seed is not None:
             self._layout_seed = seed
         elif hasattr(self, "_layout_seed"):
-            self._layout_seed += 1
+            self._layout_seed = (self._layout_seed + 8) # Cycle seeds 0-99
             seed = self._layout_seed
         obs, info = super().reset(seed=seed, options=options)
         info['propositions'] = []
@@ -142,6 +142,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         self.env.unwrapped.task.original_obs = obs
         if self.sb3:
             obs = self.flatten_obs(obs)
+        # print(f"seed={seed}")
         return obs, info
 
     def get_propositions(self) -> list[str]:

@@ -28,6 +28,7 @@ n_steps = 2048  # 512 Level0, 2048 Level4
 batch_size = 256
 n_epochs = 10
 clip_range = 0.2
+target_kl = 0.05 #0.08
 
 
 def train() -> tuple[str, str]:
@@ -55,7 +56,7 @@ def train() -> tuple[str, str]:
         batch_size=batch_size,
         n_epochs=n_epochs,
         ent_coef=ent_coef,
-        target_kl=0.03,
+        target_kl=target_kl,
         device=device,
         tensorboard_log=TRAINING_LOG_PATH,
         seed=seed,
@@ -76,6 +77,7 @@ def train() -> tuple[str, str]:
             f"_lr{learning_rate}"
             f"_ep{n_epochs}"
             f"_cr{clip_range}"
+            f"_kl{target_kl}"
         ),
     )
     model.save(MODEL_PATH)
