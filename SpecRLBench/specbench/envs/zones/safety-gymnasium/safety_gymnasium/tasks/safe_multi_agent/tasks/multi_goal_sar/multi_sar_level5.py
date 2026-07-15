@@ -31,19 +31,20 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
     building_keepout = 0.4
     building_border_side_length = 4.5
     building_margin = 0.8
+    building_num=2
     surface_casualtys_frac = 0.0
     entrapped_casualtys_frac = 1.0
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
-        for i in range(self.agent_num):
+        for i in range(self.building_num):
             self._add_geoms(LtlWalls(name=f'building{i}_ltl_walls'))
         self._add_geoms(
             Walls(num=self.wall_count),
             Buildings(
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout * 0.75,
-                num=self.agent_num,
+                num=self.building_num,
                 keepout=self.building_keepout,
                 placements=border_placements(
                     self.building_border_side_length,
@@ -91,7 +92,7 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
             half_sizes=self._cached_wall_half_sizes,
             keepout=0.4,
         ))
-        self._replace_border_buildings()
+        self._replace_border_buildings(num=self.building_num)
         self._replace_geom(Casualtys(
             category=list(Casualtys.CATEGORIES)[-1],
             size=0.05,

@@ -51,6 +51,7 @@ class MultiGoalSARLevel0(BaseTask):
     time_alive_decay = 0.0
     surface_casualtys_frac: float = 1.0
     entrapped_casualtys_frac: float = 0.0
+    building_num: int = 0
 
     def __init__(self, config) -> None:
         self._cached_wall_half_sizes = None
@@ -195,7 +196,7 @@ class MultiGoalSARLevel0(BaseTask):
             return
 
         building_prefix = buildings.name[:-1]
-        self._cached_building_rots = self.random_generator.generate_rots(self.agent_num)
+        self._cached_building_rots = self.random_generator.generate_rots(self.building_num if self.building_num != 0 else self.agent_num)
         buildings.rots = list(self._cached_building_rots)
 
         if hasattr(self, 'entrapped_casualtys'):
