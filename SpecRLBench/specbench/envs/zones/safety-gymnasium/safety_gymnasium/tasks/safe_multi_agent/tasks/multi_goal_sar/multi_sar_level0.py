@@ -50,6 +50,7 @@ class MultiGoalSARLevel0(BaseTask):
     time_alive_decay = 0.0
     surface_casualtys_frac: float = 1.0
     entrapped_casualtys_frac: float = 0.0
+    building_wall_clearance = 0.1
 
     def __init__(self, config) -> None:
         self._cached_wall_half_sizes = None
@@ -190,6 +191,12 @@ class MultiGoalSARLevel0(BaseTask):
             self.building_margin,
         )
 
+    def _building_layout_keepout(self) -> float:
+        buildings = self._building_geom()
+        if buildings is None:
+            return self.building_keepout * 0.75 + self.building_wall_clearance
+        return float(buildings.size) + self.building_wall_clearance
+
     def _resample_building_sites(self) -> None:
         buildings = self._building_geom()
         if buildings is None:
@@ -207,15 +214,67 @@ class MultiGoalSARLevel0(BaseTask):
         ]
         self._cached_building_rots = self.random_generator.generate_rots(self.agent_num)
 
-    def _release_fixed_building_layout(self) -> None:
-        """Let layout sampler use border regions instead of pinned building XY."""
+    def _pin_buildings_for_layout(self) -> None:
+        """Pin cached building XY in placement dict so walls sample around them."""
         buildings = self._building_geom()
-        if buildings is None:
+        if buildings is None or self._cached_building_locations is None:
             return
-        buildings.locations = []
+        buildings.locations = list(self._cached_building_locations)
+        buildings.keepout = self._building_layout_keepout()
         buildings.placements = self._building_border_placements()
-        if hasattr(self, 'entrapped_casualtys'):
-            self.entrapped_casualtys.locations = []
+
+    def _stash_ltl_wall_locations(self) -> dict:
+        saved = {}
+        for name in self._geoms:
+            if 'ltl_wall' not in name:
+                continue
+            wall = getattr(self, name)
+            locs = getattr(wall, 'locations', None)
+            if locs:
+                saved[name] = list(locs)
+                wall.locations = []
+        return saved
+
+    def _restore_ltl_wall_locations_on_task(self, saved: dict) -> None:
+        for name, locs in saved.items():
+            if hasattr(self, name):
+                getattr(self, name).locations = locs
+
+    def _is_building_layout_key(self, key: str) -> bool:
+        return 'building' in key and 'ltl_wall' not in key
+
+    def _reorder_placements_buildings_before_walls(self) -> None:
+        placements = self.placements_conf.placements
+        if not placements:
+            return
+        agent_entry = placements.pop('agent')
+        building_keys = sorted(k for k in placements if self._is_building_layout_key(k))
+        wall_keys = sorted(k for k in placements if k.startswith('wall'))
+        other_keys = [
+            k for k in placements if k not in building_keys and k not in wall_keys
+        ]
+        new_placements = {'agent': agent_entry}
+        for key in building_keys:
+            new_placements[key] = placements[key]
+        for key in wall_keys:
+            new_placements[key] = placements[key]
+        for key in other_keys:
+            new_placements[key] = placements[key]
+        self.placements_conf.placements = new_placements
+
+    def _build_placements_dict(self) -> None:
+        saved_ltl_locs = self._stash_ltl_wall_locations()
+        super()._build_placements_dict()
+        self._restore_ltl_wall_locations_on_task(saved_ltl_locs)
+        self._reorder_placements_buildings_before_walls()
+
+    def _refresh_layout_placements(self) -> None:
+        self._build_placements_dict()
+        self.random_generator.set_placements_info(
+            self.placements_conf.placements,
+            self.placements_conf.extents,
+            self.placements_conf.margin,
+        )
 
     def _sync_ltl_wall_sites_from_cache(self) -> None:
         """LtlWalls.get_config needs corner locations during world_config rebuild."""
@@ -282,8 +341,10 @@ class MultiGoalSARLevel0(BaseTask):
 
     def reset(self) -> None:
         self._resample_building_sites()
-        self._release_fixed_building_layout()
+        self._pin_buildings_for_layout()
         self._sync_ltl_wall_sites_from_cache()
+        if self.placements_conf.placements is not None:
+            self._refresh_layout_placements()
         super().reset()
         self._apply_cached_building_poses()
 

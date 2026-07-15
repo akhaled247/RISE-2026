@@ -113,11 +113,12 @@ class MultiGoalSARLevel2(MultiGoalSARLevel1):
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout*0.75,
                 num=self.agent_num,
-                keepout=0.0,
+                keepout=self.building_keepout * 0.75 + self.building_wall_clearance,
                 placements=border_placements(
                     self.building_border_side_length,
                     self.building_margin,
                 ),
+                locations=self._cached_building_locations,
                 debug=False,
                 rots = self._cached_building_rots
                     ))
