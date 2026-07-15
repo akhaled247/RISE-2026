@@ -18,6 +18,16 @@ def get_wrapped_env_from_vec(vec_env):
     return base
 
 
+def get_sb3_wrapper(vec_env):
+    """Return SafetyGymWrapperMASAR (sb3=True) — not raw Builder."""
+    env = vec_env.venv.envs[0] if hasattr(vec_env, 'venv') else vec_env.envs[0]
+    while env is not None:
+        if getattr(env, 'sb3', False):
+            return env
+        env = getattr(env, 'env', None)
+    raise RuntimeError('SafetyGymWrapperMASAR (sb3=True) not found in vec stack')
+
+
 def rng_state_digest(task) -> int:
     rg = task.random_generator.random_generator
     if rg is None:
@@ -40,13 +50,13 @@ def touch_threshold(task) -> float:
     return 0.0
 
 
-def snapshot_positions(task) -> dict:
+def snapshot_positions(task, agent_idx: int = 0) -> dict:
     building_xy = entrapped_xy = agent_xy = None
     if hasattr(task, 'terracotta_buildings'):
         building_xy = task.terracotta_buildings.pos[0][:2].copy()
     if hasattr(task, 'entrapped_casualtys'):
         entrapped_xy = task.entrapped_casualtys.pos[0][:2].copy()
-    agent_xy = np.asarray(task.agent.pos[0][:2], dtype=float)
+    agent_xy = np.asarray(task.agent.get_agent_pos(agent_idx)[:2], dtype=float)
 
     dist_casualty = task._dist_to_casualty(0) if hasattr(task, '_dist_to_casualty') else None
     dist_building = (
@@ -121,11 +131,11 @@ def reward_attribution(task, vec_reward: float, info: dict) -> dict:
 
 def reset_vec_with_layout_seed(vec_env, seed: int):
     """Reset SB3 vec stack so Builder.set_seed(seed) runs via wrapped reset(seed=)."""
-    env = get_wrapped_env_from_vec(vec_env)
-    obs, info = env.reset(seed=seed)
+    obs, info = get_sb3_wrapper(vec_env).reset(seed=seed)
+    obs = {k: np.expand_dims(v, 0) for k, v in obs.items()}
     if hasattr(vec_env, 'normalize_obs'):
         obs = vec_env.normalize_obs(obs)
-    return np.array([obs]), info
+    return obs, info
 
 
 def diagnose_verdict(
