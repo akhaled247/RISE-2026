@@ -62,6 +62,21 @@ class MultiGoalSARLevel1(MultiGoalSARLevel0):
     def calculate_reward(self):
         return {f'agent_{i}': 0.0 for i in range(self.agent_num)}
 
+    def specific_reset(self):
+        return super().specific_reset()
+
+    def specific_step(self):
+        return super().specific_step()
+
+    def update_world(self):
+        pass
+
+    def _replace_geom(self, geom) -> None:
+        """Update _geoms like _add_geoms but without duplicate registration checks."""
+        self._geoms[geom.name] = geom
+        setattr(self, geom.name, geom)
+        geom.set_agent(self.agent)
+
     def _build(self):
         self._replace_border_buildings()
         self._replace_geom(Casualtys(

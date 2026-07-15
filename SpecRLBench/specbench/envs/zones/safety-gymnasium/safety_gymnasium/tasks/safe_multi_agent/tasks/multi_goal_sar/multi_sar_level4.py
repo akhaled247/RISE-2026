@@ -30,6 +30,21 @@ class MultiGoalSARLevel4(MultiGoalSARLevel0):
         super().__init__(config=config)
         self._add_geoms(Walls(num=self.wall_count))
 
+    def specific_reset(self):
+        return super().specific_reset()
+
+    def specific_step(self):
+        return super().specific_step()
+
+    def update_world(self):
+        pass
+
+    def _replace_geom(self, geom) -> None:
+        """Update _geoms like _add_geoms but without duplicate registration checks."""
+        self._geoms[geom.name] = geom
+        setattr(self, geom.name, geom)
+        geom.set_agent(self.agent)
+
     def _build(self):
         self._cached_wall_half_sizes = size_randomization(
             self.wall_base_half_sizes,

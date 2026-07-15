@@ -149,7 +149,12 @@ class MultiGoalSARLevel0(BaseTask):
         if hasattr(self, 'entrapped_casualtys'):
             self.entrapped_casualtys.rescued = [False] * self.entrapped_casualtys.num
         self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
-        return super().specific_reset()
+
+    def specific_step(self):
+        pass
+
+    def update_world(self):
+        pass
 
     def _building_geom(self):
         for name in self._geoms:
