@@ -138,9 +138,16 @@ def reward_attribution(task, vec_reward: float, info: dict) -> dict:
     }
 
 
+def get_vec_subenv(vec_env):
+    """Top sub-env in DummyVecEnv (Monitor wrapping SafetyGymWrapperMASAR)."""
+    inner = vec_env.venv if hasattr(vec_env, 'venv') else vec_env
+    return inner.envs[0]
+
+
 def reset_vec_with_layout_seed(vec_env, seed: int):
     """Reset SB3 vec stack so Builder.set_seed(seed) runs via wrapped reset(seed=)."""
-    obs, info = get_sb3_wrapper(vec_env).reset(seed=seed)
+    # Must reset through Monitor — bypassing it leaves Monitor in "needs reset" state.
+    obs, info = get_vec_subenv(vec_env).reset(seed=seed)
     obs = {k: np.expand_dims(v, 0) for k, v in obs.items()}
     if hasattr(vec_env, 'normalize_obs'):
         obs = vec_env.normalize_obs(obs)
