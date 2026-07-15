@@ -116,6 +116,30 @@ def test_sar_sb3_wrapper_flattens_obs_and_actions_for_multiinput_policy():
         env.close()
 
 
+@pytest.mark.parametrize('env_id', SAR_ENV_IDS)
+def test_all_sar_levels_keep_sb3_reset_and_step_contract(env_id):
+    """Every public SAR level must support SB3 reset and one sampled step."""
+    env = make_env(env_id, sb3=True)
+    try:
+        obs, info = env.reset(seed=0)
+
+        assert isinstance(env.action_space, spaces.Box)
+        assert env.action_space.shape == (env.unwrapped.num_agents * env.action_dim,)
+        assert isinstance(env.observation_space, spaces.Dict)
+        assert set(obs) == set(env.observation_space.spaces)
+        assert info['propositions'] == []
+
+        next_obs, reward, terminated, truncated, step_info = env.step(env.action_space.sample())
+
+        assert set(next_obs) == set(env.observation_space.spaces)
+        assert isinstance(reward, float)
+        assert isinstance(terminated, (bool, np.bool_))
+        assert isinstance(truncated, (bool, np.bool_))
+        assert isinstance(step_info['propositions'], list)
+    finally:
+        env.close()
+
+
 def test_sar_reset_seed_reproduces_layout_on_same_env():
     """Same explicit reset seed must reproduce authoritative task layout."""
     env = make_env('PointLTL0MASAR1-v0', sb3=True)

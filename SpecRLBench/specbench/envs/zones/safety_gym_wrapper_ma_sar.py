@@ -102,10 +102,8 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                         obs[a][f'entrapped_casualtys_lidar_{i}'].size,
                     )
 
-            if (info[a]['cost_walls']>0):
+            if info[a].get('cost_walls', 0) > 0:
                 reward[a] -= 1
-            else:
-                pass
 
             # if (f'cost_walls_{i}' in info['propositions']): print('collision')
             # Surface casualty visibility logic
