@@ -39,6 +39,10 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
     surface_casualtys_frac = 0.0
     entrapped_casualtys_frac = 1.0
     # building_size = self.building_keepout*0.75
+
+    @property
+    def _building_placement_keepout(self) -> float:
+        return border_placement_keepout(self.building_margin, self.building_keepout)
     
     def __init__(self, config) -> None:
         super().__init__(config=config)
@@ -50,7 +54,7 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout*0.75,
                 num=self.agent_num,
-                keepout=self.building_keepout,
+                keepout=self._building_placement_keepout,
                 placements=border_placements(
                     self.building_border_side_length,
                     self.building_margin,
@@ -103,7 +107,7 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout*0.75,
                 num=self.agent_num,
-                keepout=self.building_keepout,
+                keepout=self._building_placement_keepout,
                 placements=border_placements(
                     self.building_border_side_length,
                     self.building_margin,

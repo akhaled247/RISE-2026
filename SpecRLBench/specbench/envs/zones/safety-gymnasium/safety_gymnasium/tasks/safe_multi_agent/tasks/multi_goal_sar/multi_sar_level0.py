@@ -222,9 +222,18 @@ class MultiGoalSARLevel0(BaseTask):
             for seg_idx, loc in enumerate(wall.locations):
                 layout[f'building{wall_idx}_ltl_wall{seg_idx}'] = np.asarray(loc, dtype=float)
 
+    def _clamp_building_placement_keepout(self) -> None:
+        buildings = self._building_geom()
+        if buildings is None or not buildings.placements:
+            return
+        buildings.keepout = border_placement_keepout(
+            self.building_margin, buildings.keepout,
+        )
+
     def _prepare_layout(self) -> None:
         if self._building_geom() is not None:
             self._clear_building_pinned_locations()
+            self._clamp_building_placement_keepout()
             self._build_placements_dict()
             self.random_generator.set_placements_info(
                 self.placements_conf.placements,

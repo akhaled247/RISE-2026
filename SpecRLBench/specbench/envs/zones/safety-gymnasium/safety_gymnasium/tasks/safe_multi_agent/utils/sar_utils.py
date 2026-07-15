@@ -81,6 +81,10 @@ def border_placements(side_length, margin):
     ]
     return boxes
 
+def border_placement_keepout(margin: float, keepout: float) -> float:
+    """Clamp keepout so border strips (thickness ``margin``) stay sampleable."""
+    return min(keepout, margin / 2.0 - 1e-3)
+
 def draw_border_placement(
         side_length: float, 
         margin: float, 
