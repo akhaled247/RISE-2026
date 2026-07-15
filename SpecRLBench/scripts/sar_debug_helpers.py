@@ -59,6 +59,14 @@ def _dist_to_nearest_casualty(task, agent_idx: int = 0):
     return None
 
 
+def _layout_xy(task, key: str):
+    layout = getattr(getattr(task, 'world_info', None), 'layout', None)
+    if layout and key in layout:
+        xy = np.asarray(layout[key], dtype=float)[:2]
+        return tuple(np.round(xy, 3))
+    return None
+
+
 def snapshot_positions(task, agent_idx: int = 0) -> dict:
     building_xy = entrapped_xy = agent_xy = None
     if hasattr(task, 'terracotta_buildings'):
@@ -74,17 +82,26 @@ def snapshot_positions(task, agent_idx: int = 0) -> dict:
     )
 
     cached = getattr(task, '_cached_building_locations', None)
-    cached0 = tuple(np.round(cached[0], 3)) if cached else None
+    if cached:
+        cached0 = tuple(np.round(cached[0], 3))
+    else:
+        cached0 = _layout_xy(task, 'terracotta_building0')
 
     entrapped_loc = None
     if hasattr(task, 'entrapped_casualtys'):
         locs = getattr(task.entrapped_casualtys, 'locations', None)
-        entrapped_loc = tuple(np.round(locs[0], 3)) if locs else None
+        if locs:
+            entrapped_loc = tuple(np.round(locs[0], 3))
+        else:
+            entrapped_loc = _layout_xy(task, 'entrapped_casualty0')
 
     building_loc = None
     if hasattr(task, 'terracotta_buildings'):
         locs = getattr(task.terracotta_buildings, 'locations', None)
-        building_loc = tuple(np.round(locs[0], 3)) if locs else None
+        if locs:
+            building_loc = tuple(np.round(locs[0], 3))
+        else:
+            building_loc = _layout_xy(task, 'terracotta_building0')
 
     return {
         'building_xy': None if building_xy is None else tuple(np.round(building_xy, 3)),

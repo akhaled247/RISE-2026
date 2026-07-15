@@ -42,13 +42,15 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
     
     def __init__(self, config) -> None:
         super().__init__(config=config)
+        for i in range(self.agent_num):
+            self._add_geoms(LtlWalls(name=f'building{i}_ltl_walls'))
         self._add_geoms(
             Walls(num=self.wall_count),
             Buildings(
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout*0.75,
                 num=self.agent_num,
-                keepout=0.0,
+                keepout=self.building_keepout,
                 placements=border_placements(
                     self.building_border_side_length,
                     self.building_margin,
@@ -56,7 +58,8 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
             Casualtys(
                 num=int(self.agent_num*self.entrapped_casualtys_frac),
                 category=list(Casualtys.CATEGORIES)[-1],
-                size=0.05),
+                size=0.05,
+                keepout=0.0),
         )
 
     def calculate_reward(self):
@@ -100,27 +103,25 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout*0.75,
                 num=self.agent_num,
-                keepout=0.0,
-                locations=self._cached_building_locations,
+                keepout=self.building_keepout,
+                placements=border_placements(
+                    self.building_border_side_length,
+                    self.building_margin,
+                ),
                 debug=False,
-                rots=self._cached_building_rots,
                     ))
         self._replace_geom(Casualtys(
                 category=list(Casualtys.CATEGORIES)[-1],
                 size=0.05,
                 num=int(self.agent_num * self.entrapped_casualtys_frac),
-                keepout=0.0,
-                locations=self._cached_building_locations))
+                keepout=0.0))
         
-        # set ltl walls to surround building geoms
         for i in range(self.agent_num):     
             self._replace_geom(LtlWalls(
                 name=f'building{i}_ltl_walls',
                 locate_factor=self.building_keepout*0.75,
                 size=self.building_keepout*0.75,
                 height=0.75,
-                locations=self._cached_building_locations[i],
-                rots=self._cached_building_rots,
                 collision_threshold=8.0))
             
         return super()._build()

@@ -141,6 +141,12 @@ def size_randomization(
 if TYPE_CHECKING:
     from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 
+
+def is_building_ltl_wall(name: str) -> bool:
+    """True for per-building perimeter walls, not the arena ``ltl_walls``."""
+    return name.startswith('building') and name.endswith('_ltl_walls')
+
+
 _CASUALTY_GEOM_NAMES = ('surface_casualtys', 'entrapped_casualtys')
 
 

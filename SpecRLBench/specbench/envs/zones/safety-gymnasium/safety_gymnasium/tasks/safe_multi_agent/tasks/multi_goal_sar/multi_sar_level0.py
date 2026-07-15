@@ -19,6 +19,7 @@ import mujoco
 import numpy as np
 
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
+from safety_gymnasium.tasks.safe_multi_agent.world import World
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import Walls
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.zones import Zones
@@ -184,57 +185,88 @@ class MultiGoalSARLevel0(BaseTask):
         ]
         wall.index = 0
 
-    def _sample_building_sites(self) -> None:
+    def _clear_building_pinned_locations(self) -> None:
         buildings = self._building_geom()
         if buildings is None:
             return
-        base_q = int(self.random_generator.choice(4))
+        buildings.locations = []
+        if hasattr(self, 'entrapped_casualtys'):
+            self.entrapped_casualtys.locations = []
+
+    def _sync_building_dependents_into_layout(self, layout: dict) -> None:
+        buildings = self._building_geom()
+        if buildings is None:
+            return
+
+        building_prefix = buildings.name[:-1]
+        self._cached_building_rots = self.random_generator.generate_rots(self.agent_num)
+        buildings.rots = list(self._cached_building_rots)
         self._cached_building_locations = [
-            draw_border_placement_from_loop(
-                self.building_border_side_length,
-                self.building_margin,
-                self.building_keepout,
-                (base_q + i) % 4,
-                self.random_generator,
-            )
+            np.asarray(layout[f'{building_prefix}{i}'], dtype=float)
             for i in range(self.agent_num)
         ]
-        self._cached_building_rots = self.random_generator.generate_rots(self.agent_num)
-        buildings.locations = list(self._cached_building_locations)
-        buildings.keepout = float(buildings.size) + 0.1
-        buildings.rots = list(self._cached_building_rots)
 
         if hasattr(self, 'entrapped_casualtys'):
-            self.entrapped_casualtys.locations = list(self._cached_building_locations)
+            for i in range(self.entrapped_casualtys.num):
+                layout[f'entrapped_casualty{i}'] = layout[f'{building_prefix}{i}'].copy()
 
-        for i in range(self.agent_num):
-            wall_name = f'building{i}_ltl_walls'
-            if hasattr(self, wall_name):
-                wall = getattr(self, wall_name)
-                wall.rots = list(self._cached_building_rots)
-                self._sync_building_ltl_wall_site(
-                    wall, self._cached_building_locations[i], self._cached_building_rots[i],
-                )
+        for name in self._geoms:
+            if not is_building_ltl_wall(name):
+                continue
+            wall_idx = int(name[len('building'):name.index('_ltl_walls')])
+            wall = getattr(self, name)
+            center_xy = layout[f'{building_prefix}{wall_idx}']
+            rot = self._cached_building_rots[wall_idx]
+            wall.rots = [rot] * wall.num
+            self._sync_building_ltl_wall_site(wall, center_xy, rot)
+            for seg_idx, loc in enumerate(wall.locations):
+                layout[f'building{wall_idx}_ltl_wall{seg_idx}'] = np.asarray(loc, dtype=float)
 
-    def reset(self) -> None:
-        self._sample_building_sites()
-        if self._building_geom() is not None and self.placements_conf.placements is not None:
+    def _prepare_layout(self) -> None:
+        if self._building_geom() is not None:
+            self._clear_building_pinned_locations()
             self._build_placements_dict()
             self.random_generator.set_placements_info(
                 self.placements_conf.placements,
                 self.placements_conf.extents,
                 self.placements_conf.margin,
             )
-        super().reset()
+        elif self.placements_conf.placements is None:
+            self._build_placements_dict()
+            self.random_generator.set_placements_info(
+                self.placements_conf.placements,
+                self.placements_conf.extents,
+                self.placements_conf.margin,
+            )
+        if self.random_generator.agent_num is None:
+            self.random_generator.agent_num = self.agent.agent_num
+        self.world_info.layout = self.random_generator.build_layout()
+        if self._building_geom() is not None:
+            self._sync_building_dependents_into_layout(self.world_info.layout)
+
+    def _fast_resample_layout(self) -> None:
+        self._prepare_layout()
+        self.world_info.world_config_dict = self._build_world_config(self.world_info.layout)
+        self._apply_layout_from_config()
+
+    def _build(self):
+        self._prepare_layout()
+        self.world_info.world_config_dict = self._build_world_config(self.world_info.layout)
+        if self.world is None:
+            self.world = World(self.agent, self._obstacles, self.world_info.world_config_dict)
+            self.world.reset()
+            self.world.build()
+        else:
+            self.world.reset(build=False)
+            self.world.rebuild(self.world_info.world_config_dict, state=False)
+            if self.viewer:
+                self._update_viewer(self.model, self.data)
 
     def _replace_geom(self, geom) -> None:
         """Update _geoms like _add_geoms but without duplicate registration checks."""
         self._geoms[geom.name] = geom
         setattr(self, geom.name, geom)
         geom.set_agent(self.agent)
-
-    def _build(self):
-        return super()._build()
 
     def try_lidar_ids(self, obstacle, obs, i):
         """pseudo_occluded lidar with per-instance line-of-sight (walls block view)."""
