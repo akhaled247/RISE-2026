@@ -15,12 +15,17 @@ render_mode = "human" if 'Vision' not in env_name else None
 env = make_env(env_name, render_mode=render_mode)
 # env = FlattenObservation(gym.make(env_name, render_mode="human"))
 obs, info = env.reset(seed=seed)
-for i in range(steps):
+done = False
+while not done:
     try:
         action = env.action_space.sample()
     except:
         action = {a: env.action_space(a).sample() for a in env.unwrapped.possible_agents}
     obs, reward, terminated, truncated, info = env.step(action)
+    if next(iter(reward.values()))>0: print(reward)
+    done = any(list(terminated.values())) or any(list(truncated.values()))
+    # print(f'terminated {any(list(terminated.values()))}')
+    # print(f'truncated {any(list(truncated.values()))}')
     # env.render()
 
     # if any(terminated.values()):

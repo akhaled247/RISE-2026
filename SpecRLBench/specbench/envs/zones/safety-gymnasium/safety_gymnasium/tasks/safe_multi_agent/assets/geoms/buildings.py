@@ -50,7 +50,7 @@ class Buildings(Geom):  # pylint: disable=too-many-instance-attributes
         self.group: int = GROUP['wall']
         self.is_lidar_observed: bool = True
         self.is_occluded: bool = False
-        self.is_lidar_ids_observed: bool = True
+        self.is_lidar_ids_observed: bool = False
         self.is_constrained: bool = True
         self.is_meshed: bool = False
 

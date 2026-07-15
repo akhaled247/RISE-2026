@@ -28,6 +28,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         self.num_lidar_bins = env.unwrapped.task.lidar_conf.num_bins
         self.sb3 = sb3
         self.prev_casualty_visible = False
+        self.prev_entered_building = False
 
         # Robustly handle both property and method for observation_space
         obs_space = env.observation_space
@@ -101,7 +102,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                         obs[a][f'entrapped_casualtys_lidar_{i}'].size,
                     )
 
-            # Casualty visibility logic
+            # Surface casualty visibility logic
             if (
                 f'surface_casualtys_lidar_{i}' in obs[a]
                 and max(obs[a][f'surface_casualtys_lidar_{i}']) != 0.0
@@ -110,6 +111,16 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 info['casualty_visible'] = True
                 self.prev_casualty_visible = True
                 # reward[a] += 1.0
+            
+            # Entrapped casualty visibility logic
+            if (
+                f'entrapped_casualtys_lidar_{i}' in obs[a]
+                and max(obs[a][f'entrapped_casualtys_lidar_{i}']) != 0.0
+                and not self.prev_entered_building
+            ):
+                info['casualty_visible'] = True
+                self.prev_entered_building = True
+                reward[a] += 1.0
                 
         # Collaborative SAR: end episode only when the full team mission is complete
         mission_complete = all(self.env.unwrapped.task.goal_achieved)

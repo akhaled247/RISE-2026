@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 
 # --- edit these before each run ---
-env_name = "PointLTL4MASAR1-v0"
+env_name = "PointLTL5MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 model_path = f"_models/ppo_{name_time}_{env_name}"
 vec_norm_path = f"{model_path}_vecnormalize.pkl"
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         train(
             seed=int(i), #Tested up to and including env 3 at home
             startup_log=False,
-            total_timesteps=5_000_000)
+            total_timesteps=1_000_000)
         eval_model(
             env_name=env_name,
             render_mode=None,

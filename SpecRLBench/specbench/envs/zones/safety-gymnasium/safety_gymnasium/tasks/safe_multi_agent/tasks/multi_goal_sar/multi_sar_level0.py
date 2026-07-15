@@ -99,10 +99,14 @@ class MultiGoalSARLevel0(BaseTask):
         return self.agent.dist_xy(agent_idx, casualty_pos)
 
     def _dist_to_casualtys(self, agent_idx: int) -> list[float]:
-        if not hasattr(self, 'surface_casualtys'):
-            return []
-        casualty_poses = (self.surface_casualtys.pos[i] for i in range(self.casualty_num))
-        return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
+        if hasattr(self, 'surface_casualtys'):
+            casualty_poses = (self.surface_casualtys.pos[i] for i in range(self.casualty_num))
+            return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
+        elif hasattr(self, 'entrapped_casualtys'):
+            casualty_poses = (self.entrapped_casualtys.pos[i] for i in range(self.casualty_num))
+            return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
+        return []
+            
 
     def build_observation_space(self) -> gymnasium.spaces.Dict:
         super().build_observation_space()
@@ -128,6 +132,7 @@ class MultiGoalSARLevel0(BaseTask):
             dists = self._dist_to_casualtys(i)
             min_dist = min(dists) if dists else 0.0
             if min_dist <= touch_threshold:
+                print("uhoh")
                 reward += self.reward_goal
             # else:
             #     reward += self.last_dist_casualty[i]-min_dist
