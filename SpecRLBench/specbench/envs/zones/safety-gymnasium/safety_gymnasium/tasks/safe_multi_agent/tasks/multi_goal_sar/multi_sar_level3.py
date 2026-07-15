@@ -34,11 +34,5 @@ class MultiGoalSARLevel3(MultiGoalSARLevel2):
     def update_world(self):
         pass
 
-    def _replace_geom(self, geom) -> None:
-        """Update _geoms like _add_geoms but without duplicate registration checks."""
-        self._geoms[geom.name] = geom
-        setattr(self, geom.name, geom)
-        geom.set_agent(self.agent)
-
     def _build(self):
         return super()._build()
