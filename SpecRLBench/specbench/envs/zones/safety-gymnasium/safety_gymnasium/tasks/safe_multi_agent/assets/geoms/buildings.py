@@ -24,7 +24,7 @@ class Buildings(Geom):  # pylint: disable=too-many-instance-attributes
     """Colored buildings."""
 
     COLORS = {
-        "terracotta": np.array([226, 125, 91, 255])/255,
+        "terracotta": np.array([0, 1, 0, 1]),
         "tan": np.array([0.8, 0.75, 0.6, 1.0]),
         "green": np.array([0, 1, 0, 1]),
         "red": np.array([1, 0, 0, 1]),

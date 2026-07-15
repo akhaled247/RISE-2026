@@ -24,6 +24,8 @@ while not done:
     obs, reward, terminated, truncated, info = env.step(action)
     if next(iter(reward.values()))>0: print(reward)
     done = any(list(terminated.values())) or any(list(truncated.values()))
+    # if info['agent_0']['cost_walls']>0: print(info['agent_0']['cost_walls'])
+    if reward['agent_0'] != 0: print(reward['agent_0'])
     # print(f'terminated {any(list(terminated.values()))}')
     # print(f'truncated {any(list(truncated.values()))}')
     # env.render()

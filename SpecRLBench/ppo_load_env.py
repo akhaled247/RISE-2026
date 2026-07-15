@@ -10,8 +10,6 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from tqdm import trange
 
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_env
@@ -21,12 +19,7 @@ name_time = datetime.now().strftime("%Y%m%d_%H%M")
 MODEL_PATH = f"_models/ppo_{name_time}_{env_name}"
 eval_episodes = 50
 s = 0
-render_mode = (
-    'human'
-    if os.environ.get('SAR_RENDER', '').lower() in ('1', 'true', 'yes')
-    else None
-)
-SAR_MAX_STEPS = int(os.environ.get('SAR_MAX_STEPS', '0'))
+render_mode = 'human'
 
 
 def eval_model(
@@ -60,7 +53,8 @@ def eval_model(
     rescues = []
 
     for episode in trange(eval_episodes):
-        obs = vec_env.reset(seed=seed)
+        vec_env.seed(seed)
+        obs = vec_env.reset()
 
         episode_reward = 0.0
         total_steps = 0
@@ -88,9 +82,6 @@ def eval_model(
             total_steps += 1
             done = bool(done[0])
 
-            if SAR_MAX_STEPS and total_steps >= SAR_MAX_STEPS:
-                break
-
         episode_rewards.append(episode_reward)
         totals_steps.append(total_steps)
         casualty_visible_step_0s.append(casualty_visible_step_0)
@@ -116,10 +107,10 @@ def eval_model(
     print(f"Mean reward:        {np.mean(episode_rewards):.3f} +/- {np.std(episode_rewards):.3f}")
     print(f"Rescue rate:        {rescue_count}/{eval_episodes} "
           f"({100 * rescue_count / eval_episodes:.1f}%)")
-    print(f"s0-Vis rescue %:    {sum(visible_step_0_rescues)}/{len(visible_step_0_rescues)} "
-          f"({100 * sum(visible_step_0_rescues) / len(visible_step_0_rescues):.1f}%)")
-    print(f"s0-Invis rescue %:  {sum(invisible_step_0_rescues)}/{len(invisible_step_0_rescues)} "
-          f"({100 * sum(invisible_step_0_rescues) / len(invisible_step_0_rescues):.1f}%)")
+    # print(f"s0-Vis rescue %:    {sum(visible_step_0_rescues)}/{len(visible_step_0_rescues)} "
+    #       f"({100 * sum(visible_step_0_rescues) / len(visible_step_0_rescues):.1f}%)")
+    # print(f"s0-Invis rescue %:  {sum(invisible_step_0_rescues)}/{len(invisible_step_0_rescues)} "
+    #       f"({100 * sum(invisible_step_0_rescues) / len(invisible_step_0_rescues):.1f}%)")
     print(f"Mean ep_len:        {np.mean(totals_steps):.3f} +/- {np.std(totals_steps):.3f}")
     return {
         "mean_reward": float(np.mean(episode_rewards)),
@@ -128,7 +119,7 @@ def eval_model(
 
 
 if __name__ == "__main__":
-    models = ["_models/ppo_20260715_1124_PointLTL5MASAR1-v0_0"]
+    models = ["_models/ppo_20260715_1623_PointLTL5MASAR1-v0_0"]
     for model in models:
         eval_model(
             env_name=env_name,

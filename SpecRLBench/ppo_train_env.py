@@ -16,8 +16,6 @@ from datetime import datetime
 # --- edit these before each run ---
 env_name = "PointLTL5MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
-model_path = f"_models/ppo_{name_time}_{env_name}"
-vec_norm_path = f"{model_path}_vecnormalize.pkl"
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
 
 
@@ -88,22 +86,23 @@ def train(
             f"_s{seed}"
         ),
     )
+
     model_path=f"_models/ppo_{name_time}_{env_name}_{seed}"
     vec_norm_path=f"{model_path}_vecnormalize.pkl"
     model.save(model_path)
     env.save(vec_norm_path)
     print(f"saved model: {model_path}.zip")
-    # print(f"saved vecnorm: {VEC_NORM_PATH}")
+    # print(f"saved vecnorm: {vec_norm_path}")
     env.close()
     return model_path, vec_norm_path
 
 
 if __name__ == "__main__":
     for i in range(1):
-        train(
+        model_path, vec_norm_path = train(
             seed=int(i), #Tested up to and including env 3 at home
             startup_log=True,
-            total_timesteps=2_500_000)
+            total_timesteps=5_000_000)
         eval_model(
             env_name=env_name,
             render_mode=None,

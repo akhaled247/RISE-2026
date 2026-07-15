@@ -50,12 +50,11 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
 
     def __post_init__(self) -> None:
         self.prev_contact = [False] * self.num
-        try:
-            self.h_index = int(re.search(r"\d+", self.name).group())
-            self.theta = self.rots[self.h_index]
+        if self.name.startswith('building') and self.name.endswith('_ltl_walls'):
             self.color = COLOR['terracotta']
-        except (TypeError, IndexError, AttributeError):
-            pass
+            self.h_index = int(re.search(r"\d+", self.name).group())
+            if self.rots is not None:
+                self.theta = self.rots[self.h_index]
         assert self.num in (2, 4)
         assert (
             self.locate_factor >= 0
