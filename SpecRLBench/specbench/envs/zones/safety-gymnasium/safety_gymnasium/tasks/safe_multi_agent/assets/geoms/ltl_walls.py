@@ -86,9 +86,17 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
         self.index += 1
         self.index %= self.num
 
+    def process_config(self, config, layout, rots):
+        self.index = 0
+        return super().process_config(config, layout, rots)
+
     def get_config(self, xy_pos, rot):  # pylint: disable=unused-argument
         """To facilitate get specific config for this object."""
-        rot = [np.arctan2(y - self.d_y, x - self.d_x) for x, y in self.locations][self.index]
+        xy_pos = np.asarray(xy_pos, dtype=float)
+        if self.name.startswith('building') and self.name.endswith('_ltl_walls'):
+            rot = float(np.arctan2(xy_pos[1] - self.d_y, xy_pos[0] - self.d_x))
+        else:
+            rot = [np.arctan2(y - self.d_y, x - self.d_x) for x, y in self.locations][self.index]
         body = {
             'name': self.name,
             'pos': np.r_[xy_pos, self.height],
