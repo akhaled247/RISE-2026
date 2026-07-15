@@ -109,7 +109,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             ):
                 info['casualty_visible'] = True
                 self.prev_casualty_visible = True
-                reward[a] += 1.0
+                # reward[a] += 1.0
                 
         # Collaborative SAR: end episode only when the full team mission is complete
         mission_complete = all(self.env.unwrapped.task.goal_achieved)
@@ -126,13 +126,17 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         return obs, reward, terminated, truncated, info
 
     def reset(
-            self, *, seed: int | None = None, options: dict[str, Any] | None = None,
+          self, *, seed: int | None = None, options: dict[str, Any] | None = None,
     ) -> tuple[WrapperObsType, dict[str, Any]]:
+        if seed is not None:
+            self._layout_seed = seed
+        elif hasattr(self, "_layout_seed"):
+            self._layout_seed += 0
+            seed = self._layout_seed
         obs, info = super().reset(seed=seed, options=options)
         info['propositions'] = []
         info['casualty_visible'] = False
         self.prev_casualty_visible = False
-        print(f"seed = {seed}")
         for i, a in enumerate(self.env.unwrapped.possible_agents):
             obs[a][f'wall_sensor_{i}'] = np.array([0, 0, 0, 0])
         self.env.unwrapped.task.original_obs = obs

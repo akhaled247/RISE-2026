@@ -6,6 +6,7 @@ import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from tqdm import trange, tqdm
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
@@ -16,9 +17,8 @@ from datetime import datetime
 
 # --- must match the train run ---
 env_name = "PointLTL4MASAR1-v0"
-run_num = 9
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
-MODEL_PATH = f"_models/ppo_{name_time}_{env_name}_run{run_num}"
+MODEL_PATH = f"_models/ppo_{name_time}_{env_name}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 eval_episodes = 50
 s = 0
@@ -33,7 +33,6 @@ def _get_task(vec_env):
 
 def eval_model(
     env_name: str = env_name,
-    run_num: int = run_num,
     render_mode=None,
     eval_episodes: int = eval_episodes,
     seed: int = s,
@@ -63,7 +62,7 @@ def eval_model(
     rescue_count = 0
     rescues = []
 
-    for episode in range(eval_episodes):
+    for episode in trange(eval_episodes):
         vec_env.seed(seed=seed)
         obs = vec_env.reset()
         episode_reward = 0.0
@@ -96,12 +95,12 @@ def eval_model(
         seed+=1
         if rescued:
             rescue_count += 1
-        print(
-            f"Episode {episode + 1}: reward={episode_reward:.3f} "
-            f"rescued={rescued} "
-            f"total_steps={total_steps} "
-            f"casualty_visible_step_0={casualty_visible_step_0} "
-        )
+        # print(
+        #     f"Episode {episode + 1}: reward={episode_reward:.3f} "
+        #     f"rescued={rescued} "
+        #     f"total_steps={total_steps} "
+        #     f"casualty_visible_step_0={casualty_visible_step_0} "
+        # )
 
     vec_env.close()
 
@@ -137,8 +136,7 @@ def eval_model(
 if __name__ == "__main__":
     eval_model(
         env_name=env_name,
-        run_num=run_num,
         render_mode=render_mode,
         eval_episodes=eval_episodes,
-        m_path="_models/ppo_20260714_1623_PointLTL4MASAR1-v0_run9"
+        m_path="_models/ppo_20260714_2053_PointLTL4MASAR1-v0"
     )

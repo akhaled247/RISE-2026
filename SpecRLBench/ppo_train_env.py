@@ -15,9 +15,8 @@ from datetime import datetime
 
 # --- edit these before each run ---
 env_name = "PointLTL4MASAR1-v0"
-run_num = 9  # INCREMENT EACH TIME <<Level4 = 9, Level0 = 13>>
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
-MODEL_PATH = f"_models/ppo_{name_time}_{env_name}_run{run_num}"
+MODEL_PATH = f"_models/ppo_{name_time}_{env_name}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
 TOTAL_TIMESTEPS = 1_000_000
@@ -25,8 +24,8 @@ seed = 0
 n_envs = 8
 ent_coef = 0.02
 learning_rate = 5e-5
-n_steps = 2048  # 512 Level0, 2048 Level4
-batch_size = 256
+n_steps = 1024  # 512 Level0, 2048 Level4
+batch_size = 128
 n_epochs = 10
 clip_range = 0.2
 
@@ -62,7 +61,8 @@ def train() -> tuple[str, str]:
         seed=seed,
         clip_range=clip_range,
     )
-
+    
+    env.seed(seed=seed)
     model.learn(
         total_timesteps=TOTAL_TIMESTEPS,
         progress_bar=True,
@@ -87,15 +87,11 @@ def train() -> tuple[str, str]:
 
 
 if __name__ == "__main__":
-    print(f"Make sure <<<run_num = {run_num}>>> is correct before continuing! Will continue in 7 seconds.")
     print(f"<<<{(n_steps*n_envs)/batch_size}>>> minibatches per rollout")
-    print(f"Policy will update <<<{TOTAL_TIMESTEPS//(n_steps*n_envs)}>>> times.")
-    time.sleep(7.0)
     train()
 
     eval_model(
         env_name=env_name,
-        run_num=run_num,
         render_mode="human",
         m_path=MODEL_PATH,
     )
