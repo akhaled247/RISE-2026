@@ -18,6 +18,7 @@ from dataclasses import field
 import numpy as np
 from safety_gymnasium.tasks.safe_multi_agent.assets.group import GROUP
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_object import Geom
+from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import _debug_log34211f
 
 
 class Buildings(Geom):  # pylint: disable=too-many-instance-attributes
@@ -64,6 +65,20 @@ class Buildings(Geom):  # pylint: disable=too-many-instance-attributes
 
     def get_config(self, xy_pos, rot):
         """To facilitate get specific config for this object."""
+        # #region agent log
+        _debug_log34211f(
+            'buildings.py:get_config',
+            'building box geom config',
+            {
+                'building_name': self.name,
+                'self_size': float(self.size),
+                'xy_pos': [float(xy_pos[0]), float(xy_pos[1])],
+                'alpha': float(self.alpha),
+                'output_size': [float(self.size), float(self.size), float(self.size * 3)],
+            },
+            'B',
+        )
+        # #endregion
         # Return a flat geom config (single geom), compatible with World.build
         geom = {
             'name': 'self.name',
