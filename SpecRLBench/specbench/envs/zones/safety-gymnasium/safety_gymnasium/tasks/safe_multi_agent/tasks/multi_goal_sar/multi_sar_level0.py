@@ -226,7 +226,7 @@ class MultiGoalSARLevel0(BaseTask):
     def _stash_ltl_wall_locations(self) -> dict:
         saved = {}
         for name in self._geoms:
-            if 'ltl_wall' not in name:
+            if not (name.startswith('building') and name.endswith('_ltl_walls')):
                 continue
             wall = getattr(self, name)
             locs = getattr(wall, 'locations', None)
@@ -289,6 +289,27 @@ class MultiGoalSARLevel0(BaseTask):
                     self._cached_building_rots[i],
                 )
 
+    def _apply_perimeter_ltl_wall_poses(self) -> None:
+        """Restore environment perimeter ltl_wall segments to fixed boundary corners."""
+        if not hasattr(self, 'ltl_walls'):
+            return
+        wall = self.ltl_walls
+        self._update_building_ltl_wall_site(wall, np.zeros(2), 0.0)
+        geoms_cfg = self.world_info.world_config_dict.get('geoms', {})
+        wall.index = 0
+        for j in range(wall.num):
+            wname = f'{wall.name[:-1]}{j}'
+            wloc = np.asarray(wall.locations[j], dtype=float)
+            wrot = float(np.arctan2(wloc[1] - wall.d_y, wloc[0] - wall.d_x))
+            self.world_info.layout[wname] = wloc.copy()
+            self._set_goal(wname, wloc)
+            self.model.body(wname).pos[2] = wall.height
+            self.model.body(wname).quat[:] = rot2quat(wrot)
+            if wname in geoms_cfg:
+                geoms_cfg[wname]['pos'][:2] = wloc
+                geoms_cfg[wname]['pos'][2] = wall.height
+                geoms_cfg[wname]['rot'] = wrot
+
     def _apply_cached_building_poses(self) -> None:
         """Move building/casualty/LTL-wall bodies after fast layout resample."""
         buildings = self._building_geom()
@@ -346,6 +367,7 @@ class MultiGoalSARLevel0(BaseTask):
         if self.placements_conf.placements is not None:
             self._refresh_layout_placements()
         super().reset()
+        self._apply_perimeter_ltl_wall_poses()
         self._apply_cached_building_poses()
 
     def _replace_geom(self, geom) -> None:
