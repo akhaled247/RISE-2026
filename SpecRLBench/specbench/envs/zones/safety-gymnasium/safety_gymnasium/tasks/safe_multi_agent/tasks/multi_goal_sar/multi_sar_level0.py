@@ -216,12 +216,19 @@ class MultiGoalSARLevel0(BaseTask):
         buildings.placements = self._building_border_placements()
         if hasattr(self, 'entrapped_casualtys'):
             self.entrapped_casualtys.locations = []
+
+    def _sync_ltl_wall_sites_from_cache(self) -> None:
+        """LtlWalls.get_config needs corner locations during world_config rebuild."""
+        if self._cached_building_locations is None:
+            return
         for i in range(self.agent_num):
             wall_name = f'building{i}_ltl_walls'
             if hasattr(self, wall_name):
-                wall = getattr(self, wall_name)
-                wall.locations = []
-                wall.placements = None
+                self._update_building_ltl_wall_site(
+                    getattr(self, wall_name),
+                    self._cached_building_locations[i],
+                    self._cached_building_rots[i],
+                )
 
     def _apply_cached_building_poses(self) -> None:
         """Move building/casualty/LTL-wall bodies after fast layout resample."""
@@ -276,6 +283,7 @@ class MultiGoalSARLevel0(BaseTask):
     def reset(self) -> None:
         self._resample_building_sites()
         self._release_fixed_building_layout()
+        self._sync_ltl_wall_sites_from_cache()
         super().reset()
         self._apply_cached_building_poses()
 
