@@ -25,13 +25,13 @@ def train(
         total_timesteps = 1_000_000,
         seed = 0,
         n_envs = 8,
-        ent_coef = 0.03,
-        learning_rate = 3e-5,
-        n_steps = 2048,  # 512 Level0, 2048 Level4
+        ent_coef = 0.02,
+        learning_rate = 5e-5,
+        n_steps = 2048,
         batch_size = 256,
-        n_epochs = 5,
+        n_epochs = 10,
         clip_range = 0.2,
-        target_kl = 0.03, #0.08
+        target_kl = 0.05, #0.08
         startup_log = True
 ) -> tuple[str, str]:
     rollout_steps = n_steps * n_envs
@@ -99,11 +99,11 @@ def train(
 
 
 if __name__ == "__main__":
-    for i in range(10):
+    for i in range(1):
         train(
             seed=int(i), #Tested up to and including env 3 at home
-            startup_log=False,
-            total_timesteps=1_000_000)
+            startup_log=True,
+            total_timesteps=2_500_000)
         eval_model(
             env_name=env_name,
             render_mode=None,

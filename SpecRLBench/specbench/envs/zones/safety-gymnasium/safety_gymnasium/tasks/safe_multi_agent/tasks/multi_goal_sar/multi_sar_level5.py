@@ -47,7 +47,11 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
             Buildings(
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout*0.75,
-                num=self.agent_num),
+                num=self.agent_num,
+                keepout=0.0,
+                placements=border_placements(
+                    self.building_border_side_length, 
+                    self.building_margin)),
             Casualtys(
                 num=int(self.agent_num*self.entrapped_casualtys_frac),
                 category=list(Casualtys.CATEGORIES)[-1],
@@ -98,17 +102,20 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
             self.building_keepout,
             i,
             self.random_generator
-            ) for i in range(self.agent_num)] if self._cached_building_locations is None else self._cached_building_locations
+            ) for i in range(self.agent_num)]
         self._cached_building_rots=self.random_generator.generate_rots(self.agent_num)
-        self._replace_geom(Buildings(
-                color=list(Buildings.COLORS)[0],
-                size=self.building_keepout*0.75,
-                num=self.agent_num,
-                keepout=0.0,
-                locations = self._cached_building_locations,
-                debug=False,
-                rots = self._cached_building_rots
-                    ))
+        # self._replace_geom(Buildings(
+        #         color=list(Buildings.COLORS)[0],
+        #         size=self.building_keepout*0.75,
+        #         num=self.agent_num,
+        #         keepout=0.0,
+        #         # locations = self._cached_building_locations,
+        #         placements=border_placements(
+        #             self.building_border_side_length, 
+        #             self.building_margin),
+        #         debug=False,
+        #         # rots = self._cached_building_rots
+        #             ))
         self._replace_geom(Casualtys(
                 category=list(Casualtys.CATEGORIES)[-1],
                 size=0.05,

@@ -124,6 +124,9 @@ class MultiGoalSARLevel0(BaseTask):
         touch_threshold = 0.0
         if hasattr(self, 'surface_casualtys'):
             touch_threshold = self.surface_casualtys.size + 0.15
+        if hasattr(self, 'entrapped_casualtys'):
+            touch_threshold = self.entrapped_casualtys.size + 0.15
+
         for i in range(self.agent_num):
             a = f'agent_{i}'
             reward = self.time_alive_decay
@@ -132,7 +135,7 @@ class MultiGoalSARLevel0(BaseTask):
             dists = self._dist_to_casualtys(i)
             min_dist = min(dists) if dists else 0.0
             if min_dist <= touch_threshold:
-                print("uhoh")
+                # print("uhoh")
                 reward += self.reward_goal
             # else:
             #     reward += self.last_dist_casualty[i]-min_dist
@@ -169,7 +172,11 @@ class MultiGoalSARLevel0(BaseTask):
         """pseudo_occluded lidar with per-instance line-of-sight (walls block view)."""
         want_ids = getattr(obstacle, 'is_lidar_ids_observed', False)
         is_occluded = getattr(obstacle, 'is_occluded', True)
-        if want_ids and self.lidar_conf.type == 'pseudo_occluded':
+        if (
+            hasattr(obstacle, 'is_lidar_ids_observed')
+            and obstacle.is_lidar_ids_observed
+            and self.lidar_conf.type == 'pseudo_occluded'
+        ):
             lidar, lidar_ids = self._obs_lidar_pseudo_occluded_new(
                 i, obstacle, return_ids=True,
             )
