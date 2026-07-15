@@ -15,7 +15,6 @@
 
 from dataclasses import dataclass
 import re
-from types import NoneType
 
 import numpy as np
 from safety_gymnasium.tasks.safe_multi_agent.assets.color import COLOR
@@ -55,14 +54,13 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
             self.h_index = int(re.search(r"\d+", self.name).group())
             self.theta = self.rots[self.h_index]
             self.color = COLOR['terracotta']
-        except Exception as e:
+        except (TypeError, IndexError, AttributeError):
             pass
         assert self.num in (2, 4)
         assert (
             self.locate_factor >= 0
         ), 'For cost calculation, the locate_factor must be greater than or equal to zero.'
-        # print(f"LOCATIONS: {self.locations}") Good
-        
+
         if self.locations is not None:
             self.d_x, self.d_y = self.locations[0], self.locations[1]
 
@@ -72,7 +70,6 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
             (self.d_x, self.locate_factor+self.d_y),
             (self.d_x, -self.locate_factor+self.d_y),
         ]
-        # print(f"LOCATIONS: {self.locations}") Good
 
         cos_t, sin_t = np.cos(self.theta), np.sin(self.theta)
         self.locations = [
@@ -82,7 +79,6 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
             )
             for x, y in self.locations
         ]
-        # print(f"LOCATIONS: {self.locations}") Good
         self.index: int = 0
 
     def index_tick(self):
@@ -121,7 +117,7 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
                 pos[1] <= -self.collision_threshold
             cost[f'agent_{i}'] = {
                 f'wall_sensor': self.wall_sensor(pos[0], pos[1]),
-                f'cost_ltl_walls': cond * 1 #(not self.prev_contact[i])
+                f'cost_ltl_walls': cond * 1,
             }
             self.prev_contact[i] = cond
         return cost

@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import numpy as np
-from safety_gymnasium.tasks.safe_multi_agent.utils.random_generator import RandomGenerator
 from typing import TYPE_CHECKING
 
 
@@ -26,23 +25,6 @@ def ring_locations(radius: float, n: int) -> list[tuple[float, float]]:
     """Fixed (x, y) centers evenly spaced on a circle."""
     angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
     return [(float(radius * np.cos(theta)), float(radius * np.sin(theta))) for theta in angles]
-
-def draw_ring_placement(
-        radius: float,
-        n: int, 
-        margin: float, 
-        keepout: float,
-        random_generator: RandomGenerator):
-    """
-    Generates `num` amount of locations based on a specified border around the origin
-
-    Returns: A list of (x, y) locations from the `random_generator` that can be used
-    when updating locations in the `_build()` method of a task.
-    """
-    return random_generator.draw_placement(
-            placements=ring_placements(radius, n, margin, keepout), 
-            keepout=keepout
-            )
 
 def ring_placements(
     radius: float,
@@ -85,39 +67,6 @@ def border_placement_keepout(margin: float, keepout: float) -> float:
     """Clamp keepout so border strips (thickness ``margin``) stay sampleable."""
     return min(keepout, margin / 2.0 - 1e-3)
 
-def draw_border_placement(
-        side_length: float, 
-        margin: float, 
-        keepout: float,
-        random_generator: RandomGenerator):
-    """
-    Generates `num` amount of locations based on a specified border around the origin
-
-    Returns: A list of (x, y) locations from the `random_generator` that can be used
-    when updating locations in the `_build()` method of a task.
-    """
-    return random_generator.draw_placement(
-            placements=border_placements(side_length, margin), 
-            keepout=keepout
-            )
-
-def draw_border_placement_from_loop(
-        side_length: float, 
-        margin: float, 
-        keepout: float,
-        quadrant_index: int, 
-        random_generator: RandomGenerator):
-    """
-    Sample one (x, y) on a single border quadrant around the origin.
-
-    Returns: A (x, y) location from the `random_generator` that can be used
-    when updating locations in the `_build()` method of a task.
-    """
-    return random_generator.draw_placement(
-            placements=[border_placements(side_length, margin)[quadrant_index % 4]], 
-            keepout=keepout
-            )
-
 def size_randomization(
     base_half_sizes: list,
     n: int,
@@ -144,6 +93,7 @@ def size_randomization(
 
 if TYPE_CHECKING:
     from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
+    from safety_gymnasium.tasks.safe_multi_agent.utils.random_generator import RandomGenerator
 
 
 def is_building_ltl_wall(name: str) -> bool:

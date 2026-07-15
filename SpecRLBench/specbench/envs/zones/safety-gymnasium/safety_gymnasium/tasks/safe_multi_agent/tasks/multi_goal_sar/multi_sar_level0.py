@@ -22,16 +22,17 @@ from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 from safety_gymnasium.tasks.safe_multi_agent.world import World
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import Walls
-from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.zones import Zones
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Buildings
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
-from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import *
-from safety_gymnasium.tasks.safe_multi_agent import agents
-from safety_gymnasium.tasks.safe_multi_agent.bases.base_object import Geom
+from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
+    border_placement_keepout,
+    border_placements,
+    is_building_ltl_wall,
+    mission_goal_achieved,
+)
 
 
-CASUALTY_KEEPOUT = 0.2
 class MultiGoalSARLevel0(BaseTask):
     """Multi-agent zone navigation with optional ring-placed interior walls."""
 
@@ -53,7 +54,6 @@ class MultiGoalSARLevel0(BaseTask):
 
     def __init__(self, config) -> None:
         self._cached_wall_half_sizes = None
-        self._cached_building_locations = None
         self._cached_building_rots = None
         super().__init__(config=config)
 
@@ -136,10 +136,7 @@ class MultiGoalSARLevel0(BaseTask):
             dists = self._dist_to_casualtys(i)
             min_dist = min(dists) if dists else 0.0
             if min_dist <= touch_threshold:
-                # print("uhoh")
                 reward += self.reward_goal
-            # else:
-            #     reward += self.last_dist_casualty[i]-min_dist
             self.last_dist_casualty[i] = min_dist
 
             rewards[a] = reward
@@ -153,12 +150,6 @@ class MultiGoalSARLevel0(BaseTask):
             self.entrapped_casualtys.rescued = [False] * self.entrapped_casualtys.num
         self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
         return super().specific_reset()
-
-    def specific_step(self):
-        return super().specific_step()
-
-    def update_world(self):
-        pass
 
     def _building_geom(self):
         for name in self._geoms:
@@ -201,10 +192,6 @@ class MultiGoalSARLevel0(BaseTask):
         building_prefix = buildings.name[:-1]
         self._cached_building_rots = self.random_generator.generate_rots(self.agent_num)
         buildings.rots = list(self._cached_building_rots)
-        self._cached_building_locations = [
-            np.asarray(layout[f'{building_prefix}{i}'], dtype=float)
-            for i in range(self.agent_num)
-        ]
 
         if hasattr(self, 'entrapped_casualtys'):
             for i in range(self.entrapped_casualtys.num):
@@ -217,10 +204,7 @@ class MultiGoalSARLevel0(BaseTask):
             wall = getattr(self, name)
             center_xy = layout[f'{building_prefix}{wall_idx}']
             rot = self._cached_building_rots[wall_idx]
-            wall.rots = [rot] * wall.num
-            wall.theta = float(rot)
             self._sync_building_ltl_wall_site(wall, center_xy, rot)
-            wall.index = 0
             for seg_idx, loc in enumerate(wall.locations):
                 layout[f'building{wall_idx}_ltl_wall{seg_idx}'] = np.asarray(loc, dtype=float)
 
@@ -279,9 +263,31 @@ class MultiGoalSARLevel0(BaseTask):
         setattr(self, geom.name, geom)
         geom.set_agent(self.agent)
 
+    def _replace_border_buildings(self, num=None) -> None:
+        self._replace_geom(Buildings(
+            color=list(Buildings.COLORS)[0],
+            size=self.building_keepout * 0.75,
+            num=self.agent_num if num is None else num,
+            keepout=self.building_keepout,
+            placements=border_placements(
+                self.building_border_side_length,
+                self.building_margin,
+            ),
+        ))
+
+    def _replace_building_perimeter_walls(self) -> None:
+        factor = self.building_keepout * 0.75
+        for i in range(self.agent_num):
+            self._replace_geom(LtlWalls(
+                name=f'building{i}_ltl_walls',
+                locate_factor=factor,
+                size=factor,
+                height=0.75,
+                collision_threshold=8.0,
+            ))
+
     def try_lidar_ids(self, obstacle, obs, i):
         """pseudo_occluded lidar with per-instance line-of-sight (walls block view)."""
-        want_ids = getattr(obstacle, 'is_lidar_ids_observed', False)
         is_occluded = getattr(obstacle, 'is_occluded', True)
         if (
             hasattr(obstacle, 'is_lidar_ids_observed')
