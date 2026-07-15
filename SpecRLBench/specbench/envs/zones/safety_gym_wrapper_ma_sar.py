@@ -132,7 +132,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         info['propositions'] = []
         info['casualty_visible'] = False
         self.prev_casualty_visible = False
-
+        print(f"seed = {seed}")
         for i, a in enumerate(self.env.unwrapped.possible_agents):
             obs[a][f'wall_sensor_{i}'] = np.array([0, 0, 0, 0])
         self.env.unwrapped.task.original_obs = obs

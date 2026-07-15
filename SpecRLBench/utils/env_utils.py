@@ -60,7 +60,7 @@ class ThroughputCallback(BaseCallback):
         self._last_steps = self.num_timesteps
 
 
-def make_env(env_name, render_mode=None, sb3=False):
+def make_env(env_name, render_mode=None, sb3=False, seed=None):
     if env_name.startswith("Letter"):
         env = gym.make(env_name, disable_env_checker=True, render_mode=render_mode)
     elif env_name.startswith("Panda"):

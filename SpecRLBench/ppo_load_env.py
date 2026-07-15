@@ -21,8 +21,8 @@ name_time = datetime.now().strftime("%Y%m%d_%H%M")
 MODEL_PATH = f"_models/ppo_{name_time}_{env_name}_run{run_num}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 eval_episodes = 50
-seed = 0
-render_mode=None
+s = 0
+render_mode='human'
 
 def _get_task(vec_env):
     base = vec_env.venv.envs[0]
@@ -36,7 +36,7 @@ def eval_model(
     run_num: int = run_num,
     render_mode=None,
     eval_episodes: int = eval_episodes,
-    seed: int = seed,
+    seed: int = s,
     deterministic: bool = True,
     m_path: str = None
 ):
@@ -64,6 +64,7 @@ def eval_model(
     rescues = []
 
     for episode in range(eval_episodes):
+        vec_env.seed(seed=seed)
         obs = vec_env.reset()
         episode_reward = 0.0
         total_steps = 0
@@ -92,6 +93,7 @@ def eval_model(
         totals_steps.append(total_steps)
         casualty_visible_step_0s.append(casualty_visible_step_0)
         rescues.append(int(rescued))
+        seed+=1
         if rescued:
             rescue_count += 1
         print(

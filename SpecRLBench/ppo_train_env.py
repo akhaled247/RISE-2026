@@ -44,6 +44,7 @@ def train() -> tuple[str, str]:
 
     env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
     print("Warming up vector envs...")
+    env.seed(seed=seed)
     env.reset()
 
     model = PPO(
