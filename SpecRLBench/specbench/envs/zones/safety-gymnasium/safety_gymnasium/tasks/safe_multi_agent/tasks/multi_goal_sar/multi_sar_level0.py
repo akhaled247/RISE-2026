@@ -328,15 +328,16 @@ class MultiGoalSARLevel0(BaseTask):
             {
                 'agent_num': self.agent_num,
                 'building_num': self.building_num,
-                'loop_range': self.agent_num,
+                'loop_range': wall_count,
                 'expected_wall_count': wall_count,
                 'registered_building_walls': building_wall_names,
                 'factor': factor,
             },
             'A',
+            run_id='post-fix',
         )
         # #endregion
-        for i in range(self.agent_num):
+        for i in range(wall_count):
             self._replace_geom(LtlWalls(
                 name=f'building{i}_ltl_walls',
                 locate_factor=factor,
@@ -355,9 +356,10 @@ class MultiGoalSARLevel0(BaseTask):
                     'size': float(wall.size),
                     'locate_factor': float(wall.locate_factor),
                     'height': float(wall.height),
-                    'was_replaced': name in {f'building{i}_ltl_walls' for i in range(self.agent_num)},
+                    'was_replaced': name in {f'building{i}_ltl_walls' for i in range(wall_count)},
                 },
                 'A',
+                run_id='post-fix',
             )
         # #endregion
 
