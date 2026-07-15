@@ -26,6 +26,7 @@ from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Build
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import *
+from safety_gymnasium.tasks.safe_multi_agent.utils.common_utils import rot2quat
 from safety_gymnasium.tasks.safe_multi_agent import agents
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_object import Geom
 
@@ -211,16 +212,58 @@ class MultiGoalSARLevel0(BaseTask):
                     self._cached_building_locations[i],
                     self._cached_building_rots[i],
                 )
-        self._build_placements_dict()
-        self.random_generator.set_placements_info(
-            self.placements_conf.placements,
-            self.placements_conf.extents,
-            self.placements_conf.margin,
-        )
+
+    def _apply_cached_building_poses(self) -> None:
+        """Move building/casualty/LTL-wall bodies after fast layout resample."""
+        buildings = self._building_geom()
+        if buildings is None or self._cached_building_locations is None:
+            return
+        geoms_cfg = self.world_info.world_config_dict.get('geoms', {})
+        for i in range(self.agent_num):
+            loc = np.asarray(self._cached_building_locations[i], dtype=float)
+            rot = self._cached_building_rots[i]
+
+            bname = f'{buildings.name[:-1]}{i}'
+            self.world_info.layout[bname] = loc[:2].copy()
+            self._set_goal(bname, loc[:2])
+            if bname in geoms_cfg:
+                geoms_cfg[bname]['pos'][:2] = loc[:2]
+                geoms_cfg[bname]['rot'] = rot
+                self.model.body(bname).quat[:] = rot2quat(rot)
+
+            if hasattr(self, 'entrapped_casualtys'):
+                cname = f'{self.entrapped_casualtys.name[:-1]}{i}'
+                self.world_info.layout[cname] = loc[:2].copy()
+                self._set_goal(cname, loc[:2])
+                if cname in geoms_cfg:
+                    geoms_cfg[cname]['pos'][:2] = loc[:2]
+
+            wall_attr = f'building{i}_ltl_walls'
+            if hasattr(self, wall_attr):
+                wall = getattr(self, wall_attr)
+                self._update_building_ltl_wall_site(wall, loc, rot)
+                wall.index = 0
+                for j in range(wall.num):
+                    wname = f'{wall.name[:-1]}{j}'
+                    wloc = np.asarray(wall.locations[j], dtype=float)
+                    wrot = float(np.arctan2(wloc[1] - wall.d_y, wloc[0] - wall.d_x))
+                    self.world_info.layout[wname] = wloc.copy()
+                    self._set_goal(wname, wloc)
+                    self.model.body(wname).pos[2] = wall.height
+                    self.model.body(wname).quat[:] = rot2quat(wrot)
+                    if wname in geoms_cfg:
+                        geoms_cfg[wname]['pos'][:2] = wloc
+                        geoms_cfg[wname]['pos'][2] = wall.height
+                        geoms_cfg[wname]['rot'] = wrot
+
+        mujoco.mj_forward(self.model, self.data)  # pylint: disable=no-member
 
     def reset(self) -> None:
         self._resample_building_sites()
+        had_world = self.world is not None
         super().reset()
+        if had_world:
+            self._apply_cached_building_poses()
 
     def _replace_geom(self, geom) -> None:
         """Update _geoms like _add_geoms but without duplicate registration checks."""
