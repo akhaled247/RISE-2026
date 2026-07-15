@@ -30,8 +30,15 @@ MODEL_PATH = f"_models/ppo_{name_time}_{env_name}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 eval_episodes = 50
 s = 0
-render_mode='human'
 SAR_DEBUG = os.environ.get('SAR_DEBUG', '').lower() in ('1', 'true', 'yes')
+# human render blocks on headless SSH; use SAR_RENDER=1 for local GUI
+render_mode = (
+    'human'
+    if os.environ.get('SAR_RENDER', '').lower() in ('1', 'true', 'yes')
+    else None
+)
+SAR_MAX_STEPS = int(os.environ.get('SAR_MAX_STEPS', '0'))  # 0 = env limit (2500 for SAR)
+SAR_DEBUG_STEP_LOG = int(os.environ.get('SAR_DEBUG_STEP_LOG', '250'))
 
 def _get_task(vec_env):
     base = vec_env.venv.envs[0]
@@ -97,21 +104,38 @@ def eval_model(
             
             if any("cost_casualtys_surface" in k for k in prop_keys):
                 rescued = True
+            if any("cost_casualtys_entrapped" in k for k in prop_keys):
+                rescued = True
 
             r0 = float(reward[0])
             if SAR_DEBUG and r0 > 0:
                 attr = reward_attribution(task, r0, info[0])
+                dist_cas = attr['dist_agent_casualty']
+                dist_cas_s = f'{dist_cas:.3f}' if dist_cas is not None else 'n/a'
                 print(
                     f'  REWARD ep={episode} step={total_steps} vec={attr["vec_reward"]:.3f} '
                     f'task={attr["task_reward"]:.3f} wrapper={attr["wrapper_bonus"]:.3f} '
-                    f'dist_cas={attr["dist_agent_casualty"]:.3f} '
+                    f'dist_cas={dist_cas_s} '
                     f'inside={attr["inside_building_cost"]} '
                     f'lidar_max={attr["entrapped_lidar_max"]} props={attr["propositions"]}'
                 )
+            elif SAR_DEBUG and SAR_DEBUG_STEP_LOG and total_steps > 0 and total_steps % SAR_DEBUG_STEP_LOG == 0:
+                print(f'  step ep={episode} t={total_steps} r_sum={episode_reward + r0:.3f} done={done[0]}')
 
             episode_reward += r0
             total_steps += 1
             done = bool(done[0])
+
+            if SAR_MAX_STEPS and total_steps >= SAR_MAX_STEPS:
+                if SAR_DEBUG:
+                    print(f'  EP_TRUNC ep={episode} SAR_MAX_STEPS={SAR_MAX_STEPS} reached')
+                break
+
+        if SAR_DEBUG:
+            print(
+                f'EP_DONE ep={episode} steps={total_steps} reward={episode_reward:.3f} '
+                f'rescued={rescued}'
+            )
 
         episode_rewards.append(episode_reward)
         totals_steps.append(total_steps)

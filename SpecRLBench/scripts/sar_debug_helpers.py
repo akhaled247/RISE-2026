@@ -22,7 +22,7 @@ def get_sb3_wrapper(vec_env):
     """Return SafetyGymWrapperMASAR (sb3=True) — not raw Builder."""
     env = vec_env.venv.envs[0] if hasattr(vec_env, 'venv') else vec_env.envs[0]
     while env is not None:
-        if getattr(env, 'sb3', False):
+        if env.__class__.__name__ == 'SafetyGymWrapperMASAR':
             return env
         env = getattr(env, 'env', None)
     raise RuntimeError('SafetyGymWrapperMASAR (sb3=True) not found in vec stack')
@@ -50,6 +50,15 @@ def touch_threshold(task) -> float:
     return 0.0
 
 
+def _dist_to_nearest_casualty(task, agent_idx: int = 0):
+    if hasattr(task, '_dist_to_casualtys'):
+        dists = task._dist_to_casualtys(agent_idx)
+        return min(dists) if dists else None
+    if hasattr(task, '_dist_to_casualty'):
+        return task._dist_to_casualty(agent_idx)
+    return None
+
+
 def snapshot_positions(task, agent_idx: int = 0) -> dict:
     building_xy = entrapped_xy = agent_xy = None
     if hasattr(task, 'terracotta_buildings'):
@@ -58,7 +67,7 @@ def snapshot_positions(task, agent_idx: int = 0) -> dict:
         entrapped_xy = task.entrapped_casualtys.pos[0][:2].copy()
     agent_xy = np.asarray(task.agent.get_agent_pos(agent_idx)[:2], dtype=float)
 
-    dist_casualty = task._dist_to_casualty(0) if hasattr(task, '_dist_to_casualty') else None
+    dist_casualty = _dist_to_nearest_casualty(task, agent_idx)
     dist_building = (
         float(np.linalg.norm(agent_xy - building_xy))
         if building_xy is not None else None
@@ -124,7 +133,7 @@ def reward_attribution(task, vec_reward: float, info: dict) -> dict:
         'entrapped_lidar_max': entrapped_lidar_max,
         'propositions': list(props),
         'inside_building_cost': inside_building_cost(task),
-        'dist_agent_casualty': task._dist_to_casualty(0),
+        'dist_agent_casualty': _dist_to_nearest_casualty(task, 0),
         'touch_threshold': touch_threshold(task),
     }
 
