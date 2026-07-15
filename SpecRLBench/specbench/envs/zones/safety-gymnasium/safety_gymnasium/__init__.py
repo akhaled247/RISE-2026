@@ -409,7 +409,6 @@ multi_goal_sar_tasks = {
     'LTL2MASAR2': {'agent_num': 2},
     'LTL3MASAR2': {'agent_num': 2},
     'LTL3MASAR5': {'agent_num': 5}, # == 'LTLMASAR5'
-
 }
 sar_robots = ['Point']
 __combine_multi(multi_goal_sar_tasks, sar_robots, max_episode_steps=2500)

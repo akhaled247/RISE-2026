@@ -16,7 +16,7 @@ from utils.env_utils import make_env
 from datetime import datetime
 
 # --- must match the train run ---
-env_name = "PointLTL4MASAR1-v0"
+env_name = "PointLTL5MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 MODEL_PATH = f"_models/ppo_{name_time}_{env_name}"
 VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
@@ -134,7 +134,7 @@ def eval_model(
 
 
 if __name__ == "__main__":
-    models = ["_models/ppo_20260714_1623_PointLTL4MASAR1-v0_run9"]
+    models = ["_models/ppo_20260715_1124_PointLTL5MASAR1-v0_0"]
     for model in models:
         eval_model(
             env_name=env_name,
