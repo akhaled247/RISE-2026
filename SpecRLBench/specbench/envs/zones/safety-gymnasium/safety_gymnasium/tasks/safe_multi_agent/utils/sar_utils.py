@@ -101,16 +101,16 @@ def draw_border_placement_from_loop(
         side_length: float, 
         margin: float, 
         keepout: float,
-        i: int, 
+        quadrant_index: int, 
         random_generator: RandomGenerator):
     """
-    Generates `num` amount of locations based on a specified border around the origin
+    Sample one (x, y) on a single border quadrant around the origin.
 
-    Returns: A list of (x, y) locations from the `random_generator` that can be used
+    Returns: A (x, y) location from the `random_generator` that can be used
     when updating locations in the `_build()` method of a task.
     """
     return random_generator.draw_placement(
-            placements=[border_placements(side_length, margin)[i%4]], 
+            placements=[border_placements(side_length, margin)[quadrant_index % 4]], 
             keepout=keepout
             )
 

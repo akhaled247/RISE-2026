@@ -187,12 +187,13 @@ class MultiGoalSARLevel0(BaseTask):
         buildings = self._building_geom()
         if buildings is None:
             return
+        base_quadrant = int(self.random_generator.choice(4))
         self._cached_building_locations = [
             draw_border_placement_from_loop(
                 self.building_border_side_length,
                 self.building_margin,
                 self.building_keepout,
-                i,
+                (base_quadrant + i) % 4,
                 self.random_generator,
             )
             for i in range(self.agent_num)
@@ -210,6 +211,12 @@ class MultiGoalSARLevel0(BaseTask):
                     self._cached_building_locations[i],
                     self._cached_building_rots[i],
                 )
+        self._build_placements_dict()
+        self.random_generator.set_placements_info(
+            self.placements_conf.placements,
+            self.placements_conf.extents,
+            self.placements_conf.margin,
+        )
 
     def reset(self) -> None:
         self._resample_building_sites()
