@@ -112,7 +112,7 @@ class MultiGoalSARLevel5(MultiGoalSARLevel0):
         self._replace_geom(Casualtys(
                 category=list(Casualtys.CATEGORIES)[-1],
                 size=0.05,
-                num=self.agent_num//2,
+                num=int(self.agent_num * self.entrapped_casualtys_frac),
                 keepout=0.0,
                 locations = self._cached_building_locations))
         

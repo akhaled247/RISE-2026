@@ -151,6 +151,8 @@ def all_casualties_rescued(task: BaseTask) -> bool:
         if not hasattr(task, attr):
             continue
         geom = getattr(task, attr)
+        if geom.num <= 0:
+            continue
         found_any = True
         if not all(geom.rescued):
             return False
