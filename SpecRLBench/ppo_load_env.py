@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import os
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
@@ -10,9 +11,16 @@ from tqdm import trange, tqdm
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_env
+from sar_debug_helpers import (
+    format_snapshot,
+    reset_vec_with_layout_seed,
+    reward_attribution,
+    snapshot_positions,
+)
 from datetime import datetime
 
 # --- must match the train run ---
@@ -23,6 +31,7 @@ VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
 eval_episodes = 50
 s = 0
 render_mode='human'
+SAR_DEBUG = os.environ.get('SAR_DEBUG', '').lower() in ('1', 'true', 'yes')
 
 def _get_task(vec_env):
     base = vec_env.venv.envs[0]
@@ -63,8 +72,13 @@ def eval_model(
     rescues = []
 
     for episode in trange(eval_episodes):
-        vec_env.seed(seed=seed)
-        obs = vec_env.reset()
+        if SAR_DEBUG:
+            obs, _ = reset_vec_with_layout_seed(vec_env, seed)
+            snap = snapshot_positions(task)
+            print(format_snapshot(episode, snap, 'EP_RESET '))
+        else:
+            obs = reset_vec_with_layout_seed(vec_env, seed)[0]
+
         episode_reward = 0.0
         total_steps = 0
         rescued = False
@@ -84,7 +98,18 @@ def eval_model(
             if any("cost_casualtys_surface" in k for k in prop_keys):
                 rescued = True
 
-            episode_reward += float(reward[0])
+            r0 = float(reward[0])
+            if SAR_DEBUG and r0 > 0:
+                attr = reward_attribution(task, r0, info[0])
+                print(
+                    f'  REWARD ep={episode} step={total_steps} vec={attr["vec_reward"]:.3f} '
+                    f'task={attr["task_reward"]:.3f} wrapper={attr["wrapper_bonus"]:.3f} '
+                    f'dist_cas={attr["dist_agent_casualty"]:.3f} '
+                    f'inside={attr["inside_building_cost"]} '
+                    f'lidar_max={attr["entrapped_lidar_max"]} props={attr["propositions"]}'
+                )
+
+            episode_reward += r0
             total_steps += 1
             done = bool(done[0])
 

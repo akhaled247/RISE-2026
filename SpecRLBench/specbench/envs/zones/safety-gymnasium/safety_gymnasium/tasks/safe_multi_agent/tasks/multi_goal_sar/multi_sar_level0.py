@@ -165,6 +165,25 @@ class MultiGoalSARLevel0(BaseTask):
                 return getattr(self, name)
         return None
 
+    def _sync_building_ltl_wall_site(self, wall, center_xy, rot) -> None:
+        wall.d_x, wall.d_y = float(center_xy[0]), float(center_xy[1])
+        wall.theta = float(rot)
+        wall.locations = [
+            (wall.locate_factor + wall.d_x, wall.d_y),
+            (-wall.locate_factor + wall.d_x, wall.d_y),
+            (wall.d_x, wall.locate_factor + wall.d_y),
+            (wall.d_x, -wall.locate_factor + wall.d_y),
+        ]
+        cos_t, sin_t = np.cos(wall.theta), np.sin(wall.theta)
+        wall.locations = [
+            (
+                (x - wall.d_x) * cos_t - (y - wall.d_y) * sin_t + wall.d_x,
+                (x - wall.d_x) * sin_t + (y - wall.d_y) * cos_t + wall.d_y,
+            )
+            for x, y in wall.locations
+        ]
+        wall.index = 0
+
     def _sample_building_sites(self) -> None:
         buildings = self._building_geom()
         if buildings is None:
@@ -183,6 +202,19 @@ class MultiGoalSARLevel0(BaseTask):
         self._cached_building_rots = self.random_generator.generate_rots(self.agent_num)
         buildings.locations = list(self._cached_building_locations)
         buildings.keepout = float(buildings.size) + 0.1
+        buildings.rots = list(self._cached_building_rots)
+
+        if hasattr(self, 'entrapped_casualtys'):
+            self.entrapped_casualtys.locations = list(self._cached_building_locations)
+
+        for i in range(self.agent_num):
+            wall_name = f'building{i}_ltl_walls'
+            if hasattr(self, wall_name):
+                wall = getattr(self, wall_name)
+                wall.rots = list(self._cached_building_rots)
+                self._sync_building_ltl_wall_site(
+                    wall, self._cached_building_locations[i], self._cached_building_rots[i],
+                )
 
     def reset(self) -> None:
         self._sample_building_sites()

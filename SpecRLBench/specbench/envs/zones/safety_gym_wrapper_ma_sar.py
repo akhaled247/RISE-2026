@@ -112,10 +112,11 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 self.prev_casualty_visible = True
                 # reward[a] += 1.0
             
-            # Entrapped casualty visibility logic
+            # Entrapped casualty visibility logic (only when inside building)
             if (
                 f'entrapped_casualtys_lidar_{i}' in obs[a]
                 and max(obs[a][f'entrapped_casualtys_lidar_{i}']) != 0.0
+                and f'cost_buildings_terracotta_{i}' in info['propositions']
                 and not self.prev_entered_building
             ):
                 info['casualty_visible'] = True
