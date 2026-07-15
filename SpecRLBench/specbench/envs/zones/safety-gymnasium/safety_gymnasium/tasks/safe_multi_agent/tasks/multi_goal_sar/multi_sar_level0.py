@@ -33,9 +33,6 @@ from safety_gymnasium.tasks.safe_multi_agent.bases.base_object import Geom
 CASUALTY_KEEPOUT = 0.2
 class MultiGoalSARLevel0(BaseTask):
     """Multi-agent zone navigation with optional ring-placed interior walls."""
-    _cached_wall_half_sizes = None
-    _cached_building_locations = None
-    _cached_building_rots = None
 
     wall_ring_radius = 2.0
     wall_base_half_sizes = [0.1, 0.3, 0.2]
@@ -54,6 +51,9 @@ class MultiGoalSARLevel0(BaseTask):
     entrapped_casualtys_frac: float = 0.0
 
     def __init__(self, config) -> None:
+        self._cached_wall_half_sizes = None
+        self._cached_building_locations = None
+        self._cached_building_rots = None
         super().__init__(config=config)
 
         self.placements_conf.extents = [-3.5, -3.5, 3.5, 3.5]
@@ -155,6 +155,62 @@ class MultiGoalSARLevel0(BaseTask):
 
     def update_world(self):
         pass
+
+    def _building_geom(self):
+        for name in self._geoms:
+            if name.endswith('_buildings'):
+                return getattr(self, name)
+        return None
+
+    def _update_building_ltl_wall_site(self, wall, center_xy, rot) -> None:
+        wall.d_x, wall.d_y = center_xy[0], center_xy[1]
+        wall.theta = rot
+        wall.locations = [
+            (wall.locate_factor + wall.d_x, wall.d_y),
+            (-wall.locate_factor + wall.d_x, wall.d_y),
+            (wall.d_x, wall.locate_factor + wall.d_y),
+            (wall.d_x, -wall.locate_factor + wall.d_y),
+        ]
+        cos_t, sin_t = np.cos(wall.theta), np.sin(wall.theta)
+        wall.locations = [
+            (
+                (x - wall.d_x) * cos_t - (y - wall.d_y) * sin_t + wall.d_x,
+                (x - wall.d_x) * sin_t + (y - wall.d_y) * cos_t + wall.d_y,
+            )
+            for x, y in wall.locations
+        ]
+
+    def _resample_building_sites(self) -> None:
+        buildings = self._building_geom()
+        if buildings is None:
+            return
+        self._cached_building_locations = [
+            draw_border_placement_from_loop(
+                self.building_border_side_length,
+                self.building_margin,
+                self.building_keepout,
+                i,
+                self.random_generator,
+            )
+            for i in range(self.agent_num)
+        ]
+        self._cached_building_rots = self.random_generator.generate_rots(self.agent_num)
+        buildings.locations = list(self._cached_building_locations)
+        buildings.rots = list(self._cached_building_rots)
+        if hasattr(self, 'entrapped_casualtys'):
+            self.entrapped_casualtys.locations = list(self._cached_building_locations)
+        for i in range(self.agent_num):
+            wall_name = f'building{i}_ltl_walls'
+            if hasattr(self, wall_name):
+                self._update_building_ltl_wall_site(
+                    getattr(self, wall_name),
+                    self._cached_building_locations[i],
+                    self._cached_building_rots[i],
+                )
+
+    def reset(self) -> None:
+        self._resample_building_sites()
+        super().reset()
 
     def _replace_geom(self, geom) -> None:
         """Update _geoms like _add_geoms but without duplicate registration checks."""

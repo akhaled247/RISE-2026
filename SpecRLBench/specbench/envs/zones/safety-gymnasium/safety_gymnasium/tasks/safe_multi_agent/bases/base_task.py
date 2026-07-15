@@ -275,7 +275,11 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
                         (self.lidar_conf.num_bins,),
                         dtype=np.float64,
                     )
-            if hasattr(obstacle, 'is_lidar_ids_observed') and obstacle.is_lidar_ids_observed:
+            if (
+                hasattr(obstacle, 'is_lidar_ids_observed')
+                and obstacle.is_lidar_ids_observed
+                and self.lidar_conf.type == 'pseudo_occluded'
+            ):
                 high = max(int(obstacle.num) - 1, 0)
                 for i in range(self.agent.agent_num):
                     name = f"{obstacle.name}_lidar_ids_{i}"

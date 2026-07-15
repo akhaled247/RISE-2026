@@ -37,9 +37,6 @@ CASUALTY_KEEPOUT = 0.2
 
 class MultiGoalSARLevel1(MultiGoalSARLevel0):
     """Multi-agent zone navigation with optional ring-placed interior walls."""
-    _cached_wall_half_sizes = None
-    _cached_building_locations = None
-    _cached_building_rots = None
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
@@ -95,15 +92,6 @@ class MultiGoalSARLevel1(MultiGoalSARLevel0):
     #                            locations=locations)
 
     def _build(self):
-        # randomized building/entrapped casualty locations that persist between runs
-        self._cached_building_locations = [draw_border_placement_from_loop(
-            self.building_border_side_length,
-            self.building_margin,
-            self.building_keepout,
-            i,
-            self.random_generator
-            ) for i in range(self.agent_num)] if self._cached_building_locations is None else self._cached_building_locations
-        self._cached_building_rots=self.random_generator.generate_rots(self.agent_num)
         self._replace_geom(Buildings(
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout*0.75,
