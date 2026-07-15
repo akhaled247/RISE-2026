@@ -17,8 +17,6 @@
 import gymnasium
 import mujoco
 import numpy as np
-import os
-import time
 
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
@@ -28,7 +26,6 @@ from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Build
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import *
-from safety_gymnasium.tasks.safe_multi_agent.utils.common_utils import rot2quat
 from safety_gymnasium.tasks.safe_multi_agent import agents
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_object import Geom
 
@@ -52,11 +49,6 @@ class MultiGoalSARLevel0(BaseTask):
     time_alive_decay = 0.0
     surface_casualtys_frac: float = 1.0
     entrapped_casualtys_frac: float = 0.0
-    building_wall_clearance = 0.1
-
-    @staticmethod
-    def _sar_layout_mode() -> str:
-        return os.environ.get('SAR_LAYOUT_MODE', 'current').strip().upper()
 
     def __init__(self, config) -> None:
         self._cached_wall_half_sizes = None
@@ -173,291 +165,35 @@ class MultiGoalSARLevel0(BaseTask):
                 return getattr(self, name)
         return None
 
-    def _update_building_ltl_wall_site(self, wall, center_xy, rot) -> None:
-        wall.d_x, wall.d_y = center_xy[0], center_xy[1]
-        wall.theta = rot
-        wall.locations = [
-            (wall.locate_factor + wall.d_x, wall.d_y),
-            (-wall.locate_factor + wall.d_x, wall.d_y),
-            (wall.d_x, wall.locate_factor + wall.d_y),
-            (wall.d_x, -wall.locate_factor + wall.d_y),
-        ]
-        cos_t, sin_t = np.cos(wall.theta), np.sin(wall.theta)
-        wall.locations = [
-            (
-                (x - wall.d_x) * cos_t - (y - wall.d_y) * sin_t + wall.d_x,
-                (x - wall.d_x) * sin_t + (y - wall.d_y) * cos_t + wall.d_y,
-            )
-            for x, y in wall.locations
-        ]
-
-    def _building_border_placements(self):
-        return border_placements(
-            self.building_border_side_length,
-            self.building_margin,
-        )
-
-    def _building_layout_keepout(self) -> float:
-        buildings = self._building_geom()
-        if buildings is None:
-            return self.building_keepout * 0.75 + self.building_wall_clearance
-        return float(buildings.size) + self.building_wall_clearance
-
-    def _resample_building_sites(self) -> None:
+    def _sample_building_sites(self) -> None:
         buildings = self._building_geom()
         if buildings is None:
             return
-        base_quadrant = int(self.random_generator.choice(4))
+        base_q = int(self.random_generator.choice(4))
         self._cached_building_locations = [
             draw_border_placement_from_loop(
                 self.building_border_side_length,
                 self.building_margin,
                 self.building_keepout,
-                (base_quadrant + i) % 4,
+                (base_q + i) % 4,
                 self.random_generator,
             )
             for i in range(self.agent_num)
         ]
         self._cached_building_rots = self.random_generator.generate_rots(self.agent_num)
-
-    def _pin_buildings_for_layout(self) -> None:
-        """Pin cached building XY in placement dict so walls sample around them."""
-        buildings = self._building_geom()
-        if buildings is None or self._cached_building_locations is None:
-            return
         buildings.locations = list(self._cached_building_locations)
-        buildings.keepout = self._building_layout_keepout()
-        buildings.placements = self._building_border_placements()
-
-    def _release_buildings_for_free_layout(self) -> None:
-        """Mode A: do not pin building XY during layout sampling."""
-        buildings = self._building_geom()
-        if buildings is None:
-            return
-        buildings.locations = []
-        buildings.placements = self._building_border_placements()
-
-    def _ring_walls_too_close_to_building(self, bpos: np.ndarray, min_dist: float) -> bool:
-        if not hasattr(self, 'walls'):
-            return False
-        for wpos in self.walls.pos:
-            if np.linalg.norm(wpos[:2] - bpos) < min_dist:
-                return True
-        return False
-
-    def _reject_overlapping_ring_walls(self) -> None:
-        """Mode A: resample ring wall centers that overlap the building keepout."""
-        if not hasattr(self, 'walls') or self._cached_building_locations is None:
-            return
-        b_keepout = self._building_layout_keepout()
-        wall_keepout = float(getattr(self.walls, 'keepout', 0.4))
-        margin = self.placements_conf.margin
-        min_dist = b_keepout + wall_keepout + margin - 0.05
-        boxes = ring_placements(
-            self.wall_ring_radius, self.wall_count, margin=self.wall_margin,
-        )
-        geoms_cfg = self.world_info.world_config_dict.get('geoms', {})
-
-        for _ in range(2):
-            bpos = np.asarray(self._cached_building_locations[0][:2], dtype=float)
-            for _ in range(50):
-                if not self._ring_walls_too_close_to_building(bpos, min_dist):
-                    return
-                for i in range(self.wall_count):
-                    wname = f'wall{i}'
-                    xy = self.random_generator.draw_placement([boxes[i]], wall_keepout)
-                    self.world_info.layout[wname] = xy.copy()
-                    self._set_goal(wname, xy)
-                    if wname in geoms_cfg:
-                        geoms_cfg[wname]['pos'][:2] = xy
-                mujoco.mj_forward(self.model, self.data)  # pylint: disable=no-member
-            self._resample_building_sites()
-            self._apply_cached_building_poses()
-
-    def _stash_ltl_wall_locations(self) -> dict:
-        saved = {}
-        for name in self._geoms:
-            if not (name.startswith('building') and name.endswith('_ltl_walls')):
-                continue
-            wall = getattr(self, name)
-            locs = getattr(wall, 'locations', None)
-            if locs:
-                saved[name] = list(locs)
-                wall.locations = []
-        return saved
-
-    def _restore_ltl_wall_locations_on_task(self, saved: dict) -> None:
-        for name, locs in saved.items():
-            if hasattr(self, name):
-                getattr(self, name).locations = locs
-
-    def _is_building_layout_key(self, key: str) -> bool:
-        return 'building' in key and 'ltl_wall' not in key
-
-    def _reorder_placements_buildings_before_walls(self) -> None:
-        placements = self.placements_conf.placements
-        if not placements:
-            return
-        agent_entry = placements.pop('agent')
-        building_keys = sorted(k for k in placements if self._is_building_layout_key(k))
-        wall_keys = sorted(k for k in placements if k.startswith('wall'))
-        other_keys = [
-            k for k in placements if k not in building_keys and k not in wall_keys
-        ]
-        new_placements = {'agent': agent_entry}
-        for key in building_keys:
-            new_placements[key] = placements[key]
-        for key in wall_keys:
-            new_placements[key] = placements[key]
-        for key in other_keys:
-            new_placements[key] = placements[key]
-        self.placements_conf.placements = new_placements
-
-    def _build_placements_dict_static_perimeter(self) -> None:
-        """Mode B: perimeter and building LTL walls stay out of layout sampling."""
-        saved_ltl_locs = self._stash_ltl_wall_locations()
-        placements = {}
-        placements.update(self._placements_dict_from_object('agent'))
-        for obstacle in self._obstacles:
-            if obstacle.name == 'ltl_walls':
-                continue
-            if obstacle.name.startswith('building') and obstacle.name.endswith('_ltl_walls'):
-                continue
-            placements.update(self._placements_dict_from_object(obstacle.name))
-        self.placements_conf.placements = placements
-        self._restore_ltl_wall_locations_on_task(saved_ltl_locs)
-        self._reorder_placements_buildings_before_walls()
-
-    def _build_placements_dict(self) -> None:
-        mode = self._sar_layout_mode()
-        if mode == 'A':
-            super()._build_placements_dict()
-            return
-        if mode == 'B':
-            self._build_placements_dict_static_perimeter()
-            return
-        saved_ltl_locs = self._stash_ltl_wall_locations()
-        super()._build_placements_dict()
-        self._restore_ltl_wall_locations_on_task(saved_ltl_locs)
-        self._reorder_placements_buildings_before_walls()
-
-    def _refresh_layout_placements(self) -> None:
-        self._build_placements_dict()
-        self.random_generator.set_placements_info(
-            self.placements_conf.placements,
-            self.placements_conf.extents,
-            self.placements_conf.margin,
-        )
-
-    def _sync_ltl_wall_sites_from_cache(self) -> None:
-        """LtlWalls.get_config needs corner locations during world_config rebuild."""
-        if self._cached_building_locations is None:
-            return
-        for i in range(self.agent_num):
-            wall_name = f'building{i}_ltl_walls'
-            if hasattr(self, wall_name):
-                self._update_building_ltl_wall_site(
-                    getattr(self, wall_name),
-                    self._cached_building_locations[i],
-                    self._cached_building_rots[i],
-                )
-
-    def _apply_perimeter_ltl_wall_poses(self) -> None:
-        """Restore environment perimeter ltl_wall segments to fixed boundary corners."""
-        if not hasattr(self, 'ltl_walls'):
-            return
-        wall = self.ltl_walls
-        self._update_building_ltl_wall_site(wall, np.zeros(2), 0.0)
-        geoms_cfg = self.world_info.world_config_dict.get('geoms', {})
-        wall.index = 0
-        for j in range(wall.num):
-            wname = f'{wall.name[:-1]}{j}'
-            wloc = np.asarray(wall.locations[j], dtype=float)
-            wrot = float(np.arctan2(wloc[1] - wall.d_y, wloc[0] - wall.d_x))
-            self.world_info.layout[wname] = wloc.copy()
-            self._set_goal(wname, wloc)
-            self.model.body(wname).pos[2] = wall.height
-            self.model.body(wname).quat[:] = rot2quat(wrot)
-            if wname in geoms_cfg:
-                geoms_cfg[wname]['pos'][:2] = wloc
-                geoms_cfg[wname]['pos'][2] = wall.height
-                geoms_cfg[wname]['rot'] = wrot
-
-    def _apply_cached_building_poses(self) -> None:
-        """Move building/casualty/LTL-wall bodies after fast layout resample."""
-        buildings = self._building_geom()
-        if buildings is None or self._cached_building_locations is None:
-            return
-        geoms_cfg = self.world_info.world_config_dict.get('geoms', {})
-        for i in range(self.agent_num):
-            loc = np.asarray(self._cached_building_locations[i], dtype=float)
-            rot = self._cached_building_rots[i]
-
-            bname = f'{buildings.name[:-1]}{i}'
-            self.world_info.layout[bname] = loc[:2].copy()
-            self._set_goal(bname, loc[:2])
-            if bname in geoms_cfg:
-                geoms_cfg[bname]['pos'][:2] = loc[:2]
-                geoms_cfg[bname]['rot'] = rot
-                self.model.body(bname).quat[:] = rot2quat(rot)
-
-            if hasattr(self, 'entrapped_casualtys'):
-                cname = f'{self.entrapped_casualtys.name[:-1]}{i}'
-                self.world_info.layout[cname] = loc[:2].copy()
-                self._set_goal(cname, loc[:2])
-                if cname in geoms_cfg:
-                    geoms_cfg[cname]['pos'][:2] = loc[:2]
-
-            wall_attr = f'building{i}_ltl_walls'
-            if hasattr(self, wall_attr):
-                wall = getattr(self, wall_attr)
-                self._update_building_ltl_wall_site(wall, loc, rot)
-                wall.index = 0
-                for j in range(wall.num):
-                    wname = f'{wall.name[:-1]}{j}'
-                    wloc = np.asarray(wall.locations[j], dtype=float)
-                    wrot = float(np.arctan2(wloc[1] - wall.d_y, wloc[0] - wall.d_x))
-                    self.world_info.layout[wname] = wloc.copy()
-                    self._set_goal(wname, wloc)
-                    self.model.body(wname).pos[2] = wall.height
-                    self.model.body(wname).quat[:] = rot2quat(wrot)
-                    if wname in geoms_cfg:
-                        geoms_cfg[wname]['pos'][:2] = wloc
-                        geoms_cfg[wname]['pos'][2] = wall.height
-                        geoms_cfg[wname]['rot'] = wrot
-
-        buildings.locations = list(self._cached_building_locations)
-        buildings.rots = list(self._cached_building_rots)
-        if hasattr(self, 'entrapped_casualtys'):
-            self.entrapped_casualtys.locations = list(self._cached_building_locations)
-
-        mujoco.mj_forward(self.model, self.data)  # pylint: disable=no-member
+        buildings.keepout = float(buildings.size) + 0.1
 
     def reset(self) -> None:
-        mode = self._sar_layout_mode()
-        self._resample_building_sites()
-        layout_t0 = time.perf_counter() if mode == 'C' else None
-
-        if mode == 'A':
-            self._release_buildings_for_free_layout()
-            self._sync_ltl_wall_sites_from_cache()
-        elif mode in ('CURRENT', 'B', 'C'):
-            self._pin_buildings_for_layout()
-            self._sync_ltl_wall_sites_from_cache()
-            if self.placements_conf.placements is not None:
-                self._refresh_layout_placements()
-
+        self._sample_building_sites()
+        if self._building_geom() is not None and self.placements_conf.placements is not None:
+            self._build_placements_dict()
+            self.random_generator.set_placements_info(
+                self.placements_conf.placements,
+                self.placements_conf.extents,
+                self.placements_conf.margin,
+            )
         super().reset()
-
-        if mode == 'C' and layout_t0 is not None:
-            elapsed = time.perf_counter() - layout_t0
-            if elapsed > 2.0:
-                print(f'WARN: SAR layout reset took {elapsed:.2f}s (mode C)')
-
-        self._apply_perimeter_ltl_wall_poses()
-        self._apply_cached_building_poses()
-        if mode == 'A':
-            self._reject_overlapping_ring_walls()
 
     def _replace_geom(self, geom) -> None:
         """Update _geoms like _add_geoms but without duplicate registration checks."""
