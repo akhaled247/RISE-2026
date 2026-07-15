@@ -344,8 +344,6 @@ class Underlying(abc.ABC):  # pylint: disable=too-many-instance-attributes
             self._set_goal(geom_name, pos[:2])
             if pos.shape[0] >= 3:
                 self.model.body(geom_name).pos[2] = pos[2]
-            if 'rot' in geom_cfg:
-                self.model.body(geom_name).quat[:] = rot2quat(float(geom_cfg['rot']))
 
         self.data.qvel[:] = 0
         if self.model.na:
