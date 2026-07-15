@@ -137,3 +137,5 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
     @property
     def pos(self):
         """Helper to get list of Sigwalls positions."""
+        # pylint: disable-next=no-member
+        return [self.engine.data.body(f'{self.name[:-1]}{i}').xpos.copy() for i in range(self.num)]

@@ -17,6 +17,8 @@
 import gymnasium
 import mujoco
 import numpy as np
+import os
+import time
 
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
@@ -51,6 +53,10 @@ class MultiGoalSARLevel0(BaseTask):
     surface_casualtys_frac: float = 1.0
     entrapped_casualtys_frac: float = 0.0
     building_wall_clearance = 0.1
+
+    @staticmethod
+    def _sar_layout_mode() -> str:
+        return os.environ.get('SAR_LAYOUT_MODE', 'current').strip().upper()
 
     def __init__(self, config) -> None:
         self._cached_wall_half_sizes = None
@@ -223,6 +229,51 @@ class MultiGoalSARLevel0(BaseTask):
         buildings.keepout = self._building_layout_keepout()
         buildings.placements = self._building_border_placements()
 
+    def _release_buildings_for_free_layout(self) -> None:
+        """Mode A: do not pin building XY during layout sampling."""
+        buildings = self._building_geom()
+        if buildings is None:
+            return
+        buildings.locations = []
+        buildings.placements = self._building_border_placements()
+
+    def _ring_walls_too_close_to_building(self, bpos: np.ndarray, min_dist: float) -> bool:
+        if not hasattr(self, 'walls'):
+            return False
+        for wpos in self.walls.pos:
+            if np.linalg.norm(wpos[:2] - bpos) < min_dist:
+                return True
+        return False
+
+    def _reject_overlapping_ring_walls(self) -> None:
+        """Mode A: resample ring wall centers that overlap the building keepout."""
+        if not hasattr(self, 'walls') or self._cached_building_locations is None:
+            return
+        b_keepout = self._building_layout_keepout()
+        wall_keepout = float(getattr(self.walls, 'keepout', 0.4))
+        margin = self.placements_conf.margin
+        min_dist = b_keepout + wall_keepout + margin - 0.05
+        boxes = ring_placements(
+            self.wall_ring_radius, self.wall_count, margin=self.wall_margin,
+        )
+        geoms_cfg = self.world_info.world_config_dict.get('geoms', {})
+
+        for _ in range(2):
+            bpos = np.asarray(self._cached_building_locations[0][:2], dtype=float)
+            for _ in range(50):
+                if not self._ring_walls_too_close_to_building(bpos, min_dist):
+                    return
+                for i in range(self.wall_count):
+                    wname = f'wall{i}'
+                    xy = self.random_generator.draw_placement([boxes[i]], wall_keepout)
+                    self.world_info.layout[wname] = xy.copy()
+                    self._set_goal(wname, xy)
+                    if wname in geoms_cfg:
+                        geoms_cfg[wname]['pos'][:2] = xy
+                mujoco.mj_forward(self.model, self.data)  # pylint: disable=no-member
+            self._resample_building_sites()
+            self._apply_cached_building_poses()
+
     def _stash_ltl_wall_locations(self) -> dict:
         saved = {}
         for name in self._geoms:
@@ -262,7 +313,29 @@ class MultiGoalSARLevel0(BaseTask):
             new_placements[key] = placements[key]
         self.placements_conf.placements = new_placements
 
+    def _build_placements_dict_static_perimeter(self) -> None:
+        """Mode B: perimeter and building LTL walls stay out of layout sampling."""
+        saved_ltl_locs = self._stash_ltl_wall_locations()
+        placements = {}
+        placements.update(self._placements_dict_from_object('agent'))
+        for obstacle in self._obstacles:
+            if obstacle.name == 'ltl_walls':
+                continue
+            if obstacle.name.startswith('building') and obstacle.name.endswith('_ltl_walls'):
+                continue
+            placements.update(self._placements_dict_from_object(obstacle.name))
+        self.placements_conf.placements = placements
+        self._restore_ltl_wall_locations_on_task(saved_ltl_locs)
+        self._reorder_placements_buildings_before_walls()
+
     def _build_placements_dict(self) -> None:
+        mode = self._sar_layout_mode()
+        if mode == 'A':
+            super()._build_placements_dict()
+            return
+        if mode == 'B':
+            self._build_placements_dict_static_perimeter()
+            return
         saved_ltl_locs = self._stash_ltl_wall_locations()
         super()._build_placements_dict()
         self._restore_ltl_wall_locations_on_task(saved_ltl_locs)
@@ -361,14 +434,30 @@ class MultiGoalSARLevel0(BaseTask):
         mujoco.mj_forward(self.model, self.data)  # pylint: disable=no-member
 
     def reset(self) -> None:
+        mode = self._sar_layout_mode()
         self._resample_building_sites()
-        self._pin_buildings_for_layout()
-        self._sync_ltl_wall_sites_from_cache()
-        if self.placements_conf.placements is not None:
-            self._refresh_layout_placements()
+        layout_t0 = time.perf_counter() if mode == 'C' else None
+
+        if mode == 'A':
+            self._release_buildings_for_free_layout()
+            self._sync_ltl_wall_sites_from_cache()
+        elif mode in ('CURRENT', 'B', 'C'):
+            self._pin_buildings_for_layout()
+            self._sync_ltl_wall_sites_from_cache()
+            if self.placements_conf.placements is not None:
+                self._refresh_layout_placements()
+
         super().reset()
+
+        if mode == 'C' and layout_t0 is not None:
+            elapsed = time.perf_counter() - layout_t0
+            if elapsed > 2.0:
+                print(f'WARN: SAR layout reset took {elapsed:.2f}s (mode C)')
+
         self._apply_perimeter_ltl_wall_poses()
         self._apply_cached_building_poses()
+        if mode == 'A':
+            self._reject_overlapping_ring_walls()
 
     def _replace_geom(self, geom) -> None:
         """Update _geoms like _add_geoms but without duplicate registration checks."""
