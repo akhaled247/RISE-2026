@@ -50,6 +50,8 @@ class MultiGoalSARLevel0(BaseTask):
     reward_distance = 1.0
     reward_goal = 1.0
     time_alive_decay = 0.0
+    surface_casualtys_frac: float = 1.0
+    entrapped_casualtys_frac: float = 0.0
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
@@ -59,7 +61,7 @@ class MultiGoalSARLevel0(BaseTask):
         self.lidar_conf.max_dist = self.max_dist
         self.lidar_conf.exp_gain = 0.5
         self.lidar_conf.alias = True
-        self.lidar_conf.type = 'pseudo_occluded'  # choices: 'pseudo' 'natural' 'pseudo_occluded'
+        self.lidar_conf.type = 'pseudo'  # choices: 'pseudo' 'natural' 'pseudo_occluded'
         self.cost_conf.constrain_indicator = False
         self.observation_flatten = False
         self.render_conf.lidar_markers = False
@@ -68,18 +70,22 @@ class MultiGoalSARLevel0(BaseTask):
 
         # Spawn agents in a specified area
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
-
+        surface_casualtys_int = int(self.agent_num * self.surface_casualtys_frac)
         # One surface casualty for solo training; otherwise one per agent.
         self.casualty_num = self.agent_num
         self._add_geoms(
             LtlWalls(contype=1),
-            Casualtys(
-                category=list(Casualtys.CATEGORIES)[-2],
-                size=0.05,
-                num=self.casualty_num,
-                keepout=self.casualty_keepout,
-            ),
         )
+
+        if surface_casualtys_int>0: 
+            self._add_geoms(
+                Casualtys(
+                    category=list(Casualtys.CATEGORIES)[-2],
+                    size=0.05,
+                    num=surface_casualtys_int,
+                    keepout=self.casualty_keepout,
+                ),
+            )
 
         if self.agent_num > 1:
             self._add_mocaps(
@@ -157,42 +163,21 @@ class MultiGoalSARLevel0(BaseTask):
     def try_lidar_ids(self, obstacle, obs, i):
         """pseudo_occluded lidar with per-instance line-of-sight (walls block view)."""
         want_ids = getattr(obstacle, 'is_lidar_ids_observed', False)
+        is_occluded = getattr(obstacle, 'is_occluded', True)
         if want_ids and self.lidar_conf.type == 'pseudo_occluded':
             lidar, lidar_ids = self._obs_lidar_pseudo_occluded_new(
                 i, obstacle, return_ids=True,
             )
             obs[f"{obstacle.name}_lidar_{i}"] = lidar
             obs[f"{obstacle.name}_lidar_ids_{i}"] = lidar_ids
-            path = "pseudo_occluded_ids"
+        elif not is_occluded:
+            for i in range(self.agent.agent_num):
+                name = f"{obstacle.name}_lidar_{i}"
+                obs[name] = self._obs_lidar_pseudo_new(i, obstacle.pos)
         else:
             obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
                 i, obstacle,
             )
-            path = "pseudo_occluded"
-        # #region agent log
-        # c = getattr(self, "_dbg_lidar_path_counts", None)
-        # if c is None:
-        #     c = {}
-        #     self._dbg_lidar_path_counts = c
-        # c[path] = c.get(path, 0) + 1
-        # if sum(c.values()) % 2048 == 1:
-        #     try:
-        #         from debug.debug_log import agent_log
-        #         agent_log(
-        #             "multi_sar_level0.py:try_lidar_ids",
-        #             "lidar_path_sample",
-        #             {
-        #                 "counts": dict(c),
-        #                 "lidar_type": self.lidar_conf.type,
-        #                 "last_obstacle": obstacle.name,
-        #                 "last_path": path,
-        #             },
-        #             "H1",
-        #             "post-revert",
-        #         )
-        #     except Exception:
-        #         pass
-        # #endregion
 
     def obs(self) -> dict | np.ndarray:
         """Return the observation of our agent."""

@@ -6,7 +6,7 @@ from gymnasium.wrappers import FlattenObservation
 from utils.env_utils import *
 
 seed = 0
-env_name = 'PointLTL4MASAR1Debug-v0'
+env_name = 'PointLTL5MASAR1Debug-v0'
 steps = 2500
 
 print(f"="*40)

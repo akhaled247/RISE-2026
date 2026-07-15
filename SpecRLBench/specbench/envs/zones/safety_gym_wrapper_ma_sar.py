@@ -131,7 +131,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         if seed is not None:
             self._layout_seed = seed
         elif hasattr(self, "_layout_seed"):
-            self._layout_seed = (self._layout_seed + 8) # Cycle seeds 0-99
+            self._layout_seed = (self._layout_seed + 1) % 100
             seed = self._layout_seed
         obs, info = super().reset(seed=seed, options=options)
         info['propositions'] = []

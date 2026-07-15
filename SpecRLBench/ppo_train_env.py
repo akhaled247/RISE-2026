@@ -16,41 +16,47 @@ from datetime import datetime
 # --- edit these before each run ---
 env_name = "PointLTL4MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
-MODEL_PATH = f"_models/ppo_{name_time}_{env_name}"
-VEC_NORM_PATH = f"{MODEL_PATH}_vecnormalize.pkl"
+model_path = f"_models/ppo_{name_time}_{env_name}"
+vec_norm_path = f"{model_path}_vecnormalize.pkl"
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
-TOTAL_TIMESTEPS = 1_000_000
-seed = 0
-n_envs = 8
-ent_coef = 0.02
-learning_rate = 5e-5
-n_steps = 2048  # 512 Level0, 2048 Level4
-batch_size = 256
-n_epochs = 10
-clip_range = 0.2
-target_kl = 0.05 #0.08
 
 
-def train() -> tuple[str, str]:
-    print(f"Logging to {TRAINING_LOG_PATH}...")
-    device = "cuda:1" if torch.cuda.is_available() else "cpu"
-    print("=" * 40)
-    print(f"train env={env_name} device={device} steps={TOTAL_TIMESTEPS}")
+def train(
+        total_timesteps = 1_000_000,
+        seed = 0,
+        n_envs = 8,
+        ent_coef = 0.03,
+        learning_rate = 3e-5,
+        n_steps = 2048,  # 512 Level0, 2048 Level4
+        batch_size = 256,
+        n_epochs = 5,
+        clip_range = 0.2,
+        target_kl = 0.03, #0.08
+        startup_log = True
+) -> tuple[str, str]:
     rollout_steps = n_steps * n_envs
-    print(
-        f"PPO iter = {rollout_steps} env steps collect + {n_epochs} epochs x "
-        f"{rollout_steps // batch_size} minibatches — SB3 iters/s scales ~1/n_steps"
-    )
+    device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    if startup_log:
+        print(f"Logging to {TRAINING_LOG_PATH}...")
+        print(f"<<<{rollout_steps/batch_size}>>> minibatches per rollout"
+            f"\n <<<{total_timesteps//rollout_steps}>>> policy updates total")
+        print("=" * 40)
+        print(f"train env={env_name} device={device} steps={total_timesteps}")
+        print(
+            f"PPO iter = {rollout_steps} env steps collect + {n_epochs} epochs x "
+            f"{rollout_steps // batch_size} minibatches "
+            f"- SB3 iters/s scales ~1/n_steps"
+        )
 
     env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
-    print("Warming up vector envs...")
-    env.seed(seed=seed)
+    if startup_log: print("Warming up vector envs...")
+    env.seed(seed=0) #Constants env seed to reduce variation between master seeds
     env.reset()
 
     model = PPO(
         "MultiInputPolicy",
         env,
-        verbose=1,
+        verbose=0,
         learning_rate=learning_rate,
         n_steps=n_steps,
         batch_size=batch_size,
@@ -63,37 +69,43 @@ def train() -> tuple[str, str]:
         clip_range=clip_range,
     )
     
-    env.seed(seed=seed)
+    env.seed(seed=0) #Constants env seed to reduce variation between master seeds
     model.learn(
-        total_timesteps=TOTAL_TIMESTEPS,
+        total_timesteps=total_timesteps,
+        log_interval=1,
         progress_bar=True,
-        callback=ThroughputCallback(TOTAL_TIMESTEPS),
+        # callback=ThroughputCallback(total_timesteps),
         tb_log_name=(
             f"PPO_t{name_time}"
             f"_st{n_steps}"
             f"_bs{batch_size}"
-            f"_tt{TOTAL_TIMESTEPS/1_000_000:.1f}M"
+            f"_tt{total_timesteps/1_000_000:.1f}M"
             f"_ec{ent_coef}"
             f"_lr{learning_rate}"
             f"_ep{n_epochs}"
             f"_cr{clip_range}"
             f"_kl{target_kl}"
+            f"_s{seed}"
         ),
     )
-    model.save(MODEL_PATH)
-    env.save(VEC_NORM_PATH)
-    print(f"saved model: {MODEL_PATH}.zip")
-    print(f"saved vecnorm: {VEC_NORM_PATH}")
+    model_path=f"_models/ppo_{name_time}_{env_name}_{seed}"
+    vec_norm_path=f"{model_path}_vecnormalize.pkl"
+    model.save(model_path)
+    env.save(vec_norm_path)
+    print(f"saved model: {model_path}.zip")
+    # print(f"saved vecnorm: {VEC_NORM_PATH}")
     env.close()
-    return MODEL_PATH, VEC_NORM_PATH
+    return model_path, vec_norm_path
 
 
 if __name__ == "__main__":
-    print(f"<<<{(n_steps*n_envs)/batch_size}>>> minibatches per rollout")
-    train()
-
-    eval_model(
-        env_name=env_name,
-        render_mode="human",
-        m_path=MODEL_PATH,
-    )
+    for i in range(10):
+        train(
+            seed=int(i), #Tested up to and including env 3 at home
+            startup_log=False,
+            total_timesteps=5_000_000)
+        eval_model(
+            env_name=env_name,
+            render_mode=None,
+            m_path=model_path,
+        )

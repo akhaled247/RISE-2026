@@ -134,9 +134,11 @@ def eval_model(
 
 
 if __name__ == "__main__":
-    eval_model(
-        env_name=env_name,
-        render_mode=render_mode,
-        eval_episodes=eval_episodes,
-        m_path="_models/ppo_20260714_2053_PointLTL4MASAR1-v0"
-    )
+    models = ["_models/ppo_20260714_1623_PointLTL4MASAR1-v0_run9"]
+    for model in models:
+        eval_model(
+            env_name=env_name,
+            render_mode=render_mode,
+            eval_episodes=eval_episodes,
+            m_path=model
+        )
