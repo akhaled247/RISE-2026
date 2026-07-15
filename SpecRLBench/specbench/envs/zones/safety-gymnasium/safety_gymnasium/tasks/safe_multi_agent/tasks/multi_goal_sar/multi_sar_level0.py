@@ -184,6 +184,12 @@ class MultiGoalSARLevel0(BaseTask):
             for x, y in wall.locations
         ]
 
+    def _building_border_placements(self):
+        return border_placements(
+            self.building_border_side_length,
+            self.building_margin,
+        )
+
     def _resample_building_sites(self) -> None:
         buildings = self._building_geom()
         if buildings is None:
@@ -200,18 +206,22 @@ class MultiGoalSARLevel0(BaseTask):
             for i in range(self.agent_num)
         ]
         self._cached_building_rots = self.random_generator.generate_rots(self.agent_num)
-        buildings.locations = list(self._cached_building_locations)
-        buildings.rots = list(self._cached_building_rots)
+
+    def _release_fixed_building_layout(self) -> None:
+        """Let layout sampler use border regions instead of pinned building XY."""
+        buildings = self._building_geom()
+        if buildings is None:
+            return
+        buildings.locations = []
+        buildings.placements = self._building_border_placements()
         if hasattr(self, 'entrapped_casualtys'):
-            self.entrapped_casualtys.locations = list(self._cached_building_locations)
+            self.entrapped_casualtys.locations = []
         for i in range(self.agent_num):
             wall_name = f'building{i}_ltl_walls'
             if hasattr(self, wall_name):
-                self._update_building_ltl_wall_site(
-                    getattr(self, wall_name),
-                    self._cached_building_locations[i],
-                    self._cached_building_rots[i],
-                )
+                wall = getattr(self, wall_name)
+                wall.locations = []
+                wall.placements = None
 
     def _apply_cached_building_poses(self) -> None:
         """Move building/casualty/LTL-wall bodies after fast layout resample."""
@@ -256,14 +266,18 @@ class MultiGoalSARLevel0(BaseTask):
                         geoms_cfg[wname]['pos'][2] = wall.height
                         geoms_cfg[wname]['rot'] = wrot
 
+        buildings.locations = list(self._cached_building_locations)
+        buildings.rots = list(self._cached_building_rots)
+        if hasattr(self, 'entrapped_casualtys'):
+            self.entrapped_casualtys.locations = list(self._cached_building_locations)
+
         mujoco.mj_forward(self.model, self.data)  # pylint: disable=no-member
 
     def reset(self) -> None:
         self._resample_building_sites()
-        had_world = self.world is not None
+        self._release_fixed_building_layout()
         super().reset()
-        if had_world:
-            self._apply_cached_building_poses()
+        self._apply_cached_building_poses()
 
     def _replace_geom(self, geom) -> None:
         """Update _geoms like _add_geoms but without duplicate registration checks."""

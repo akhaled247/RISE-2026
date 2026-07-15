@@ -114,7 +114,10 @@ class MultiGoalSARLevel2(MultiGoalSARLevel1):
                 size=self.building_keepout*0.75,
                 num=self.agent_num,
                 keepout=0.0,
-                locations = self._cached_building_locations,
+                placements=border_placements(
+                    self.building_border_side_length,
+                    self.building_margin,
+                ),
                 debug=False,
                 rots = self._cached_building_rots
                     ))
@@ -122,8 +125,7 @@ class MultiGoalSARLevel2(MultiGoalSARLevel1):
                 category=list(Casualtys.CATEGORIES)[-1],
                 size=0.05,
                 num=self.agent_num//2,
-                keepout=0.0,
-                locations = self._cached_building_locations))
+                keepout=0.0))
         
         # set ltl walls to surround building geoms
         for i in range(self.agent_num):     
@@ -132,7 +134,6 @@ class MultiGoalSARLevel2(MultiGoalSARLevel1):
                 locate_factor=self.building_keepout*0.75,
                 size=self.building_keepout*0.75,
                 height=0.75,
-                locations=self._cached_building_locations[i],
                 rots = self._cached_building_rots,
                 collision_threshold=8.0))
             
