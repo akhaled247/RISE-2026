@@ -50,7 +50,8 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
     contype: int = 0
 
     def __post_init__(self) -> None:
-        self.prev_contact = [False] * self.num
+        # Per-agent boundary contact flags (not per wall segment).
+        self.prev_contact: list[bool] = []
         if self.name.startswith('building') and self.name.endswith('_ltl_walls'):
             self.color = COLOR['terracotta']
             self.h_index = int(re.search(r"\d+", self.name).group())
@@ -131,7 +132,10 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
 
     def cal_cost(self):
         cost = {}
-        for i in range(self.agent.agent_num):
+        agent_num = self.agent.agent_num
+        if len(self.prev_contact) < agent_num:
+            self.prev_contact.extend([False] * (agent_num - len(self.prev_contact)))
+        for i in range(agent_num):
             pos = self.agent.get_agent_pos(i)
             cond = pos[0] >= self.collision_threshold or \
                 pos[0] <= -self.collision_threshold or \
