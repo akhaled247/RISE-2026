@@ -106,6 +106,9 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(
                     obs[a][f'entrapped_casualtys_lidar_{i}'].size,
                 )
+            else:
+                # print('entered building')
+                reward[a] += info[a]['cost_buildings_terracotta'] * 1.0
 
             # if info[a].get('cost_walls', 0) > 0:
             #     reward[a] -= 0.1
@@ -122,16 +125,16 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 # reward[a] += 1.0
 
             # Entrapped casualty visibility logic (only when inside building with casualty)
-            if (
-                f'entrapped_casualtys_lidar_{i}' in obs[a]
-                and max(obs[a][f'entrapped_casualtys_lidar_{i}']) != 0.0
-                and f'cost_buildings_terracotta_{i}' in info['propositions']
-                and agent_has_entrapped_at_building(self.env.unwrapped.task, i)
-                and not self.prev_entered_building
-            ):
-                info['casualty_visible'] = True
-                self.prev_entered_building = True
-                reward[a] += 1.0
+            # if (
+            #     f'entrapped_casualtys_lidar_{i}' in obs[a]
+            #     and max(obs[a][f'entrapped_casualtys_lidar_{i}']) != 0.0
+            #     and f'cost_buildings_terracotta_{i}' in info['propositions']
+            #     and agent_has_entrapped_at_building(self.env.unwrapped.task, i)
+            #     and not self.prev_entered_building
+            # ):
+            #     info['casualty_visible'] = True
+            #     self.prev_entered_building = True
+            #     reward[a] += 1.0
 
         # Collaborative SAR: end episode only when the full team mission is complete
         mission_complete = all(self.env.unwrapped.task.goal_achieved)

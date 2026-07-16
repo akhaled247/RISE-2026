@@ -141,6 +141,7 @@ class MultiGoalSARLevel0(BaseTask):
             dists = self._dist_to_casualtys(i)
             min_dist = min(dists) if dists else 0.0
             if min_dist <= touch_threshold:
+                # print('casualty')
                 reward += self.reward_goal
             self.last_dist_casualty[i] = min_dist
 

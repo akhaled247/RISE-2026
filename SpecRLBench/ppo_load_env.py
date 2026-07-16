@@ -21,7 +21,7 @@ from utils.env_utils import make_env
 ENV_NAME = "PointLTL5MASAR1-v0"
 
 MODELS = [
-    "_models/rnd_ppo_L5_S2_20260716_1639_PointLTL5MASAR1-v0_0",
+    "_models/ppo_20260716_1436_PointLTL5MASAR1-v0_0_resumed",
 ]
 
 EVAL_EPISODES = 50

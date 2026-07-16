@@ -22,7 +22,7 @@ from utils.env_utils import make_vec
 
 # --- edit these before each run ---
 env_name = "PointLTL5MASAR1-v0"
-MODEL_PATH = "_models/ppo_20260716_0925_PointLTL5MASAR1-v0_0"
+MODEL_PATH = "_models/ppo_20260716_1342_PointLTL5MASAR1-v0_0"
 ADDITIONAL_TIMESTEPS = 2_000_000
 n_envs = 8
 seed = 0
@@ -78,7 +78,7 @@ def resume_train(
         reset_num_timesteps=False,
         log_interval=1,
         progress_bar=True,
-        tb_log_name=f"PPO_resume_{name_time}_from_{start_timesteps}",
+        tb_log_name=f"PPO_t{name_time}_resume_from_{start_timesteps}",
     )
 
     end_timesteps = model.num_timesteps
