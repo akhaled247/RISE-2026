@@ -123,8 +123,9 @@ def agent_inside_building_idx(task: BaseTask, agent_idx: int) -> int | None:
     buildings = building_geom(task)
     if buildings is None:
         return None
+    agent_xy = task.agent.get_agent_pos(agent_idx)[:2]
     for b_idx, b_pos in enumerate(buildings.pos):
-        if task.agent.dist_xy(agent_idx, b_pos) <= buildings.size:
+        if np.max(np.abs(agent_xy - np.asarray(b_pos[:2]))) <= buildings.size:
             return b_idx
     return None
 

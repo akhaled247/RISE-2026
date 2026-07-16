@@ -272,9 +272,12 @@ class MultiGoalSARLevel0(BaseTask):
             obs[f"{obstacle.name}_lidar_{i}"] = lidar
             obs[f"{obstacle.name}_lidar_ids_{i}"] = lidar_ids
         elif not is_occluded:
-            for i in range(self.agent.agent_num):
-                name = f"{obstacle.name}_lidar_{i}"
-                obs[name] = self._obs_lidar_pseudo_new(i, obstacle.pos)
+            positions = [
+                obstacle.pos[row]
+                for row in range(obstacle.num)
+                if row not in skip_rows
+            ]
+            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_new(i, positions)
         else:
             obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
                 i, obstacle, skip_instance_rows=skip_rows,
@@ -284,6 +287,7 @@ class MultiGoalSARLevel0(BaseTask):
         """Return the observation of our agent."""
         # pylint: disable-next=no-member
         mujoco.mj_forward(self.model, self.data)  # Needed to get sensor's data correct
+        self._sync_entered_building_state()
         obs = {}
 
         obs.update(self.agent.obs_sensor())

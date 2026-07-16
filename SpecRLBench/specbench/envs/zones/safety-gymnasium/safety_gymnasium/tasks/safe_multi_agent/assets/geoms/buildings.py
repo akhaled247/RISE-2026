@@ -96,8 +96,11 @@ class Buildings(Geom):  # pylint: disable=too-many-instance-attributes
         # print(f"self.pos: {self.pos}")
         for building_idx, h_pos in enumerate(self.pos):
             for agent_idx in range(self.agent.agent_num):
-                agent_h_dist = self.agent.dist_xy(agent_idx, h_pos)
-                if agent_h_dist <= self.size and not self.prev_contact[building_idx]:
+                agent_xy = self.agent.get_agent_pos(agent_idx)[:2]
+                if (
+                    np.max(np.abs(agent_xy - np.asarray(h_pos[:2]))) <= self.size
+                    and not self.prev_contact[building_idx]
+                ):
                     self.prev_contact[building_idx] = True
                     cost[f'agent_{agent_idx}'][f'cost_buildings_{self.color_name}'] = 1/self.num
             # agent0_h_dist = self.agent.dist_xy(0, h_pos)

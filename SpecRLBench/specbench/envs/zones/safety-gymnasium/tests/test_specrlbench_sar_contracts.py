@@ -244,9 +244,12 @@ def test_entered_building_suppresses_shell_lidar_and_render():
             assert task.model.geom_rgba[shell_geom_id][-1] == 0.0
 
             obs = task.obs()
-            expected = task._obs_lidar_pseudo_occluded_new(
-                0, buildings, skip_instance_rows=frozenset({0}),
-            )
+            positions = [
+                buildings.pos[row]
+                for row in range(buildings.num)
+                if row != 0
+            ]
+            expected = task._obs_lidar_pseudo_new(0, positions)
             np.testing.assert_array_equal(obs['terracotta_buildings_lidar_0'], expected)
     finally:
         env.close()
