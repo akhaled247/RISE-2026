@@ -10,32 +10,45 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from tqdm import trange
 
-
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_env
 
-env_name = "PointLTL5MASAR1-v0"
-name_time = datetime.now().strftime("%Y%m%d_%H%M")
-MODEL_PATH = f"_models/ppo_{name_time}_{env_name}"
-eval_episodes = 50
-s = 0
-render_mode = 'human'
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+ENV_NAME = "PointLTL5MASAR1-v0"
+
+MODELS = [
+    "_models/ppo_20260716_0925_PointLTL5MASAR1-v0_0",
+]
+
+EVAL_EPISODES = 50
+SEED = 0
+
+RENDER_MODE = "human"
+DETERMINISTIC = True
+
+DEVICE = "cuda:1" if torch.cuda.is_available() else "cpu"
+
+NAME_TIME = datetime.now().strftime("%Y%m%d_%H%M")
+DEFAULT_MODEL_PATH = f"_models/ppo_{NAME_TIME}_{ENV_NAME}"
 
 
 def eval_model(
-    env_name: str = env_name,
-    render_mode=None,
-    eval_episodes: int = eval_episodes,
-    seed: int = s,
-    deterministic: bool = True,
-    m_path: str = None,
+    env_name: str = ENV_NAME,
+    render_mode=RENDER_MODE,
+    eval_episodes: int = EVAL_EPISODES,
+    seed: int = SEED,
+    deterministic: bool = DETERMINISTIC,
+    m_path: str | None = None,
 ):
-    model_path = m_path if m_path is not None else MODEL_PATH
+    model_path = m_path if m_path is not None else DEFAULT_MODEL_PATH
     vec_norm_path = f"{model_path}_vecnormalize.pkl"
 
-    device = "cuda:1" if torch.cuda.is_available() else "cpu"
     print("=" * 40)
-    print(f"eval env={env_name} device={device}")
+    print(f"eval env={env_name} device={DEVICE}")
     print(f"loading {model_path}.zip")
 
     base_env = make_env(env_name, sb3=True, render_mode=render_mode)
@@ -44,7 +57,7 @@ def eval_model(
     vec_env.training = False
     vec_env.norm_reward = False
 
-    model = PPO.load(model_path, env=vec_env, device=device)
+    model = PPO.load(model_path, env=vec_env, device=DEVICE)
 
     episode_rewards = []
     totals_steps = []
@@ -67,9 +80,10 @@ def eval_model(
             obs, reward, done, info = vec_env.step(action)
 
             prop_keys = info[0].get("propositions", [])
+
             casualty_visible_step_0 = (
                 (total_steps == 0)
-                * (info[0].get("casualty_visible", False))
+                * info[0].get("casualty_visible", False)
                 + casualty_visible_step_0
             )
 
@@ -86,6 +100,7 @@ def eval_model(
         totals_steps.append(total_steps)
         casualty_visible_step_0s.append(casualty_visible_step_0)
         rescues.append(int(rescued))
+
         seed += 1
         if rescued:
             rescue_count += 1
@@ -103,15 +118,22 @@ def eval_model(
         if v == 0
     ]
 
-    print("-" * 40)
-    print(f"Mean reward:        {np.mean(episode_rewards):.3f} +/- {np.std(episode_rewards):.3f}")
-    print(f"Rescue rate:        {rescue_count}/{eval_episodes} "
-          f"({100 * rescue_count / eval_episodes:.1f}%)")
+    print("=" * 40)
+    print(
+        f"Mean reward:        {np.mean(episode_rewards):.3f} +/- {np.std(episode_rewards):.3f}"
+    )
+    print(
+        f"Rescue rate:        {rescue_count}/{eval_episodes} "
+        f"({100 * rescue_count / eval_episodes:.1f}%)"
+    )
     # print(f"s0-Vis rescue %:    {sum(visible_step_0_rescues)}/{len(visible_step_0_rescues)} "
     #       f"({100 * sum(visible_step_0_rescues) / len(visible_step_0_rescues):.1f}%)")
     # print(f"s0-Invis rescue %:  {sum(invisible_step_0_rescues)}/{len(invisible_step_0_rescues)} "
     #       f"({100 * sum(invisible_step_0_rescues) / len(invisible_step_0_rescues):.1f}%)")
-    print(f"Mean ep_len:        {np.mean(totals_steps):.3f} +/- {np.std(totals_steps):.3f}")
+    print(
+        f"Mean ep_len:        {np.mean(totals_steps):.3f} +/- {np.std(totals_steps):.3f}"
+    )
+
     return {
         "mean_reward": float(np.mean(episode_rewards)),
         "rescue_rate": rescue_count / eval_episodes,
@@ -119,11 +141,5 @@ def eval_model(
 
 
 if __name__ == "__main__":
-    models = ["_models/ppo_20260715_1623_PointLTL5MASAR1-v0_0"]
-    for model in models:
-        eval_model(
-            env_name=env_name,
-            render_mode=render_mode,
-            eval_episodes=eval_episodes,
-            m_path=model,
-        )
+    for model in MODELS:
+        eval_model(m_path=model)

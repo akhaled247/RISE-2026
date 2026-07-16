@@ -47,6 +47,7 @@ class Buildings(Geom):  # pylint: disable=too-many-instance-attributes
         #     self.color = self.COLORS['black']
         # else:
         self.color: np.array = self.COLORS[self.color_name]
+        self.prev_contact = [False] * self.num
         self.group: int = GROUP['wall']
         self.is_lidar_observed: bool = True
         self.is_occluded: bool = False
@@ -93,11 +94,12 @@ class Buildings(Geom):  # pylint: disable=too-many-instance-attributes
         #         'agent_1': {f'cost_buildings_{self.color}': 0}}
         cost = {agent: {f'cost_buildings_{self.color_name}': 0} for agent in self.agent.possible_agents}
         # print(f"self.pos: {self.pos}")
-        for h_pos in self.pos:
-            for i in range(self.agent.agent_num):
-                agent_h_dist = self.agent.dist_xy(i, h_pos)
-                if agent_h_dist <= self.size:
-                    cost[f'agent_{i}'][f'cost_buildings_{self.color_name}'] = 1.0
+        for building_idx, h_pos in enumerate(self.pos):
+            for agent_idx in range(self.agent.agent_num):
+                agent_h_dist = self.agent.dist_xy(agent_idx, h_pos)
+                if agent_h_dist <= self.size and not self.prev_contact[building_idx]:
+                    self.prev_contact[building_idx] = True
+                    cost[f'agent_{agent_idx}'][f'cost_buildings_{self.color_name}'] = 1/self.num
             # agent0_h_dist = self.agent.dist_xy(0, h_pos)
             # agent1_h_dist = self.agent.dist_xy(1, h_pos)
             # if agent0_h_dist <= self.size:

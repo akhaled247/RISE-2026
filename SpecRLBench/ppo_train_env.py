@@ -25,7 +25,7 @@ def train(
         n_envs = 8,
         ent_coef = 0.02,
         learning_rate = 5e-5,
-        n_steps = 2048,
+        n_steps = 4096,
         batch_size = 256,
         n_epochs = 10,
         clip_range = 0.2,
