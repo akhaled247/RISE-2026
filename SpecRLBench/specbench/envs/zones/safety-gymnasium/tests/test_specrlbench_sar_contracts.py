@@ -157,6 +157,57 @@ def test_sar_reset_seed_reproduces_layout_on_same_env():
         env.close()
 
 
+def test_building_entrapped_layout_pinned():
+    """Entrapped casualties must be pinned to building centers after layout sync."""
+    env = make_env('PointLTL5MASAR1-v0', sb3=True)
+    try:
+        env.reset(seed=11)
+        layout = env.unwrapped.task.world_info.layout
+        building_num = env.unwrapped.task.building_num
+        for i in range(building_num):
+            building_key = f'terracotta_building{i}'
+            entrapped_key = f'entrapped_casualty{i}'
+            assert entrapped_key in layout
+            assert building_key in layout
+            np.testing.assert_array_equal(
+                np.asarray(layout[entrapped_key], dtype=float),
+                np.asarray(layout[building_key], dtype=float),
+            )
+    finally:
+        env.close()
+
+
+def test_building_layout_seed_reproducible():
+    """Building levels must reproduce full layout snapshots for the same seed."""
+    env = make_env('PointLTL5MASAR1-v0', sb3=True)
+    try:
+        env.reset(seed=7)
+        first = _layout_snapshot(env.unwrapped.task)
+        env.reset(seed=7)
+        second = _layout_snapshot(env.unwrapped.task)
+        env.reset(seed=8)
+        third = _layout_snapshot(env.unwrapped.task)
+
+        assert first == second
+        assert first != third
+    finally:
+        env.close()
+
+
+def test_building_perimeter_wall_keys_exist():
+    """Each building must expose four perimeter wall segment layout keys."""
+    env = make_env('PointLTL1MASAR2-v0', sb3=True)
+    try:
+        env.reset(seed=3)
+        layout = env.unwrapped.task.world_info.layout
+        agent_num = env.unwrapped.task.agent_num
+        for i in range(agent_num):
+            for seg_idx in range(4):
+                assert f'building{i}_ltl_wall{seg_idx}' in layout
+    finally:
+        env.close()
+
+
 def test_sar_vecnormalize_stack_preserves_sb3_contract():
     """Training helper must keep SAR compatible with SB3 VecNormalize."""
     pytest.importorskip('stable_baselines3')

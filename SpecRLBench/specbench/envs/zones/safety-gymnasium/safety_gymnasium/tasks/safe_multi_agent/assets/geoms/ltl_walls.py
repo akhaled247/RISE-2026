@@ -64,22 +64,27 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
         if self.locations is not None:
             self.d_x, self.d_y = self.locations[0], self.locations[1]
 
-        self.locations: list = [
-            (self.locate_factor+self.d_x, self.d_y),
-            (-self.locate_factor+self.d_x, self.d_y),
-            (self.d_x, self.locate_factor+self.d_y),
-            (self.d_x, -self.locate_factor+self.d_y),
-        ]
+        self.sync_site((self.d_x, self.d_y), self.theta)
 
+    def sync_site(self, center_xy, rot) -> None:
+        """Set wall segment centers around a building center with rotation."""
+        self.d_x, self.d_y = float(center_xy[0]), float(center_xy[1])
+        self.theta = float(rot)
+        self.locations = [
+            (self.locate_factor + self.d_x, self.d_y),
+            (-self.locate_factor + self.d_x, self.d_y),
+            (self.d_x, self.locate_factor + self.d_y),
+            (self.d_x, -self.locate_factor + self.d_y),
+        ]
         cos_t, sin_t = np.cos(self.theta), np.sin(self.theta)
         self.locations = [
             (
-                (x - self.d_x) * cos_t - (y - self.d_y) * sin_t + self.d_x,  # New X
-                (x - self.d_x) * sin_t + (y - self.d_y) * cos_t + self.d_y   # New Y
+                (x - self.d_x) * cos_t - (y - self.d_y) * sin_t + self.d_x,
+                (x - self.d_x) * sin_t + (y - self.d_y) * cos_t + self.d_y,
             )
             for x, y in self.locations
         ]
-        self.index: int = 0
+        self.index = 0
 
     def index_tick(self):
         """Count index."""

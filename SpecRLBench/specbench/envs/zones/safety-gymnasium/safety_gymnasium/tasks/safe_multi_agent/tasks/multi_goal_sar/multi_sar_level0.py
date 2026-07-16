@@ -26,10 +26,13 @@ from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Build
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
-    border_placement_keepout,
     border_placements,
-    is_building_ltl_wall,
+    building_count,
+    building_geom,
+    clear_building_pinned_locations,
+    clamp_building_placement_keepout,
     mission_goal_achieved,
+    sync_building_dependents_into_layout,
 )
 
 
@@ -157,83 +160,12 @@ class MultiGoalSARLevel0(BaseTask):
     def update_world(self):
         pass
 
-    def _building_geom(self):
-        for name in self._geoms:
-            if name.endswith('_buildings'):
-                return getattr(self, name)
-        return None
-
-    def _sync_building_ltl_wall_site(self, wall, center_xy, rot) -> None:
-        wall.d_x, wall.d_y = float(center_xy[0]), float(center_xy[1])
-        wall.theta = float(rot)
-        wall.locations = [
-            (wall.locate_factor + wall.d_x, wall.d_y),
-            (-wall.locate_factor + wall.d_x, wall.d_y),
-            (wall.d_x, wall.locate_factor + wall.d_y),
-            (wall.d_x, -wall.locate_factor + wall.d_y),
-        ]
-        cos_t, sin_t = np.cos(wall.theta), np.sin(wall.theta)
-        wall.locations = [
-            (
-                (x - wall.d_x) * cos_t - (y - wall.d_y) * sin_t + wall.d_x,
-                (x - wall.d_x) * sin_t + (y - wall.d_y) * cos_t + wall.d_y,
-            )
-            for x, y in wall.locations
-        ]
-        wall.index = 0
-
-    def _clear_building_pinned_locations(self) -> None:
-        buildings = self._building_geom()
-        if buildings is None:
-            return
-        buildings.locations = []
-        if hasattr(self, 'entrapped_casualtys'):
-            self.entrapped_casualtys.locations = []
-
-    def _sync_building_dependents_into_layout(self, layout: dict) -> None:
-        buildings = self._building_geom()
-        if buildings is None:
-            return
-
-        building_prefix = buildings.name[:-1]
-        self._cached_building_rots = self.random_generator.generate_rots(self.building_num if self.building_num != 0 else self.agent_num)
-        buildings.rots = list(self._cached_building_rots)
-
-        if hasattr(self, 'entrapped_casualtys'):
-            for i in range(self.entrapped_casualtys.num):
-                layout[f'entrapped_casualty{i}'] = layout[f'{building_prefix}{i}'].copy()
-
-        for name in self._geoms:
-            if not is_building_ltl_wall(name):
-                continue
-            wall_idx = int(name[len('building'):name.index('_ltl_walls')])
-            wall = getattr(self, name)
-            center_xy = layout[f'{building_prefix}{wall_idx}']
-            rot = self._cached_building_rots[wall_idx]
-            self._sync_building_ltl_wall_site(wall, center_xy, rot)
-            wall.index = 0
-            for seg_idx, loc in enumerate(wall.locations):
-                layout[f'building{wall_idx}_ltl_wall{seg_idx}'] = np.asarray(loc, dtype=float)
-
-    def _clamp_building_placement_keepout(self) -> None:
-        buildings = self._building_geom()
-        if buildings is None or not buildings.placements:
-            return
-        buildings.keepout = border_placement_keepout(
-            self.building_margin, buildings.keepout,
-        )
-
     def _prepare_layout(self) -> None:
-        if self._building_geom() is not None:
-            self._clear_building_pinned_locations()
-            self._clamp_building_placement_keepout()
-            self._build_placements_dict()
-            self.random_generator.set_placements_info(
-                self.placements_conf.placements,
-                self.placements_conf.extents,
-                self.placements_conf.margin,
-            )
-        elif self.placements_conf.placements is None:
+        has_buildings = building_geom(self) is not None
+        if has_buildings:
+            clear_building_pinned_locations(self)
+            clamp_building_placement_keepout(self, self.building_margin)
+        if has_buildings or self.placements_conf.placements is None:
             self._build_placements_dict()
             self.random_generator.set_placements_info(
                 self.placements_conf.placements,
@@ -243,8 +175,8 @@ class MultiGoalSARLevel0(BaseTask):
         if self.random_generator.agent_num is None:
             self.random_generator.agent_num = self.agent.agent_num
         self.world_info.layout = self.random_generator.build_layout()
-        if self._building_geom() is not None:
-            self._sync_building_dependents_into_layout(self.world_info.layout)
+        if has_buildings:
+            sync_building_dependents_into_layout(self, self.world_info.layout)
 
     def _fast_resample_layout(self) -> None:
         self._prepare_layout()
@@ -284,8 +216,7 @@ class MultiGoalSARLevel0(BaseTask):
 
     def _replace_building_perimeter_walls(self) -> None:
         factor = self.building_keepout * 0.75
-        wall_count = self.building_num if self.building_num != 0 else self.agent_num
-        for i in range(wall_count):
+        for i in range(building_count(self)):
             self._replace_geom(LtlWalls(
                 name=f'building{i}_ltl_walls',
                 locate_factor=factor,
