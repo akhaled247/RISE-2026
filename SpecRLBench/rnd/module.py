@@ -28,7 +28,11 @@ class RNDModule(nn.Module):
         super().__init__()
         self.config = config or RNDConfig()
         self.device = th.device(device)
-        self.adapter = RNDObsAdapter(observation_space, obs_key=self.config.obs_key)
+        self.adapter = RNDObsAdapter(
+            observation_space,
+            obs_key=self.config.obs_key,
+            obs_keys=self.config.obs_keys,
+        )
         self.stats = RNDRunningStats(
             obs_shape=(self.adapter.input_dim,),
             n_envs=n_envs,

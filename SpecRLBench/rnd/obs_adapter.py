@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 import torch as th
@@ -12,14 +12,21 @@ from gymnasium import spaces
 class RNDObsAdapter:
     """Convert Box or Dict observations into a flat float32 batch for RND.
 
-    For Dict spaces:
-      - if ``obs_key`` is set, use that key only
-      - otherwise flatten and concatenate all Box keys (sorted) along feature dim
+    For Dict spaces (priority order):
+      1. ``obs_keys`` — explicit multi-key list
+      2. ``obs_key`` — single key
+      3. otherwise flatten and concatenate all Box keys (sorted)
     """
 
-    def __init__(self, observation_space: spaces.Space, obs_key: str | None = None) -> None:
+    def __init__(
+        self,
+        observation_space: spaces.Space,
+        obs_key: str | None = None,
+        obs_keys: Sequence[str] | None = None,
+    ) -> None:
         self.observation_space = observation_space
         self.obs_key = obs_key
+        self.obs_keys = list(obs_keys) if obs_keys else None
         self.keys: list[str] = []
         self.input_dim = self._infer_input_dim()
 
@@ -28,6 +35,18 @@ class RNDObsAdapter:
         if isinstance(space, spaces.Box):
             return int(np.prod(space.shape))
         if isinstance(space, spaces.Dict):
+            if self.obs_keys is not None:
+                missing = [k for k in self.obs_keys if k not in space.spaces]
+                if missing:
+                    raise KeyError(
+                        f"rnd obs_keys missing from observation_space: {missing}. "
+                        f"available={list(space.spaces.keys())}"
+                    )
+                for k in self.obs_keys:
+                    if not isinstance(space.spaces[k], spaces.Box):
+                        raise TypeError(f"RND obs key {k!r} must be Box, got {type(space.spaces[k])}")
+                self.keys = list(self.obs_keys)
+                return int(sum(np.prod(space.spaces[k].shape) for k in self.keys))
             if self.obs_key is not None:
                 if self.obs_key not in space.spaces:
                     raise KeyError(
@@ -70,3 +89,37 @@ class RNDObsAdapter:
 
     def to_torch(self, obs: Any, device: th.device | str) -> th.Tensor:
         return th.as_tensor(self.to_numpy(obs), device=device, dtype=th.float32)
+
+
+def resolve_rnd_obs_keys(
+    observation_space: spaces.Space,
+    include_substrings: Sequence[str],
+    exclude_substrings: Sequence[str] = ("casualty", "casualtys"),
+) -> list[str]:
+    """Pick Dict Box keys matching any include substring, excluding casualty-like keys.
+
+    Matching is case-insensitive substring on the key name.
+    """
+    if not isinstance(observation_space, spaces.Dict):
+        raise TypeError(
+            f"resolve_rnd_obs_keys expects Dict observation_space, got {type(observation_space)}"
+        )
+    include = [s.lower() for s in include_substrings]
+    exclude = [s.lower() for s in exclude_substrings]
+    keys: list[str] = []
+    for key, sub in observation_space.spaces.items():
+        if not isinstance(sub, spaces.Box):
+            continue
+        k = key.lower()
+        if any(ex in k for ex in exclude):
+            continue
+        if any(inc in k for inc in include):
+            keys.append(key)
+    keys = sorted(keys)
+    if not keys:
+        raise ValueError(
+            f"No RND obs keys matched include={list(include_substrings)} "
+            f"exclude={list(exclude_substrings)}. "
+            f"available={list(observation_space.spaces.keys())}"
+        )
+    return keys

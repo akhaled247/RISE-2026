@@ -10,14 +10,14 @@ from typing import Any
 class RNDConfig:
     """Configuration for Random Network Distillation.
 
-    Defaults follow Burda et al. (2018) where practical, with SB3-friendly
-    values for vector observations used in SpecRLBench.
+    Sparse-navigation defaults (SAR L4/L5): beta=0.5 after intrinsic-return
+    normalization, feature_dim=256, building/wall-focused obs via ``obs_keys``.
     """
 
     use_rnd: bool = True
-    intrinsic_reward_coef: float = 0.01
+    intrinsic_reward_coef: float = 0.5
     predictor_learning_rate: float = 1e-4
-    feature_dim: int = 128
+    feature_dim: int = 256
     target_net_arch: list[int] = field(default_factory=lambda: [256, 256])
     predictor_net_arch: list[int] = field(default_factory=lambda: [512, 512, 512])
     gamma_int: float = 0.99
@@ -31,6 +31,8 @@ class RNDConfig:
     updates_per_policy_batch: int = 1
     # None => flatten+concat all Box keys for Dict spaces; str => single key
     obs_key: str | None = None
+    # Explicit multi-key list (takes precedence over obs_key when set)
+    obs_keys: list[str] | None = None
     activation: str = "relu"
 
     def to_dict(self) -> dict[str, Any]:

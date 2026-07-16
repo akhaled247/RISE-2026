@@ -14,7 +14,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from rnd.config import RNDConfig
 from rnd.module import RNDModule
 from rnd.networks import RNDModel
-from rnd.obs_adapter import RNDObsAdapter
+from rnd.obs_adapter import RNDObsAdapter, resolve_rnd_obs_keys
 from rnd.rnd_ppo import RNDPPO
 from rnd.stats import RNDRunningStats
 from rnd.storage import RNDStorage
@@ -39,6 +39,66 @@ def test_obs_adapter_dict():
     obs = {"a": np.ones((4, 3), dtype=np.float32), "b": np.zeros((4, 2), dtype=np.float32)}
     out = adapter.to_numpy(obs)
     assert out.shape == (4, 5)
+
+
+def test_obs_adapter_multi_keys():
+    space = spaces.Dict(
+        {
+            "walls_lidar_0": spaces.Box(low=0, high=1, shape=(16,), dtype=np.float32),
+            "buildings_lidar_0": spaces.Box(low=0, high=1, shape=(16,), dtype=np.float32),
+            "surface_casualtys_lidar_0": spaces.Box(low=0, high=1, shape=(16,), dtype=np.float32),
+            "wall_sensor_0": spaces.Box(low=0, high=1, shape=(4,), dtype=np.float32),
+        }
+    )
+    adapter = RNDObsAdapter(
+        space,
+        obs_keys=["buildings_lidar_0", "walls_lidar_0", "wall_sensor_0"],
+    )
+    assert adapter.input_dim == 16 + 16 + 4
+    obs = {
+        "walls_lidar_0": np.ones((2, 16), dtype=np.float32),
+        "buildings_lidar_0": np.zeros((2, 16), dtype=np.float32),
+        "surface_casualtys_lidar_0": np.ones((2, 16), dtype=np.float32),
+        "wall_sensor_0": np.zeros((2, 4), dtype=np.float32),
+    }
+    out = adapter.to_numpy(obs)
+    assert out.shape == (2, 36)
+
+
+def test_resolve_rnd_obs_keys_l4_l5_profiles():
+    space = spaces.Dict(
+        {
+            "walls_lidar_0": spaces.Box(low=0, high=1, shape=(16,), dtype=np.float32),
+            "buildings_lidar_0": spaces.Box(low=0, high=1, shape=(16,), dtype=np.float32),
+            "building0_ltl_walls_lidar_0": spaces.Box(low=0, high=1, shape=(16,), dtype=np.float32),
+            "entrapped_casualtys_lidar_0": spaces.Box(low=0, high=1, shape=(16,), dtype=np.float32),
+            "wall_sensor_0": spaces.Box(low=0, high=1, shape=(4,), dtype=np.float32),
+            "accelerometer": spaces.Box(low=-1, high=1, shape=(3,), dtype=np.float32),
+        }
+    )
+    l4 = resolve_rnd_obs_keys(space, include_substrings=["walls", "wall_sensor"])
+    assert "walls_lidar_0" in l4
+    assert "wall_sensor_0" in l4
+    assert "buildings_lidar_0" not in l4
+    assert "entrapped_casualtys_lidar_0" not in l4
+
+    l5 = resolve_rnd_obs_keys(
+        space,
+        include_substrings=["buildings", "walls", "ltl_walls", "wall_sensor"],
+    )
+    assert "buildings_lidar_0" in l5
+    assert "building0_ltl_walls_lidar_0" in l5
+    assert "walls_lidar_0" in l5
+    assert "wall_sensor_0" in l5
+    assert "entrapped_casualtys_lidar_0" not in l5
+    assert "accelerometer" not in l5
+
+
+def test_sparse_config_defaults():
+    cfg = RNDConfig()
+    assert cfg.intrinsic_reward_coef == 0.5
+    assert cfg.feature_dim == 256
+    assert cfg.obs_keys is None
 
 
 def test_target_frozen_after_train():
