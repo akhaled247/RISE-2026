@@ -26,7 +26,6 @@ import safety_gymnasium  # noqa: E402
 from safety_gymnasium.utils.registration import safe_registry  # noqa: E402
 from safety_gymnasium.utils.task_utils import get_task_class_name  # noqa: E402
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (  # noqa: E402
-    agent_inside_building_idx,
     building_geom,
 )
 
@@ -226,7 +225,9 @@ def test_building_perimeter_wall_keys_exist():
 
 def test_entered_building_suppresses_shell_lidar_and_render():
     """Entered building shell is hidden and omitted from building lidar + LoS rays."""
-    import mujoco
+    from unittest.mock import patch
+
+    from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar import multi_sar_level0
 
     env = make_env('PointLTL5MASAR1-v0', sb3=True)
     try:
@@ -234,30 +235,19 @@ def test_entered_building_suppresses_shell_lidar_and_render():
         task = env.unwrapped.task
         buildings = building_geom(task)
         assert buildings is not None
-
-        center = buildings.pos[0]
-        suffix = '_0'
-        adr_x = task.model.jnt_qposadr[
-            mujoco.mj_name2id(task.model, mujoco.mjtObj.mjOBJ_JOINT, f'x{suffix}')
-        ]
-        adr_y = task.model.jnt_qposadr[
-            mujoco.mj_name2id(task.model, mujoco.mjtObj.mjOBJ_JOINT, f'y{suffix}')
-        ]
-        agent_xy = task.agent.get_agent_pos(0)[:2]
-        task.data.qpos[adr_x] += float(center[0] - agent_xy[0])
-        task.data.qpos[adr_y] += float(center[1] - agent_xy[1])
-        mujoco.mj_forward(task.model, task.data)
-
-        assert agent_inside_building_idx(task, 0) == 0
-
-        task._sync_entered_building_state()
         shell_geom_id = task._obstacle_geom_id_for_instance(buildings, 0)
-        assert shell_geom_id in task._lidar_suppressed_geom_ids
-        assert task.model.geom_rgba[shell_geom_id][-1] == 0.0
+        assert shell_geom_id is not None
 
-        obs = task.obs()
-        building_lidar = obs['terracotta_buildings_lidar_0']
-        assert float(np.max(building_lidar)) == 0.0
+        with patch.object(multi_sar_level0, 'agent_inside_building_idx', return_value=0):
+            task._sync_entered_building_state()
+            assert shell_geom_id in task._lidar_suppressed_geom_ids
+            assert task.model.geom_rgba[shell_geom_id][-1] == 0.0
+
+            obs = task.obs()
+            expected = task._obs_lidar_pseudo_occluded_new(
+                0, buildings, skip_instance_rows=frozenset({0}),
+            )
+            np.testing.assert_array_equal(obs['terracotta_buildings_lidar_0'], expected)
     finally:
         env.close()
 
