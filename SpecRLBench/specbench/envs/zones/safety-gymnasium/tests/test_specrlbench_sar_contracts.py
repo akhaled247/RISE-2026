@@ -223,6 +223,19 @@ def test_building_perimeter_wall_keys_exist():
         env.close()
 
 
+def test_obs_lidar_pseudo_new_empty_positions_is_zeros():
+    """Empty building-lidar skip list must not crash (L5 single-building enter)."""
+    env = make_env('PointLTL5MASAR1-v0', sb3=True)
+    try:
+        env.reset(seed=11)
+        task = env.unwrapped.task
+        empty = task._obs_lidar_pseudo_new(0, [])
+        assert empty.shape == (task.lidar_conf.num_bins,)
+        np.testing.assert_array_equal(empty, np.zeros(task.lidar_conf.num_bins))
+    finally:
+        env.close()
+
+
 def test_entered_building_suppresses_shell_lidar_and_render():
     """Entered building shell is hidden and omitted from building lidar + LoS rays."""
     from unittest.mock import patch
@@ -251,6 +264,12 @@ def test_entered_building_suppresses_shell_lidar_and_render():
             ]
             expected = task._obs_lidar_pseudo_new(0, positions)
             np.testing.assert_array_equal(obs['terracotta_buildings_lidar_0'], expected)
+            # L5 has one building: skip sole shell → all-zero building lidar.
+            if buildings.num == 1:
+                np.testing.assert_array_equal(
+                    obs['terracotta_buildings_lidar_0'],
+                    np.zeros(task.lidar_conf.num_bins),
+                )
     finally:
         env.close()
 

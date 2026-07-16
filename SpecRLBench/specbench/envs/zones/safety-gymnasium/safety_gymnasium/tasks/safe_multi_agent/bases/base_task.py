@@ -909,8 +909,13 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
         return obs
 
     def _obs_lidar_pseudo_new(self, agent_idx: int, positions: np.ndarray) -> np.ndarray:
-        positions = np.array(positions, ndmin=2)
         obs = np.zeros(self.lidar_conf.num_bins)
+        # Empty list → np.array([], ndmin=2) has shape (1, 0); iterating yields Bad pos [].
+        if positions is None or len(positions) == 0:
+            return obs
+        positions = np.array(positions, ndmin=2)
+        if positions.size == 0:
+            return obs
         for pos in positions:
             self._accumulate_pseudo_lidar_reading(obs, agent_idx, pos)
         return obs

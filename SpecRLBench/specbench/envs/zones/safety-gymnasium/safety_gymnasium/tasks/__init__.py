@@ -72,3 +72,4 @@ from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_leve
 from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_level3 import MultiGoalSARLevel3
 from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_level4 import MultiGoalSARLevel4
 from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_level5 import MultiGoalSARLevel5
+from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_level6 import MultiGoalSARLevel6
