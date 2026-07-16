@@ -648,7 +648,7 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
             self._lidar_observable_geom_id_cache = geom_ids
         return self._lidar_observable_geom_id_cache
 
-    def _lidar_suppressed_geom_ids(self) -> set[int]:
+    def _get_lidar_suppressed_geom_ids(self) -> set[int]:
         """Geom ids skipped as occluders and hidden in render (task may update each step)."""
         return getattr(self, '_lidar_suppressed_geom_ids', set())
 
@@ -684,7 +684,7 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
             hit_geom = int(geom_id[0])
             # print(f"DEBUG: geom_id = {geom_id}")
             hit_dist = total_dist + dist
-            if hit_geom in self._lidar_suppressed_geom_ids():
+            if hit_geom in self._get_lidar_suppressed_geom_ids():
                 advance = dist + 1e-5
                 pos = pos + vec * advance
                 total_dist += advance
