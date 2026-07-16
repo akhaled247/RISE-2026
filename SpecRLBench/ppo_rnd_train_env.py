@@ -37,7 +37,7 @@ from utils.env_utils import make_vec
 
 # --- edit these before each run ---
 # Levels: PointLTL4MASAR1-v0 (walls only) | PointLTL5MASAR1-v0 (walls + buildings)
-env_name = "PointLTL4MASAR1-v0"
+env_name = "PointLTL5MASAR1-v0"
 # Sweep id: "S0" | "S1" | "S2" | "S3" | "S4"  (see table in module docstring)
 SWEEP_RUN = "S2"
 
