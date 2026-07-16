@@ -169,35 +169,30 @@ def _building_layout_snapshot(task) -> tuple[tuple[str, tuple[float, ...]], ...]
 
 
 def test_building_entrapped_layout_pinned():
-    """Each entrapped casualty must be pinned to its paired building center after sync."""
+    """Entrapped casualties must spawn at building centers (runtime positions)."""
     env = make_env('PointLTL5MASAR1-v0', sb3=True)
     try:
         env.reset(seed=11)
         task = env.unwrapped.task
         assert hasattr(task, 'entrapped_casualtys')
+        assert hasattr(task, 'terracotta_buildings')
         entrapped_num = task.entrapped_casualtys.num
         assert entrapped_num > 0
 
-        layout = task.world_info.layout
-        building_prefix = task.terracotta_buildings.name[:-1]
         for i in range(entrapped_num):
-            building_key = f'{building_prefix}{i}'
-            entrapped_key = f'entrapped_casualty{i}'
-            assert entrapped_key in layout
-            assert building_key in layout
-            np.testing.assert_array_equal(
-                np.asarray(layout[entrapped_key], dtype=float),
-                np.asarray(layout[building_key], dtype=float),
-            )
+            building_xy = np.asarray(task.terracotta_buildings.pos[i][:2], dtype=float)
+            entrapped_xy = np.asarray(task.entrapped_casualtys.pos[i][:2], dtype=float)
+            np.testing.assert_allclose(building_xy, entrapped_xy, rtol=0, atol=1e-5)
     finally:
         env.close()
 
 
 def test_building_layout_seed_reproducible():
-    """Building layout sync must reproduce snapshots for the same reset seed."""
-    # Level 1 has buildings but no extra RNG draw in first _build (unlike level 5 wall sizing).
-    env = make_env('PointLTL1MASAR2-v0', sb3=True)
+    """Building layout sync must reproduce on repeated fast-path resets."""
+    env = make_env('PointLTL5MASAR1-v0', sb3=True)
     try:
+        # First reset builds MuJoCo and draws wall sizes; later resets use fast layout resample.
+        env.reset(seed=0)
         env.reset(seed=7)
         first = _building_layout_snapshot(env.unwrapped.task)
         env.reset(seed=7)
