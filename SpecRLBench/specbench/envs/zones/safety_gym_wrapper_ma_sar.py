@@ -7,6 +7,9 @@ from gymnasium.core import ActType, WrapperObsType
 from gymnasium.spaces import Box
 
 from specbench.utils.ltl.logic import Assignment
+from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
+    agent_has_entrapped_at_building,
+)
 
 
 class SafetyGymWrapperMASAR(gymnasium.Wrapper):
@@ -96,16 +99,13 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             info['propositions'].extend(active_props.keys())
 
             # Level 1+ building logic: mask entrapped lidar when not inside building
-            # Or this isn't the right building
-            if (f'entrapped_casualtys_lidar_{i}' in obs[a].keys()) \
-                and (f'cost_buildings_terracotta_{i}' not in info['propositions']):
-                    obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(
-                        obs[a][f'entrapped_casualtys_lidar_{i}'].size,
-                    )
-            else:
-                info['casualty_visible'] = True
-                reward[a] += info[a]['cost_buildings_terracotta'] * 1.0
-
+            if (
+                f'entrapped_casualtys_lidar_{i}' in obs[a]
+                and f'cost_buildings_terracotta_{i}' not in info['propositions']
+            ):
+                obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(
+                    obs[a][f'entrapped_casualtys_lidar_{i}'].size,
+                )
 
             # if info[a].get('cost_walls', 0) > 0:
             #     reward[a] -= 0.1
@@ -120,18 +120,19 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 info['casualty_visible'] = True
                 self.prev_casualty_visible = True
                 # reward[a] += 1.0
-            
-            # Entrapped casualty visibility logic (only when inside building)
-            # if (
-            #     f'entrapped_casualtys_lidar_{i}' in obs[a]
-            #     and max(obs[a][f'entrapped_casualtys_lidar_{i}']) != 0.0
-            #     and f'cost_buildings_terracotta_{i}' in info['propositions']
-            #     and not self.prev_entered_building
-            # ):
-            #     info['casualty_visible'] = True
-            #     self.prev_entered_building = True
-            #     reward[a] += 1.0
-                
+
+            # Entrapped casualty visibility logic (only when inside building with casualty)
+            if (
+                f'entrapped_casualtys_lidar_{i}' in obs[a]
+                and max(obs[a][f'entrapped_casualtys_lidar_{i}']) != 0.0
+                and f'cost_buildings_terracotta_{i}' in info['propositions']
+                and agent_has_entrapped_at_building(self.env.unwrapped.task, i)
+                and not self.prev_entered_building
+            ):
+                info['casualty_visible'] = True
+                self.prev_entered_building = True
+                reward[a] += 1.0
+
         # Collaborative SAR: end episode only when the full team mission is complete
         mission_complete = all(self.env.unwrapped.task.goal_achieved)
 
@@ -158,6 +159,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
         info['propositions'] = []
         info['casualty_visible'] = False
         self.prev_casualty_visible = False
+        self.prev_entered_building = False
         for i, a in enumerate(self.env.unwrapped.possible_agents):
             obs[a][f'wall_sensor_{i}'] = np.array([0, 0, 0, 0])
         self.env.unwrapped.task.original_obs = obs

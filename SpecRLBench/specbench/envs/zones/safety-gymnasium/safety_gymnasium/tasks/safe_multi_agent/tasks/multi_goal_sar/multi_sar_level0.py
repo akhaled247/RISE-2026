@@ -26,6 +26,7 @@ from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Build
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
+    agent_inside_building_idx,
     border_placements,
     building_count,
     building_geom,
@@ -153,9 +154,40 @@ class MultiGoalSARLevel0(BaseTask):
         if hasattr(self, 'entrapped_casualtys'):
             self.entrapped_casualtys.rescued = [False] * self.entrapped_casualtys.num
         self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
+        self._lidar_suppressed_geom_ids = set()
+        self._sync_entered_building_state()
 
     def specific_step(self):
-        pass
+        self._sync_entered_building_state()
+
+    def _sync_entered_building_state(self) -> None:
+        """Hide entered building shells from render and pseudo-occluded lidar rays."""
+        buildings = building_geom(self)
+        if buildings is None or not hasattr(self, 'model') or self.model is None:
+            return
+
+        inside_rows: set[int] = set()
+        for agent_idx in range(self.agent_num):
+            inside_idx = agent_inside_building_idx(self, agent_idx)
+            if inside_idx is not None:
+                inside_rows.add(inside_idx)
+
+        suppressed: set[int] = set()
+        for row in inside_rows:
+            geom_id = self._obstacle_geom_id_for_instance(buildings, row)
+            if geom_id is not None:
+                suppressed.add(geom_id)
+
+        self._lidar_suppressed_geom_ids = suppressed
+
+        for row in range(buildings.num):
+            geom_id = self._obstacle_geom_id_for_instance(buildings, row)
+            if geom_id is None:
+                continue
+            if geom_id in suppressed:
+                self.model.geom_rgba[geom_id][-1] = 0.0
+            else:
+                self.model.geom_rgba[geom_id][-1] = buildings.alpha
 
     def update_world(self):
         pass
@@ -225,8 +257,9 @@ class MultiGoalSARLevel0(BaseTask):
                 collision_threshold=8.0,
             ))
 
-    def try_lidar_ids(self, obstacle, obs, i):
+    def try_lidar_ids(self, obstacle, obs, i, skip_instance_rows=None):
         """pseudo_occluded lidar with per-instance line-of-sight (walls block view)."""
+        skip_rows = skip_instance_rows or frozenset()
         is_occluded = getattr(obstacle, 'is_occluded', True)
         if (
             hasattr(obstacle, 'is_lidar_ids_observed')
@@ -234,7 +267,7 @@ class MultiGoalSARLevel0(BaseTask):
             and self.lidar_conf.type == 'pseudo_occluded'
         ):
             lidar, lidar_ids = self._obs_lidar_pseudo_occluded_new(
-                i, obstacle, return_ids=True,
+                i, obstacle, return_ids=True, skip_instance_rows=skip_rows,
             )
             obs[f"{obstacle.name}_lidar_{i}"] = lidar
             obs[f"{obstacle.name}_lidar_ids_{i}"] = lidar_ids
@@ -244,7 +277,7 @@ class MultiGoalSARLevel0(BaseTask):
                 obs[name] = self._obs_lidar_pseudo_new(i, obstacle.pos)
         else:
             obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
-                i, obstacle,
+                i, obstacle, skip_instance_rows=skip_rows,
             )
 
     def obs(self) -> dict | np.ndarray:
@@ -256,10 +289,7 @@ class MultiGoalSARLevel0(BaseTask):
         obs.update(self.agent.obs_sensor())
 
         # observations of obstacles
-        inside_building = False
         for obstacle in self._obstacles:
-            if "terracotta" in obstacle.name and "building" in obstacle.name and any(obstacle.cal_cost())>0:
-                inside_building = True
             if obstacle.is_lidar_observed:
                 if 'gremlins' in obstacle.name:
                     for i in range(self.agent_num):
@@ -269,9 +299,14 @@ class MultiGoalSARLevel0(BaseTask):
                         obs[name] = self._obs_lidar_new(
                             i, poses, obstacle.group, obstacle=obstacle,
                         )
-                elif inside_building and ("entrapped" in obstacle.name or obstacle.name == "walls"):
+                elif obstacle.name.endswith('_buildings'):
                     for i in range(self.agent_num):
-                        self.try_lidar_ids(obstacle, obs, i)
+                        inside_idx = agent_inside_building_idx(self, i)
+                        skip_rows = (
+                            frozenset({inside_idx})
+                            if inside_idx is not None else frozenset()
+                        )
+                        self.try_lidar_ids(obstacle, obs, i, skip_instance_rows=skip_rows)
                 else:
                     for i in range(self.agent_num):
                         self.try_lidar_ids(obstacle, obs, i)

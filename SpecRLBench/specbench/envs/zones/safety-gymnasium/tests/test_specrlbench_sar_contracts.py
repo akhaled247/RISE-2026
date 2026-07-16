@@ -25,6 +25,10 @@ pytest.importorskip('mujoco')
 import safety_gymnasium  # noqa: E402
 from safety_gymnasium.utils.registration import safe_registry  # noqa: E402
 from safety_gymnasium.utils.task_utils import get_task_class_name  # noqa: E402
+from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (  # noqa: E402
+    agent_inside_building_idx,
+    building_geom,
+)
 
 from utils.env_utils import make_env, make_vec  # noqa: E402
 
@@ -216,6 +220,36 @@ def test_building_perimeter_wall_keys_exist():
         for i in range(agent_num):
             for seg_idx in range(4):
                 assert f'building{i}_ltl_wall{seg_idx}' in layout
+    finally:
+        env.close()
+
+
+def test_entered_building_suppresses_shell_lidar_and_render():
+    """Entered building shell is hidden and omitted from building lidar + LoS rays."""
+    import mujoco
+
+    env = make_env('PointLTL5MASAR1-v0', sb3=True)
+    try:
+        env.reset(seed=11)
+        task = env.unwrapped.task
+        buildings = building_geom(task)
+        assert buildings is not None
+
+        center = buildings.pos[0]
+        agent_body_id = task.model.body('agent_0').id
+        task.data.xpos[agent_body_id][:2] = center[:2]
+        mujoco.mj_forward(task.model, task.data)
+
+        assert agent_inside_building_idx(task, 0) == 0
+
+        task._sync_entered_building_state()
+        shell_geom_id = task._obstacle_geom_id_for_instance(buildings, 0)
+        assert shell_geom_id in task._lidar_suppressed_geom_ids
+        assert task.model.geom_rgba[shell_geom_id][-1] == 0.0
+
+        obs = task.obs()
+        building_lidar = obs['terracotta_buildings_lidar_0']
+        assert float(np.max(building_lidar)) == 0.0
     finally:
         env.close()
 

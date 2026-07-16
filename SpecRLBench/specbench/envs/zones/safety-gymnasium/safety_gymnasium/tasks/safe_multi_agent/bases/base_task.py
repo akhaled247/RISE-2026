@@ -648,6 +648,10 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
             self._lidar_observable_geom_id_cache = geom_ids
         return self._lidar_observable_geom_id_cache
 
+    def _lidar_suppressed_geom_ids(self) -> set[int]:
+        """Geom ids skipped as occluders and hidden in render (task may update each step)."""
+        return getattr(self, '_lidar_suppressed_geom_ids', set())
+
     def _lidar_ray_first_observable_geom(
         self,
         agent_idx: int,
@@ -680,6 +684,11 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
             hit_geom = int(geom_id[0])
             # print(f"DEBUG: geom_id = {geom_id}")
             hit_dist = total_dist + dist
+            if hit_geom in self._lidar_suppressed_geom_ids():
+                advance = dist + 1e-5
+                pos = pos + vec * advance
+                total_dist += advance
+                continue
             if hit_geom in observable:
                 return hit_geom, hit_dist
             advance = dist + 1e-5
@@ -838,7 +847,11 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
         return obs
 
     def _obs_lidar_pseudo_occluded_new(
-        self, agent_idx: int, obstacle, return_ids: bool = False,
+        self,
+        agent_idx: int,
+        obstacle,
+        return_ids: bool = False,
+        skip_instance_rows: frozenset[int] | None = None,
     ):
         """Pseudo lidar with alias, gated by geom-surface line of sight per instance."""
         vals = np.zeros(self.lidar_conf.num_bins)
@@ -846,8 +859,11 @@ class BaseTask(Underlying):  # pylint: disable=too-many-instance-attributes,too-
             np.full(self.lidar_conf.num_bins, -1, dtype=np.int32)
             if return_ids else None
         )
+        skip_rows = skip_instance_rows or frozenset()
         skip_self = 'gremlins' in obstacle.name
         for row in range(obstacle.num):
+            if row in skip_rows:
+                continue
             if skip_self and row == agent_idx:
                 continue
             if self._obstacle_geom_id_for_instance(obstacle, row) is None:

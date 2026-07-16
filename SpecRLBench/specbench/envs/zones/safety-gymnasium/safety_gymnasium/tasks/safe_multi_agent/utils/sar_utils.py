@@ -118,6 +118,30 @@ def building_prefix_from_geom(buildings) -> str:
     return buildings.name[:-1]
 
 
+def agent_inside_building_idx(task: BaseTask, agent_idx: int) -> int | None:
+    """Return the building instance index the agent is inside, or None."""
+    buildings = building_geom(task)
+    if buildings is None:
+        return None
+    for b_idx, b_pos in enumerate(buildings.pos):
+        if task.agent.dist_xy(agent_idx, b_pos) <= buildings.size:
+            return b_idx
+    return None
+
+
+def agents_inside_building_indices(task: BaseTask) -> list[int | None]:
+    """Per-agent building index when inside a shell, else None."""
+    return [agent_inside_building_idx(task, i) for i in range(task.agent_num)]
+
+
+def agent_has_entrapped_at_building(task: BaseTask, agent_idx: int) -> bool:
+    """True when agent is inside a building that hosts an entrapped casualty."""
+    inside_idx = agent_inside_building_idx(task, agent_idx)
+    if inside_idx is None or not hasattr(task, 'entrapped_casualtys'):
+        return False
+    return inside_idx < task.entrapped_casualtys.num
+
+
 def clear_building_pinned_locations(task: BaseTask) -> None:
     """Clear pinned building, entrapped, and perimeter-wall locations before resample."""
     buildings = building_geom(task)
