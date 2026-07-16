@@ -236,8 +236,16 @@ def test_entered_building_suppresses_shell_lidar_and_render():
         assert buildings is not None
 
         center = buildings.pos[0]
-        agent_body_id = task.model.body('agent_0').id
-        task.data.xpos[agent_body_id][:2] = center[:2]
+        suffix = '_0'
+        adr_x = task.model.jnt_qposadr[
+            mujoco.mj_name2id(task.model, mujoco.mjtObj.mjOBJ_JOINT, f'x{suffix}')
+        ]
+        adr_y = task.model.jnt_qposadr[
+            mujoco.mj_name2id(task.model, mujoco.mjtObj.mjOBJ_JOINT, f'y{suffix}')
+        ]
+        agent_xy = task.agent.get_agent_pos(0)[:2]
+        task.data.qpos[adr_x] += float(center[0] - agent_xy[0])
+        task.data.qpos[adr_y] += float(center[1] - agent_xy[1])
         mujoco.mj_forward(task.model, task.data)
 
         assert agent_inside_building_idx(task, 0) == 0
