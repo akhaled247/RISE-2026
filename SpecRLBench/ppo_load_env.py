@@ -57,7 +57,13 @@ def eval_model(
     vec_env.training = False
     vec_env.norm_reward = False
 
-    model = PPO.load(model_path, env=vec_env, device=DEVICE)
+    # RND checkpoints must load via RNDPPO (policy_class + RND state)
+    if "rnd_ppo" in Path(model_path).name.lower():
+        from rnd import RNDPPO
+
+        model = RNDPPO.load(model_path, env=vec_env, device=DEVICE)
+    else:
+        model = PPO.load(model_path, env=vec_env, device=DEVICE)
 
     episode_rewards = []
     totals_steps = []
