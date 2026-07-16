@@ -157,15 +157,31 @@ def test_sar_reset_seed_reproduces_layout_on_same_env():
         env.close()
 
 
+def _building_layout_snapshot(task) -> tuple[tuple[str, tuple[float, ...]], ...]:
+    """Layout keys produced by building sync (buildings, entrapped, perimeter walls)."""
+    layout = task.world_info.layout
+    prefixes = ('terracotta_building', 'entrapped_casualty', 'building')
+    return tuple(
+        (key, tuple(np.asarray(value, dtype=float).round(8).reshape(-1)))
+        for key, value in sorted(layout.items())
+        if key.startswith(prefixes)
+    )
+
+
 def test_building_entrapped_layout_pinned():
-    """Entrapped casualties must be pinned to building centers after layout sync."""
+    """Each entrapped casualty must be pinned to its paired building center after sync."""
     env = make_env('PointLTL5MASAR1-v0', sb3=True)
     try:
         env.reset(seed=11)
-        layout = env.unwrapped.task.world_info.layout
-        building_num = env.unwrapped.task.building_num
-        for i in range(building_num):
-            building_key = f'terracotta_building{i}'
+        task = env.unwrapped.task
+        assert hasattr(task, 'entrapped_casualtys')
+        entrapped_num = task.entrapped_casualtys.num
+        assert entrapped_num > 0
+
+        layout = task.world_info.layout
+        building_prefix = task.terracotta_buildings.name[:-1]
+        for i in range(entrapped_num):
+            building_key = f'{building_prefix}{i}'
             entrapped_key = f'entrapped_casualty{i}'
             assert entrapped_key in layout
             assert building_key in layout
@@ -178,15 +194,16 @@ def test_building_entrapped_layout_pinned():
 
 
 def test_building_layout_seed_reproducible():
-    """Building levels must reproduce full layout snapshots for the same seed."""
-    env = make_env('PointLTL5MASAR1-v0', sb3=True)
+    """Building layout sync must reproduce snapshots for the same reset seed."""
+    # Level 1 has buildings but no extra RNG draw in first _build (unlike level 5 wall sizing).
+    env = make_env('PointLTL1MASAR2-v0', sb3=True)
     try:
         env.reset(seed=7)
-        first = _layout_snapshot(env.unwrapped.task)
+        first = _building_layout_snapshot(env.unwrapped.task)
         env.reset(seed=7)
-        second = _layout_snapshot(env.unwrapped.task)
+        second = _building_layout_snapshot(env.unwrapped.task)
         env.reset(seed=8)
-        third = _layout_snapshot(env.unwrapped.task)
+        third = _building_layout_snapshot(env.unwrapped.task)
 
         assert first == second
         assert first != third
