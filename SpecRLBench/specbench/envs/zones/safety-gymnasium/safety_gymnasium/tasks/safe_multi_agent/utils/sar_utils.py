@@ -16,40 +16,8 @@
 
 from __future__ import annotations
 
-import json
-import os
-import time
-
 import numpy as np
 from typing import TYPE_CHECKING
-
-
-def _debug_log34211f(location, message, data, hypothesis_id, run_id='pre-fix'):
-    # #region agent log
-    root = os.path.abspath(os.getcwd())
-    for _ in range(15):
-        if os.path.isdir(os.path.join(root, '.git')):
-            break
-        parent = os.path.dirname(root)
-        if parent == root:
-            break
-        root = parent
-    path = os.path.join(root, 'debug-34211f.log')
-    try:
-        with open(path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps({
-                'sessionId': '34211f',
-                'runId': run_id,
-                'hypothesisId': hypothesis_id,
-                'location': location,
-                'message': message,
-                'data': data,
-                'timestamp': int(time.time() * 1000),
-            }) + '\n')
-    except OSError:
-        pass
-    # #endregion
-
 
 
 def ring_locations(radius: float, n: int) -> list[tuple[float, float]]:

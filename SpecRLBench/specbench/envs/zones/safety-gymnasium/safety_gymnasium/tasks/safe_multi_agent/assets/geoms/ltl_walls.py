@@ -20,7 +20,6 @@ import numpy as np
 from safety_gymnasium.tasks.safe_multi_agent.assets.color import COLOR
 from safety_gymnasium.tasks.safe_multi_agent.assets.group import GROUP
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_object import Geom
-from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import _debug_log34211f
 
 
 @dataclass
@@ -98,23 +97,6 @@ class LtlWalls(Geom):  # pylint: disable=too-many-instance-attributes
         else:
             rot = [np.arctan2(y - self.d_y, x - self.d_x) for x, y in self.locations][self.index]
         wall_size = np.array([0.025, self.size, self.height])
-        if self.name.startswith('building') and self.name.endswith('_ltl_walls'):
-            # #region agent log
-            _debug_log34211f(
-                'ltl_walls.py:get_config',
-                'building perimeter wall geom config',
-                {
-                    'wall_name': self.name,
-                    'segment_index': int(self.index),
-                    'xy_pos': [float(xy_pos[0]), float(xy_pos[1])],
-                    'self_size': float(self.size),
-                    'height': float(self.height),
-                    'locate_factor': float(self.locate_factor),
-                    'output_size': [float(x) for x in wall_size],
-                },
-                'A',
-            )
-            # #endregion
         body = {
             'name': self.name,
             'pos': np.r_[xy_pos, self.height],

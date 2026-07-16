@@ -26,7 +26,6 @@ from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Build
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
-    _debug_log34211f,
     border_placement_keepout,
     border_placements,
     is_building_ltl_wall,
@@ -215,22 +214,6 @@ class MultiGoalSARLevel0(BaseTask):
             wall.index = 0
             for seg_idx, loc in enumerate(wall.locations):
                 layout[f'building{wall_idx}_ltl_wall{seg_idx}'] = np.asarray(loc, dtype=float)
-            # #region agent log
-            _debug_log34211f(
-                'multi_sar_level0.py:_sync_building_dependents_into_layout',
-                'synced building wall site',
-                {
-                    'wall_name': name,
-                    'wall_idx': wall_idx,
-                    'center_xy': [float(center_xy[0]), float(center_xy[1])],
-                    'rot': float(rot),
-                    'wall_size': float(wall.size),
-                    'wall_locate_factor': float(wall.locate_factor),
-                    'wall_height': float(wall.height),
-                },
-                'C',
-            )
-            # #endregion
 
     def _clamp_building_placement_keepout(self) -> None:
         buildings = self._building_geom()
@@ -271,24 +254,6 @@ class MultiGoalSARLevel0(BaseTask):
     def _build(self):
         self._prepare_layout()
         self.world_info.world_config_dict = self._build_world_config(self.world_info.layout)
-        # #region agent log
-        geoms = self.world_info.world_config_dict.get('geoms', {})
-        building_geoms = {}
-        for k, v in geoms.items():
-            if 'building' in k or 'terracotta' in k:
-                size = v.get('size')
-                building_geoms[k] = (
-                    [float(x) for x in size]
-                    if hasattr(size, '__iter__') and not isinstance(size, str)
-                    else float(size) if size is not None else None
-                )
-        _debug_log34211f(
-            'multi_sar_level0.py:_build',
-            'final world_config building geom sizes',
-            {'building_geoms': building_geoms},
-            'B',
-        )
-        # #endregion
         if self.world is None:
             self.world = World(self.agent, self._obstacles, self.world_info.world_config_dict)
             self.world.reset()
@@ -319,24 +284,7 @@ class MultiGoalSARLevel0(BaseTask):
 
     def _replace_building_perimeter_walls(self) -> None:
         factor = self.building_keepout * 0.75
-        building_wall_names = [n for n in self._geoms if is_building_ltl_wall(n)]
         wall_count = self.building_num if self.building_num != 0 else self.agent_num
-        # #region agent log
-        _debug_log34211f(
-            'multi_sar_level0.py:_replace_building_perimeter_walls',
-            'perimeter wall replace loop bounds',
-            {
-                'agent_num': self.agent_num,
-                'building_num': self.building_num,
-                'loop_range': wall_count,
-                'expected_wall_count': wall_count,
-                'registered_building_walls': building_wall_names,
-                'factor': factor,
-            },
-            'A',
-            run_id='post-fix',
-        )
-        # #endregion
         for i in range(wall_count):
             self._replace_geom(LtlWalls(
                 name=f'building{i}_ltl_walls',
@@ -345,23 +293,6 @@ class MultiGoalSARLevel0(BaseTask):
                 height=0.75,
                 collision_threshold=8.0,
             ))
-        # #region agent log
-        for name in building_wall_names:
-            wall = getattr(self, name)
-            _debug_log34211f(
-                'multi_sar_level0.py:_replace_building_perimeter_walls',
-                'building ltl wall attrs after replace',
-                {
-                    'name': name,
-                    'size': float(wall.size),
-                    'locate_factor': float(wall.locate_factor),
-                    'height': float(wall.height),
-                    'was_replaced': name in {f'building{i}_ltl_walls' for i in range(wall_count)},
-                },
-                'A',
-                run_id='post-fix',
-            )
-        # #endregion
 
     def try_lidar_ids(self, obstacle, obs, i):
         """pseudo_occluded lidar with per-instance line-of-sight (walls block view)."""
