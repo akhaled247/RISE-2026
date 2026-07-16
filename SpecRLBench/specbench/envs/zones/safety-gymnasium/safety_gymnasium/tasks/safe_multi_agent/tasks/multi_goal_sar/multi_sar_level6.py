@@ -24,14 +24,14 @@ from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import border_place
 from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_level0 import MultiGoalSARLevel0
 
 
-class MultiGoalSARLevel5(MultiGoalSARLevel0):
+class MultiGoalSARLevel6(MultiGoalSARLevel0):
     """Multi-agent zone navigation with optional ring-placed interior walls."""
 
     wall_count = 10
     building_keepout = 0.4
     building_border_side_length = 4.5
     building_margin = 0.8
-    building_num=1
+    building_num=2
     surface_casualtys_frac = 0.0
     entrapped_casualtys_frac = 1.0
 
