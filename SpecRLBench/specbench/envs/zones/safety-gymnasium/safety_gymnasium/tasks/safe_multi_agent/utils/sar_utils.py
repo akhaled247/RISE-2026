@@ -119,13 +119,16 @@ def building_prefix_from_geom(buildings) -> str:
 
 
 def clear_building_pinned_locations(task: BaseTask) -> None:
-    """Clear pinned building and entrapped casualty locations before resample."""
+    """Clear pinned building, entrapped, and perimeter-wall locations before resample."""
     buildings = building_geom(task)
     if buildings is None:
         return
     buildings.locations = []
     if hasattr(task, 'entrapped_casualtys'):
         task.entrapped_casualtys.locations = []
+    for name in task._geoms:
+        if is_building_ltl_wall(name):
+            getattr(task, name).locations = []
 
 
 def clamp_building_placement_keepout(task: BaseTask, margin: float) -> None:
