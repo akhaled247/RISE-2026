@@ -14,6 +14,8 @@
 # ==============================================================================
 """Multi Goal with a SAR environment."""
 
+from collections import OrderedDict
+
 import gymnasium
 import mujoco
 import numpy as np
@@ -73,6 +75,8 @@ class MultiGoalSARLevel0(BaseTask):
         self.render_conf.lidar_markers = False
         self.mechanism_conf.continue_goal = False
         self.last_dist_casualty = None
+        self._buildings_entered: set[int] = set()
+        self._lidar_suppressed_geom_ids: set[int] = set()
 
         # Spawn agents in a specified area
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
@@ -116,6 +120,16 @@ class MultiGoalSARLevel0(BaseTask):
 
     def build_observation_space(self) -> gymnasium.spaces.Dict:
         super().build_observation_space()
+        buildings = building_geom(self)
+        if buildings is not None:
+            obs_space_dict = OrderedDict(self.obs_info.obs_space_dict.spaces)
+            obs_space_dict[f'{buildings.color_name}_buildings_visited'] = gymnasium.spaces.Box(
+                0.0,
+                1.0,
+                (buildings.num,),
+                dtype=np.float64,
+            )
+            self.obs_info.obs_space_dict = gymnasium.spaces.Dict(obs_space_dict)
         if self.observation_flatten:
             self.observation_space = gymnasium.spaces.utils.flatten_space(
                 self.obs_info.obs_space_dict,
@@ -155,26 +169,29 @@ class MultiGoalSARLevel0(BaseTask):
         if hasattr(self, 'entrapped_casualtys'):
             self.entrapped_casualtys.rescued = [False] * self.entrapped_casualtys.num
         self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
+        self._buildings_entered = set()
         self._lidar_suppressed_geom_ids = set()
+        buildings = building_geom(self)
+        if buildings is not None:
+            buildings.prev_contact = [False] * buildings.num
         self._sync_entered_building_state()
 
     def specific_step(self):
         self._sync_entered_building_state()
 
     def _sync_entered_building_state(self) -> None:
-        """Hide entered building shells from render and pseudo-occluded lidar rays."""
+        """Sticky-hide entered building shells for the rest of the episode."""
         buildings = building_geom(self)
         if buildings is None or not hasattr(self, 'model') or self.model is None:
             return
 
-        inside_rows: set[int] = set()
         for agent_idx in range(self.agent_num):
             inside_idx = agent_inside_building_idx(self, agent_idx)
             if inside_idx is not None:
-                inside_rows.add(inside_idx)
+                self._buildings_entered.add(inside_idx)
 
         suppressed: set[int] = set()
-        for row in inside_rows:
+        for row in self._buildings_entered:
             geom_id = self._obstacle_geom_id_for_instance(buildings, row)
             if geom_id is not None:
                 suppressed.add(geom_id)
@@ -185,7 +202,7 @@ class MultiGoalSARLevel0(BaseTask):
             geom_id = self._obstacle_geom_id_for_instance(buildings, row)
             if geom_id is None:
                 continue
-            if geom_id in suppressed:
+            if row in self._buildings_entered:
                 self.model.geom_rgba[geom_id][-1] = 0.0
             else:
                 self.model.geom_rgba[geom_id][-1] = buildings.alpha
@@ -305,12 +322,8 @@ class MultiGoalSARLevel0(BaseTask):
                             i, poses, obstacle.group, obstacle=obstacle,
                         )
                 elif obstacle.name.endswith('_buildings'):
+                    skip_rows = frozenset(self._buildings_entered)
                     for i in range(self.agent_num):
-                        inside_idx = agent_inside_building_idx(self, i)
-                        skip_rows = (
-                            frozenset({inside_idx})
-                            if inside_idx is not None else frozenset()
-                        )
                         self.try_lidar_ids(obstacle, obs, i, skip_instance_rows=skip_rows)
                 else:
                     for i in range(self.agent_num):
@@ -318,6 +331,13 @@ class MultiGoalSARLevel0(BaseTask):
 
             if hasattr(obstacle, 'is_comp_observed') and obstacle.is_comp_observed:
                 obs[obstacle.name + '_comp'] = self._obs_compass(obstacle.pos)
+
+        buildings = building_geom(self)
+        if buildings is not None:
+            visited = np.zeros(buildings.num, dtype=np.float64)
+            for row in self._buildings_entered:
+                visited[row] = 1.0
+            obs[f'{buildings.color_name}_buildings_visited'] = visited
 
         if self.observe_vision:
             for i in range(self.agent_num):

@@ -237,7 +237,7 @@ def test_obs_lidar_pseudo_new_empty_positions_is_zeros():
 
 
 def test_entered_building_suppresses_shell_lidar_and_render():
-    """Entered building shell is hidden and omitted from building lidar + LoS rays."""
+    """Entered building shell stays sticky-hidden after exit; visited flag set."""
     from unittest.mock import patch
 
     from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar import multi_sar_level0
@@ -253,6 +253,7 @@ def test_entered_building_suppresses_shell_lidar_and_render():
 
         with patch.object(multi_sar_level0, 'agent_inside_building_idx', return_value=0):
             task._sync_entered_building_state()
+            assert 0 in task._buildings_entered
             assert shell_geom_id in task._lidar_suppressed_geom_ids
             assert task.model.geom_rgba[shell_geom_id][-1] == 0.0
 
@@ -270,6 +271,94 @@ def test_entered_building_suppresses_shell_lidar_and_render():
                     obs['terracotta_buildings_lidar_0'],
                     np.zeros(task.lidar_conf.num_bins),
                 )
+            np.testing.assert_array_equal(
+                obs['terracotta_buildings_visited'],
+                np.array([1.0], dtype=np.float64),
+            )
+
+        # Exit: shell stays hidden (sticky for rest of episode).
+        with patch.object(multi_sar_level0, 'agent_inside_building_idx', return_value=None):
+            task._sync_entered_building_state()
+            assert 0 in task._buildings_entered
+            assert shell_geom_id in task._lidar_suppressed_geom_ids
+            assert task.model.geom_rgba[shell_geom_id][-1] == 0.0
+
+            obs = task.obs()
+            positions = [
+                buildings.pos[row]
+                for row in range(buildings.num)
+                if row != 0
+            ]
+            expected = task._obs_lidar_pseudo_new(0, positions)
+            np.testing.assert_array_equal(obs['terracotta_buildings_lidar_0'], expected)
+            np.testing.assert_array_equal(
+                obs['terracotta_buildings_visited'],
+                np.array([1.0], dtype=np.float64),
+            )
+    finally:
+        env.close()
+
+
+def test_wrapper_keeps_entrapped_lidar_when_building_sticky_entered():
+    """Entrapped lidar is not force-zeroed once a building is sticky-entered."""
+    from unittest.mock import patch
+
+    from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar import multi_sar_level0
+
+    env = make_env('PointLTL5MASAR1-v0', sb3=False)
+    try:
+        env.reset(seed=11)
+        task = env.unwrapped.task
+        bins = task.lidar_conf.num_bins
+        sentinel = np.full(bins, 0.42, dtype=np.float64)
+
+        with patch.object(multi_sar_level0, 'agent_inside_building_idx', return_value=0):
+            task._sync_entered_building_state()
+            assert 0 in task._buildings_entered
+
+        # Outside again, cost pulse gone — sticky entered must still unmask.
+        with patch.object(multi_sar_level0, 'agent_inside_building_idx', return_value=None):
+            task._sync_entered_building_state()
+            assert 0 in task._buildings_entered
+
+            fake_obs = {
+                'agent_0': {
+                    'entrapped_casualtys_lidar_0': sentinel.copy(),
+                },
+            }
+            fake_reward = {'agent_0': 0.0}
+            fake_cost = {'agent_0': 0.0}
+            fake_terminated = {'agent_0': False}
+            fake_truncated = {'agent_0': False}
+            fake_info = {
+                'agent_0': {
+                    'cost_buildings_terracotta': 0.0,
+                    'cost_sum': 0.0,
+                },
+            }
+
+            with patch.object(
+                env.env,
+                'step',
+                return_value=(
+                    fake_obs,
+                    fake_reward,
+                    fake_cost,
+                    fake_terminated,
+                    fake_truncated,
+                    fake_info,
+                ),
+            ):
+                action = {
+                    agent: np.zeros(2, dtype=np.float64)
+                    for agent in env.unwrapped.possible_agents
+                }
+                obs, _reward, _terminated, _truncated, _info = env.step(action)
+
+            np.testing.assert_array_equal(
+                obs['agent_0']['entrapped_casualtys_lidar_0'],
+                sentinel,
+            )
     finally:
         env.close()
 

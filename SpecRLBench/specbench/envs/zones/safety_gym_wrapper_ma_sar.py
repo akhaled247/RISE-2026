@@ -9,6 +9,7 @@ from gymnasium.spaces import Box
 from specbench.utils.ltl.logic import Assignment
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
     agent_has_entrapped_at_building,
+    agent_inside_building_idx,
 )
 
 
@@ -98,17 +99,18 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
 
             info['propositions'].extend(active_props.keys())
 
-            # Level 1+ building logic: mask entrapped lidar when not inside building
+            # Mask entrapped lidar until agent is inside or team has sticky-entered a building.
+            task = self.env.unwrapped.task
+            inside = agent_inside_building_idx(task, i) is not None
+            entered = bool(getattr(task, '_buildings_entered', set()))
             if (
                 f'entrapped_casualtys_lidar_{i}' in obs[a]
-                and f'cost_buildings_terracotta_{i}' not in info['propositions']
+                and not (inside or entered)
             ):
                 obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(
                     obs[a][f'entrapped_casualtys_lidar_{i}'].size,
                 )
-            else:
-                # print('entered building')
-                reward[a] += info[a]['cost_buildings_terracotta'] * 1.0
+            reward[a] += info[a].get('cost_buildings_terracotta', 0) * 1.0
 
             # if info[a].get('cost_walls', 0) > 0:
             #     reward[a] -= 0.1
