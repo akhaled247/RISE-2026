@@ -37,7 +37,7 @@ from utils.env_utils import make_vec
 
 # --- edit these before each run ---
 # Levels: PointLTL4MASAR1-v0 (walls only) | PointLTL5MASAR1-v0 (walls + buildings)
-env_name = "PointLTL6MASAR1-v0"
+env_name = "PointLTL4MASAR1WC-v0"
 # Sweep id: "S0" | "S1" | "S2" | "S3" | "S4"  (see table in module docstring)
 SWEEP_RUN = "S2"
 
@@ -47,8 +47,11 @@ TRAINING_LOG_PATH = f"./_training_logs/rnd_ppo_{env_name}_tensorboard/"
 # Level → RND obs key substrings (buildings/walls focus; casualties excluded)
 LEVEL_RND_PREFIXES: dict[str, list[str]] = {
     "PointLTL4MASAR1-v0": ["walls", "wall_sensor"],
+    "PointLTL4MASAR1WC-v0": ["walls", "wall_sensor"],
     "PointLTL5MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
-    "PointLTL6MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
+    "PointLTL5MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
+    "PointLTL6MASAR1WC-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
+    "PointLTL6MASAR1WC-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
 }
 
 # S0–S4: (intrinsic_reward_coef, ent_coef, use_rnd)
