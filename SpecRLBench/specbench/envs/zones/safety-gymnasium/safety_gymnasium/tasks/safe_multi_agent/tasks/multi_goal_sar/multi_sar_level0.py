@@ -97,10 +97,9 @@ class MultiGoalSARLevel0(BaseTask):
                 ),
             )
 
-        if self.agent_num > 1:
-            self._add_mocaps(
-                Gremlins(num=config['agent_num'], size=0.15, dist_threshold=0.10, keepout=0.0)
-            )
+        self._add_mocaps(
+            Gremlins(num=config['agent_num'], size=0.175, dist_threshold=0.175, keepout=0.0)
+        )
 
     def _dist_to_casualty(self, agent_idx: int) -> float:
         if not hasattr(self, 'surface_casualtys'):

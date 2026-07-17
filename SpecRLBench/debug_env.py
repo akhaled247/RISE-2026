@@ -23,7 +23,7 @@ while not done:
         action = {a: env.action_space(a).sample() for a in env.unwrapped.possible_agents}
     obs, reward, terminated, truncated, info = env.step(action)
     done = any(list(terminated.values())) or any(list(truncated.values()))
-    print(obs['agent_0'])
+    # print(obs['agent_0'])
     # if info['agent_0']['cost_walls']>0: print(info['agent_0']['cost_walls'])
     if reward['agent_0'] != 0: print(f"[debug_env] reward = {reward['agent_0']}")
     # print(f'terminated {any(list(terminated.values()))}')

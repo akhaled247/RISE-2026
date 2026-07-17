@@ -14,6 +14,7 @@
 # ==============================================================================
 
 from dataclasses import field
+import re
 
 import numpy as np
 from safety_gymnasium.tasks.safe_multi_agent.assets.group import GROUP
@@ -89,27 +90,24 @@ class Buildings(Geom):  # pylint: disable=too-many-instance-attributes
         return geom
 
     def cal_cost(self):
-        # cost = {f'cost_buildings_{self.color}': 0}
-        # cost = {'agent_0': {f'cost_buildings_{self.color}': 0}, 
-        #         'agent_1': {f'cost_buildings_{self.color}': 0}}
-        cost = {agent: {f'cost_buildings_{self.color_name}': 0} for agent in self.agent.possible_agents}
-        # print(f"self.pos: {self.pos}")
-        for building_idx, h_pos in enumerate(self.pos):
-            for agent_idx in range(self.agent.agent_num):
-                agent_xy = self.agent.get_agent_pos(agent_idx)[:2]
-                if (
-                    np.max(np.abs(agent_xy - np.asarray(h_pos[:2]))) <= self.size
-                    and not self.prev_contact[building_idx]
-                ):
-                    self.prev_contact[building_idx] = True
-                    cost[f'agent_{agent_idx}'][f'cost_buildings_{self.color_name}'] = 1/self.num
-            # agent0_h_dist = self.agent.dist_xy(0, h_pos)
-            # agent1_h_dist = self.agent.dist_xy(1, h_pos)
-            # if agent0_h_dist <= self.size:
-            #     cost['agent_0'][f'cost_buildings_{self.color}'] = 1
-            # if agent1_h_dist <= self.size:
-            #     cost['agent_1'][f'cost_buildings_{self.color}'] = 1
-        
+        cost = {f'agent_{i}': {'cost_walls': 0} for i in range(self.agent.agent_num)}
+
+        for con in self.engine.data.contact[:self.engine.data.ncon]:
+            g1 = con.geom1
+            g2 = con.geom2
+            name1 = self.engine.model.geom(g1).name
+            name2 = self.engine.model.geom(g2).name
+            # print(f'[buildings.py] name1 = {name1}')
+            # print(f'[buildings.py] name2 = {name2}')
+
+            if "gremlin" in name1 and "wall" in name2:
+                agent_id = int(re.search(r"gremlin(\d+)obj", name1).group(1))
+                cost[f'agent_{agent_id}']['cost_walls'] = 1
+
+            elif "wall" in name1 and "gremlin" in name2:
+                agent_id = int(re.search(r"gremlin(\d+)obj", name1).group(1))
+                cost[f'agent_{agent_id}']['cost_walls'] = 1
+
         return cost
 
     @property
