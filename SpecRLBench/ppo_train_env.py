@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 
 # --- edit these before each run ---
-env_name = "PointLTL5MASAR1-v0"
+env_name = "PointLTL6MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
 

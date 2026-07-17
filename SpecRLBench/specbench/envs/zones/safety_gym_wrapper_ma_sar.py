@@ -93,7 +93,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
             agent_info: dict = info[a]
             active_props = {}
             for k, v in agent_info.items():
-                if isinstance(v, (int, float)) and v > 0 and "cost_sum" not in k:
+                if isinstance(v, (int, float)) and v != 0 and "cost_sum" not in k:
                     active_props[f"{k}_{i}"] = v
 
             info['propositions'].extend(active_props.keys())
