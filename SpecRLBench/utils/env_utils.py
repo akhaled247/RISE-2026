@@ -1,3 +1,4 @@
+import sys
 import time
 
 import gymnasium as gym
@@ -49,11 +50,15 @@ def make_env(env_name, render_mode=None, sb3=False):
     elif env_name.startswith("Point") or env_name.startswith("Car") or env_name.startswith("Ant"):
         from specbench.envs.zones.safety_gym_wrapper_ma import SafetyGymWrapperMA
         from specbench.envs.zones.safety_gym_wrapper_ma_sar import SafetyGymWrapperMASAR
+        from specbench.envs.zones.safety_gym_wrapper_ma_sar_wall_terminate import SafetyGymWrapperMASARWallTerminate
         from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
         import safety_gymnasium
         env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
         if "SAR" in env_name:
-            env = SafetyGymWrapperMASAR(env, sb3=sb3)
+            if '5' in env_name or '6' in env_name:
+                env = SafetyGymWrapperMASARWallTerminate(env, sb3=sb3)
+            else:
+                env = SafetyGymWrapperMASAR(env, sb3=sb3)
         elif "MA" in env_name:
             env = SafetyGymWrapperMA(env)
         else:
@@ -67,13 +72,29 @@ def make_env(env_name, render_mode=None, sb3=False):
     return env
 
 
-def make_vec(env_name, n_envs, render_mode=None, sb3=False, normalize=True, parallel=True):
-    """Vectorized env factory: SubprocVecEnv for parallel rollouts, optional VecNormalize."""
-    vec_env_cls = SubprocVecEnv if parallel and n_envs > 1 else DummyVecEnv
+def make_vec(
+    env_name,
+    n_envs,
+    render_mode=None,
+    sb3=False,
+    normalize=True,
+    parallel=True,
+    vec_env_kwargs=None,
+):
+    """Vectorized env factory. Uses SubprocVecEnv on Linux with fork for real parallelism."""
+    vec_env_kwargs = dict(vec_env_kwargs or {})
+    if parallel and n_envs > 1:
+        vec_env_cls = SubprocVecEnv
+        if sys.platform != "win32" and "start_method" not in vec_env_kwargs:
+            vec_env_kwargs["start_method"] = "fork"
+    else:
+        vec_env_cls = DummyVecEnv
+        vec_env_kwargs = {}
     vec_env = make_vec_env(
         lambda: Monitor(make_env(env_name, render_mode, sb3)),
         n_envs=n_envs,
         vec_env_cls=vec_env_cls,
+        vec_env_kwargs=vec_env_kwargs if vec_env_kwargs else None,
     )
     if sb3 and normalize:
         vec_env = VecNormalize(

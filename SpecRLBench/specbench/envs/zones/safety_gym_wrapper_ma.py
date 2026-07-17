@@ -101,11 +101,7 @@ class SafetyGymWrapperMA(gymnasium.Wrapper):
                 terminated[a] = terminated[a] or \
                     info[a]['cost_ltl_walls'] > 0 or \
                     info[a]['cost_collision'] > 0
-                if info[a]['cost_ltl_walls'] > 0:
-                    print(f"DEBUG: wall collision detected for {a}!")
-                if info[a]['cost_collision'] > 0:
-                    print(f"DEBUG: agent collision detected for {a}!")
-            
+
             # if any(terminated.values()):
             #     print(f"DEBUG: collision detected!")
                 # info['violation'] = True

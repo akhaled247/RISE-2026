@@ -14,28 +14,33 @@
 # ==============================================================================
 """Multi Goal with a SAR environment."""
 
+from collections import OrderedDict
+
 import gymnasium
 import mujoco
 import numpy as np
 
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
+from safety_gymnasium.tasks.safe_multi_agent.world import World
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import Walls
-from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.zones import Zones
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Buildings
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
-from safety_gymnasium.tasks.safe_multi_agent.utils.sar_goal_utils import mission_goal_achieved
-from safety_gymnasium.tasks.safe_multi_agent import agents
-from safety_gymnasium.tasks.safe_multi_agent.bases.base_object import Geom
+from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
+    agent_inside_building_idx,
+    border_placements,
+    building_count,
+    building_geom,
+    clear_building_pinned_locations,
+    clamp_building_placement_keepout,
+    mission_goal_achieved,
+    sync_building_dependents_into_layout,
+)
 
 
-CASUALTY_KEEPOUT = 0.2
 class MultiGoalSARLevel0(BaseTask):
     """Multi-agent zone navigation with optional ring-placed interior walls."""
-    _cached_wall_half_sizes = None
-    _cached_building_locations = None
-    _cached_building_rots = None
 
     wall_ring_radius = 2.0
     wall_base_half_sizes = [0.1, 0.3, 0.2]
@@ -49,8 +54,14 @@ class MultiGoalSARLevel0(BaseTask):
     max_dist = None
     reward_distance = 1.0
     reward_goal = 1.0
+    time_alive_decay = 0.0
+    surface_casualtys_frac: float = 1.0
+    entrapped_casualtys_frac: float = 0.0
+    building_num: int = 0
 
     def __init__(self, config) -> None:
+        self._cached_wall_half_sizes = None
+        self._cached_building_rots = None
         super().__init__(config=config)
 
         self.placements_conf.extents = [-3.5, -3.5, 3.5, 3.5]
@@ -58,32 +69,37 @@ class MultiGoalSARLevel0(BaseTask):
         self.lidar_conf.max_dist = self.max_dist
         self.lidar_conf.exp_gain = 0.5
         self.lidar_conf.alias = True
-        self.lidar_conf.type = 'pseudo_occluded'  # choices: 'pseudo' 'natural' 'pseudo_occluded'
+        self.lidar_conf.type = 'pseudo'  # choices: 'pseudo' 'natural' 'pseudo_occluded'
         self.cost_conf.constrain_indicator = False
         self.observation_flatten = False
         self.render_conf.lidar_markers = False
         self.mechanism_conf.continue_goal = False
         self.last_dist_casualty = None
+        self._buildings_entered: set[int] = set()
+        self._lidar_suppressed_geom_ids: set[int] = set()
 
         # Spawn agents in a specified area
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
-
+        surface_casualtys_int = int(self.agent_num * self.surface_casualtys_frac)
         # One surface casualty for solo training; otherwise one per agent.
-        casualty_num = 1 if self.agent_num == 1 else self.agent_num
+        self.casualty_num = self.agent_num
         self._add_geoms(
             LtlWalls(contype=1),
-            Casualtys(
-                category=list(Casualtys.CATEGORIES)[-2],
-                size=0.05,
-                num=casualty_num,
-                keepout=self.casualty_keepout,
-            ),
         )
 
-        if self.agent_num > 1:
-            self._add_mocaps(
-                Gremlins(num=config['agent_num'], size=0.15, dist_threshold=0.10, keepout=0.0)
+        if surface_casualtys_int>0: 
+            self._add_geoms(
+                Casualtys(
+                    category=list(Casualtys.CATEGORIES)[-2],
+                    size=0.05,
+                    num=surface_casualtys_int,
+                    keepout=self.casualty_keepout,
+                ),
             )
+
+        self._add_mocaps(
+            Gremlins(num=config['agent_num'], size=0.175, dist_threshold=0.175, keepout=0.0)
+        )
 
     def _dist_to_casualty(self, agent_idx: int) -> float:
         if not hasattr(self, 'surface_casualtys'):
@@ -91,21 +107,58 @@ class MultiGoalSARLevel0(BaseTask):
         casualty_pos = self.surface_casualtys.pos[0]
         return self.agent.dist_xy(agent_idx, casualty_pos)
 
+    def _dist_to_casualtys(self, agent_idx: int) -> list[float]:
+        if hasattr(self, 'surface_casualtys'):
+            casualty_poses = (self.surface_casualtys.pos[i] for i in range(self.casualty_num))
+            return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
+        elif hasattr(self, 'entrapped_casualtys'):
+            casualty_poses = (self.entrapped_casualtys.pos[i] for i in range(self.casualty_num))
+            return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
+        return []
+            
+
+    def build_observation_space(self) -> gymnasium.spaces.Dict:
+        super().build_observation_space()
+        buildings = building_geom(self)
+        if buildings is not None:
+            obs_space_dict = OrderedDict(self.obs_info.obs_space_dict.spaces)
+            obs_space_dict[f'{buildings.color_name}_buildings_visited'] = gymnasium.spaces.Box(
+                0.0,
+                1.0,
+                (buildings.num,),
+                dtype=np.float64,
+            )
+            self.obs_info.obs_space_dict = gymnasium.spaces.Dict(obs_space_dict)
+        if self.observation_flatten:
+            self.observation_space = gymnasium.spaces.utils.flatten_space(
+                self.obs_info.obs_space_dict,
+            )
+        else:
+            self.observation_space = self.obs_info.obs_space_dict
+        return self.observation_space
+
     def calculate_reward(self):
-        """Task-native shaping: distance delta toward casualty plus touch bonus."""
+        """Distance delta toward visible casualty and touch bonus."""
         rewards = {}
         touch_threshold = 0.0
         if hasattr(self, 'surface_casualtys'):
             touch_threshold = self.surface_casualtys.size + 0.15
+        if hasattr(self, 'entrapped_casualtys'):
+            touch_threshold = self.entrapped_casualtys.size + 0.15
+
         for i in range(self.agent_num):
-            reward = 0.0
-            dist = self._dist_to_casualty(i)
-            if self.last_dist_casualty is not None:
-                reward += (self.last_dist_casualty[i] - dist) * self.reward_distance
-            self.last_dist_casualty[i] = dist
-            if dist <= touch_threshold:
+            a = f'agent_{i}'
+            reward = self.time_alive_decay
+
+            # Distance-based reward shaping
+            dists = self._dist_to_casualtys(i)
+            min_dist = min(dists) if dists else 0.0
+            if min_dist <= touch_threshold:
+                # print('casualty')
                 reward += self.reward_goal
-            rewards[f'agent_{i}'] = reward
+            self.last_dist_casualty[i] = min_dist
+
+            rewards[a] = reward
         return rewards
 
     def specific_reset(self):
@@ -115,13 +168,82 @@ class MultiGoalSARLevel0(BaseTask):
         if hasattr(self, 'entrapped_casualtys'):
             self.entrapped_casualtys.rescued = [False] * self.entrapped_casualtys.num
         self.last_dist_casualty = [self._dist_to_casualty(i) for i in range(self.agent_num)]
-        return super().specific_reset()
+        self._buildings_entered = set()
+        self._lidar_suppressed_geom_ids = set()
+        buildings = building_geom(self)
+        if buildings is not None:
+            buildings.prev_contact = [False] * buildings.num
+        self._sync_entered_building_state()
 
     def specific_step(self):
-        return super().specific_step()
+        self._sync_entered_building_state()
+
+    def _sync_entered_building_state(self) -> None:
+        """Sticky-hide entered building shells for the rest of the episode."""
+        buildings = building_geom(self)
+        if buildings is None or not hasattr(self, 'model') or self.model is None:
+            return
+
+        for agent_idx in range(self.agent_num):
+            inside_idx = agent_inside_building_idx(self, agent_idx)
+            if inside_idx is not None:
+                self._buildings_entered.add(inside_idx)
+
+        suppressed: set[int] = set()
+        for row in self._buildings_entered:
+            geom_id = self._obstacle_geom_id_for_instance(buildings, row)
+            if geom_id is not None:
+                suppressed.add(geom_id)
+
+        self._lidar_suppressed_geom_ids = suppressed
+
+        for row in range(buildings.num):
+            geom_id = self._obstacle_geom_id_for_instance(buildings, row)
+            if geom_id is None:
+                continue
+            if row in self._buildings_entered:
+                self.model.geom_rgba[geom_id][-1] = 0.0
+            else:
+                self.model.geom_rgba[geom_id][-1] = buildings.alpha
 
     def update_world(self):
         pass
+
+    def _prepare_layout(self) -> None:
+        has_buildings = building_geom(self) is not None
+        if has_buildings:
+            clear_building_pinned_locations(self)
+            clamp_building_placement_keepout(self, self.building_margin)
+        if has_buildings or self.placements_conf.placements is None:
+            self._build_placements_dict()
+            self.random_generator.set_placements_info(
+                self.placements_conf.placements,
+                self.placements_conf.extents,
+                self.placements_conf.margin,
+            )
+        if self.random_generator.agent_num is None:
+            self.random_generator.agent_num = self.agent.agent_num
+        self.world_info.layout = self.random_generator.build_layout()
+        if has_buildings:
+            sync_building_dependents_into_layout(self, self.world_info.layout)
+
+    def _fast_resample_layout(self) -> None:
+        self._prepare_layout()
+        self.world_info.world_config_dict = self._build_world_config(self.world_info.layout)
+        self._apply_layout_from_config()
+
+    def _build(self):
+        self._prepare_layout()
+        self.world_info.world_config_dict = self._build_world_config(self.world_info.layout)
+        if self.world is None:
+            self.world = World(self.agent, self._obstacles, self.world_info.world_config_dict)
+            self.world.reset()
+            self.world.build()
+        else:
+            self.world.reset(build=False)
+            self.world.rebuild(self.world_info.world_config_dict, state=False)
+            if self.viewer:
+                self._update_viewer(self.model, self.data)
 
     def _replace_geom(self, geom) -> None:
         """Update _geoms like _add_geoms but without duplicate registration checks."""
@@ -129,71 +251,100 @@ class MultiGoalSARLevel0(BaseTask):
         setattr(self, geom.name, geom)
         geom.set_agent(self.agent)
 
-    def _build(self):
-        return super()._build()
+    def _replace_border_buildings(self, num=None) -> None:
+        self._replace_geom(Buildings(
+            color=list(Buildings.COLORS)[0],
+            size=self.building_keepout * 0.75,
+            num=self.agent_num if num is None else num,
+            keepout=self.building_keepout,
+            placements=border_placements(
+                self.building_border_side_length,
+                self.building_margin,
+            ),
+        ))
 
-    def try_lidar_ids(self, obstacle, obs, i):
-        want_ids = getattr(obstacle, 'is_lidar_ids_observed', False)
-        if want_ids and self.lidar_conf.type == 'pseudo_occluded':
+    def _replace_building_perimeter_walls(self) -> None:
+        factor = self.building_keepout * 0.75
+        for i in range(building_count(self)):
+            self._replace_geom(LtlWalls(
+                name=f'building{i}_ltl_walls',
+                locate_factor=factor,
+                size=factor,
+                height=0.75,
+                collision_threshold=8.0,
+            ))
+
+    def try_lidar_ids(self, obstacle, obs, i, skip_instance_rows=None):
+        """pseudo_occluded lidar with per-instance line-of-sight (walls block view)."""
+        skip_rows = skip_instance_rows or frozenset()
+        is_occluded = getattr(obstacle, 'is_occluded', True)
+        if (
+            hasattr(obstacle, 'is_lidar_ids_observed')
+            and obstacle.is_lidar_ids_observed
+            and self.lidar_conf.type == 'pseudo_occluded'
+        ):
             lidar, lidar_ids = self._obs_lidar_pseudo_occluded_new(
-                i, obstacle, return_ids=True,
+                i, obstacle, return_ids=True, skip_instance_rows=skip_rows,
             )
             obs[f"{obstacle.name}_lidar_{i}"] = lidar
             obs[f"{obstacle.name}_lidar_ids_{i}"] = lidar_ids
+        elif not is_occluded:
+            positions = [
+                obstacle.pos[row]
+                for row in range(obstacle.num)
+                if row not in skip_rows
+            ]
+            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_new(i, positions)
         else:
-            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_new(
-                i, obstacle.pos, obstacle.group, obstacle=obstacle,
-            )  
+            obs[f"{obstacle.name}_lidar_{i}"] = self._obs_lidar_pseudo_occluded_new(
+                i, obstacle, skip_instance_rows=skip_rows,
+            )
 
     def obs(self) -> dict | np.ndarray:
-            """Return the observation of our agent."""
-            # pylint: disable-next=no-member
-            mujoco.mj_forward(self.model, self.data)  # Needed to get sensor's data correct
-            obs = {}
-    
-            obs.update(self.agent.obs_sensor())
-    
-            # observations of obstacles
-            inside_building = False
-            for obstacle in self._obstacles:
-                if "terracotta" in obstacle.name and "building" in obstacle.name and any(obstacle.cal_cost())>0:
-                    inside_building = True
-                # print(f"obstacle.name: {obstacle.name}, obstacle.pos: {obstacle.pos}, obstacle.group: {obstacle.group}")
-                if obstacle.is_lidar_observed:
-                    if 'gremlins' in obstacle.name:
-                        for i in range(self.agent_num):
-                            name = f"{obstacle.name}_lidar_{i}"
-                            poses = obstacle.pos.copy()
-                            del poses[i]
-                            obs[name] = self._obs_lidar_new(
-                                i, poses, obstacle.group, obstacle=obstacle,
-                            )
-                    elif inside_building and ("entrapped" in obstacle.name or obstacle.name == "walls"):
-                        for i in range(self.agent_num):
-                            name = f"{obstacle.name}_lidar_{i}"
-                            obs[name] = self._obs_lidar_pseudo_new(i, obstacle.pos)
-                        # print(f"DEBUG: obstacle names: {str(obstacle.name)}")
-                    else:
-                        for i in range(self.agent_num):
-                            self.try_lidar_ids(obstacle, obs, i)            
-    
-                    
-                if hasattr(obstacle, 'is_comp_observed') and obstacle.is_comp_observed:
-                    obs[obstacle.name + '_comp'] = self._obs_compass(obstacle.pos)
-    
-            if self.observe_vision:
-                for i in range(self.agent_num):
-                    name = f'vision_{i}'
-                    obs[name] = self._obs_vision(camera_name=name)
-            # print(f"DEBUG: obs before flatten: {obs}")
-            # assert self.obs_info.obs_space_dict.contains(
-            #     obs,
-            # ), f'Bad obs {obs} {self.obs_info.obs_space_dict}'
-            # print(f"obs: {obs}")
-            # self.original_obs = obs
-            if self.observation_flatten:
-                obs = gymnasium.spaces.utils.flatten(self.obs_info.obs_space_dict, obs)
-            return obs
+        """Return the observation of our agent."""
+        # pylint: disable-next=no-member
+        mujoco.mj_forward(self.model, self.data)  # Needed to get sensor's data correct
+        self._sync_entered_building_state()
+        obs = {}
+
+        obs.update(self.agent.obs_sensor())
+
+        # observations of obstacles
+        for obstacle in self._obstacles:
+            if obstacle.is_lidar_observed:
+                if 'gremlins' in obstacle.name:
+                    for i in range(self.agent_num):
+                        name = f"{obstacle.name}_lidar_{i}"
+                        poses = obstacle.pos.copy()
+                        del poses[i]
+                        obs[name] = self._obs_lidar_new(
+                            i, poses, obstacle.group, obstacle=obstacle,
+                        )
+                elif obstacle.name.endswith('_buildings'):
+                    skip_rows = frozenset(self._buildings_entered)
+                    for i in range(self.agent_num):
+                        self.try_lidar_ids(obstacle, obs, i, skip_instance_rows=skip_rows)
+                else:
+                    for i in range(self.agent_num):
+                        self.try_lidar_ids(obstacle, obs, i)
+
+            if hasattr(obstacle, 'is_comp_observed') and obstacle.is_comp_observed:
+                obs[obstacle.name + '_comp'] = self._obs_compass(obstacle.pos)
+
+        buildings = building_geom(self)
+        if buildings is not None:
+            visited = np.zeros(buildings.num, dtype=np.float64)
+            for row in self._buildings_entered:
+                visited[row] = 1.0
+            obs[f'{buildings.color_name}_buildings_visited'] = visited
+
+        if self.observe_vision:
+            for i in range(self.agent_num):
+                name = f'vision_{i}'
+                obs[name] = self._obs_vision(camera_name=name)
+        if self.observation_flatten:
+            obs = gymnasium.spaces.utils.flatten(self.obs_info.obs_space_dict, obs)
+        return obs
 
     @property
     def goal_achieved(self):

@@ -13,7 +13,7 @@ from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
 )
 
 
-class SafetyGymWrapperMASAR(gymnasium.Wrapper):
+class SafetyGymWrapperMASARWallTerminate(gymnasium.Wrapper):
     """
     A wrapper from safety gymnasium LTL environments to the gymnasium API.
     """
@@ -112,8 +112,14 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 )
             reward[a] += info[a].get('cost_buildings_terracotta', 0) * 1.0
 
-            # if info[a].get('cost_walls', 0) > 0:
-            #     reward[a] -= 0.1
+            # velo = obs[a][f'velocimeter_{i}']
+            # if (max(obs[a][f'walls_lidar_{i}']) > 0.85 or 
+            #     max(obs[a][f'walls_lidar_{i}']) > 0.75 
+            #         and np.hypot(velo[0], velo[1]) < 0.01):
+            #     terminated[a] = True
+            # print(info[a])
+            if info[a]['cost_walls']>0:
+                terminated[a] = True
 
             # if (f'cost_walls_{i}' in info['propositions']): print('collision')
             # Surface casualty visibility logic

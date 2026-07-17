@@ -12,27 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Multi Goal with a SAR environment."""
+"""Multi Goal SAR level 6: same as level 5 with multiple buildings."""
 
-from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_level2 import MultiGoalSARLevel2
+from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_level5 import (
+    MultiGoalSARLevel5,
+)
 
 
-class MultiGoalSARLevel3(MultiGoalSARLevel2):
-    """Multi-agent zone navigation with optional ring-placed interior walls."""
+class MultiGoalSARLevel6(MultiGoalSARLevel5):
+    """L5 setup with two buildings."""
 
-    wall_count = 20
-
-    def calculate_reward(self):
-        return {f'agent_{i}': 0.0 for i in range(self.agent_num)}
-
-    def specific_reset(self):
-        return super().specific_reset()
-
-    def specific_step(self):
-        return super().specific_step()
-
-    def update_world(self):
-        pass
-
-    def _build(self):
-        return super()._build()
+    building_num = 2
