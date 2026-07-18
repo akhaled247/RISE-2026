@@ -1,4 +1,4 @@
-"""PPO-Lagrangian: OpenAI Safety Starter Agents fidelity, SB3-like API."""
+"""PPO-Lagrangian: OpenAI Safety Starter Agents fidelity."""
 
 from ppo_lagrangian.ppo_lagrangian import PPOLagrangian
 

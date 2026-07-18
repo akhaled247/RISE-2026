@@ -49,7 +49,7 @@ def eval_model(
 
     print("=" * 40)
     print(f"eval env={env_name} device={DEVICE}")
-    print(f"loading {model_path}.zip")
+    print(f"loading {model_path}")
 
     base_env = make_env(env_name, sb3=True, render_mode=render_mode)
     vec_env = DummyVecEnv([lambda: Monitor(base_env)])
@@ -57,17 +57,16 @@ def eval_model(
     vec_env.training = False
     vec_env.norm_reward = False
 
-    # Route by filename tag: PPORND/PPOLagrangian use SB3 .zip layout but custom classes.
+    # Route by filename tag.
     name_l = Path(model_path).name.lower()
     if "ppo_lag" in name_l or "ppolagrangian" in name_l:
         from ppo_lagrangian import PPOLagrangian
 
         model = PPOLagrangian.load(model_path, env=vec_env, device=DEVICE)
-    elif "rnd_ppo" in name_l or "ppornd" in name_l:
-        from rnd import PPORND
+    elif "rnd_ppo" in name_l:
+        from rnd import RNDPPO
 
-        # SB3 .zip (same as PPO.save); class must be PPORND for dual VF + RND state
-        model = PPORND.load(model_path, env=vec_env, device=DEVICE)
+        model = RNDPPO.load(model_path, env=vec_env, device=DEVICE)
     else:
         model = PPO.load(model_path, env=vec_env, device=DEVICE)
 

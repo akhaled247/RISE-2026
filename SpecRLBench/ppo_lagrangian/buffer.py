@@ -1,24 +1,27 @@
-"""Rollout buffer matching OpenAI ``safe_rl/pg/buffer.py`` ``CPOBuffer``.
-
-Fidelity notes
---------------
-* Reward GAE uses ``gamma * lam``.
-* Cost TD deltas use reward ``gamma`` for the bootstrap term (OpenAI quirk),
-  while cost GAE discount uses ``cost_gamma * cost_lam``.
-* Reward advantages are mean/std-normalized; cost advantages are mean-centered only.
-"""
+"""Rollout buffer (OpenAI CPOBuffer): reward/cost GAE + returns."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import numpy as np
+import scipy.signal
 
-from ppo_lagrangian.utils import EPS, combined_shape, discount_cumsum, keys_as_sorted_list, values_as_sorted_list
+EPS = 1e-8
+
+
+def _shape(length: int, shape: int | tuple[int, ...] | None) -> tuple[int, ...]:
+    if shape is None:
+        return (length,)
+    return (length, shape) if np.isscalar(shape) else (length, *shape)
+
+
+def discount_cumsum(x: np.ndarray, discount: float) -> np.ndarray:
+    return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
 
 
 class LagrangianRolloutBuffer:
-    """On-policy buffer for PPO-Lagrangian (OpenAI CPOBuffer semantics)."""
+    """On-policy buffer. Cost TD uses reward gamma (OpenAI quirk)."""
 
     def __init__(
         self,
@@ -34,12 +37,12 @@ class LagrangianRolloutBuffer:
         self.obs_is_dict = isinstance(obs_shape, dict)
         if self.obs_is_dict:
             self.obs_buf: dict[str, np.ndarray] | np.ndarray = {
-                k: np.zeros(combined_shape(size, v), dtype=np.float32) for k, v in obs_shape.items()
+                k: np.zeros(_shape(size, v), dtype=np.float32) for k, v in obs_shape.items()
             }
         else:
-            self.obs_buf = np.zeros(combined_shape(size, obs_shape), dtype=np.float32)
+            self.obs_buf = np.zeros(_shape(size, obs_shape), dtype=np.float32)
 
-        self.act_buf = np.zeros(combined_shape(size, act_shape), dtype=np.float32)
+        self.act_buf = np.zeros(_shape(size, act_shape), dtype=np.float32)
         self.adv_buf = np.zeros(size, dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.ret_buf = np.zeros(size, dtype=np.float32)
@@ -52,7 +55,7 @@ class LagrangianRolloutBuffer:
         self.pi_info_bufs = {
             k: np.zeros([size] + list(v), dtype=np.float32) for k, v in pi_info_shapes.items()
         }
-        self.sorted_pi_info_keys = keys_as_sorted_list(self.pi_info_bufs)
+        self.pi_info_keys = sorted(self.pi_info_bufs.keys())
         self.gamma, self.lam = gamma, lam
         self.cost_gamma, self.cost_lam = cost_gamma, cost_lam
         self.ptr, self.path_start_idx, self.max_size = 0, 0, size
@@ -68,7 +71,7 @@ class LagrangianRolloutBuffer:
         logp: float,
         pi_info: dict[str, np.ndarray],
     ) -> None:
-        assert self.ptr < self.max_size, "Buffer full; call get() before storing more."
+        assert self.ptr < self.max_size
         if self.obs_is_dict:
             assert isinstance(self.obs_buf, dict)
             for k in self.obs_buf:
@@ -81,16 +84,11 @@ class LagrangianRolloutBuffer:
         self.cost_buf[self.ptr] = cost
         self.cval_buf[self.ptr] = cval
         self.logp_buf[self.ptr] = logp
-        for k in self.sorted_pi_info_keys:
+        for k in self.pi_info_keys:
             self.pi_info_bufs[k][self.ptr] = pi_info[k]
         self.ptr += 1
 
     def finish_path(self, last_val: float = 0.0, last_cval: float = 0.0) -> None:
-        """Compute GAE advantages and returns for the finished path segment.
-
-        Matches OpenAI ``CPOBuffer.finish_path`` exactly, including the cost-delta
-        bootstrap term using reward ``gamma`` rather than ``cost_gamma``.
-        """
         path_slice = slice(self.path_start_idx, self.ptr)
         rews = np.append(self.rew_buf[path_slice], last_val)
         vals = np.append(self.val_buf[path_slice], last_val)
@@ -100,43 +98,32 @@ class LagrangianRolloutBuffer:
 
         costs = np.append(self.cost_buf[path_slice], last_cval)
         cvals = np.append(self.cval_buf[path_slice], last_cval)
-        # OpenAI quirk: cost TD uses reward gamma for next-value term.
         cdeltas = costs[:-1] + self.gamma * cvals[1:] - cvals[:-1]
         self.cadv_buf[path_slice] = discount_cumsum(cdeltas, self.cost_gamma * self.cost_lam)
         self.cret_buf[path_slice] = discount_cumsum(costs, self.cost_gamma)[:-1]
-
         self.path_start_idx = self.ptr
 
     def get(self) -> dict[str, Any]:
-        """Normalize advantages and return the full buffer for one update epoch."""
-        assert self.ptr == self.max_size, "Buffer must be full before get()."
+        assert self.ptr == self.max_size
         self.ptr, self.path_start_idx = 0, 0
-
-        # Advantage normalizing trick for policy gradient (reward).
-        adv_mean = float(np.mean(self.adv_buf))
-        adv_std = float(np.std(self.adv_buf))
+        adv_mean, adv_std = float(np.mean(self.adv_buf)), float(np.std(self.adv_buf))
         self.adv_buf = (self.adv_buf - adv_mean) / (adv_std + EPS)
-
-        # Center, but do NOT rescale advantages for cost gradient.
-        cadv_mean = float(np.mean(self.cadv_buf))
-        self.cadv_buf -= cadv_mean
-
-        data: dict[str, Any] = {
-            "obs": self.obs_buf if not self.obs_is_dict else {k: v.copy() for k, v in self.obs_buf.items()},  # type: ignore[union-attr]
+        self.cadv_buf -= float(np.mean(self.cadv_buf))
+        if self.obs_is_dict:
+            assert isinstance(self.obs_buf, dict)
+            obs: Any = {k: self.obs_buf[k].copy() for k in self.obs_buf}
+        else:
+            obs = self.obs_buf.copy()  # type: ignore[union-attr]
+        return {
+            "obs": obs,
             "act": self.act_buf.copy(),
             "adv": self.adv_buf.copy(),
             "cadv": self.cadv_buf.copy(),
             "ret": self.ret_buf.copy(),
             "cret": self.cret_buf.copy(),
             "logp": self.logp_buf.copy(),
-            "pi_info": {k: self.pi_info_bufs[k].copy() for k in self.sorted_pi_info_keys},
+            "pi_info": {k: self.pi_info_bufs[k].copy() for k in self.pi_info_keys},
         }
-        if self.obs_is_dict:
-            assert isinstance(self.obs_buf, dict)
-            data["obs"] = {k: self.obs_buf[k].copy() for k in self.obs_buf}
-        else:
-            data["obs"] = self.obs_buf.copy()  # type: ignore[union-attr]
-        return data
 
     def reset(self) -> None:
         self.ptr = 0

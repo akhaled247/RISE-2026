@@ -1,7 +1,7 @@
-"""Random Network Distillation (OpenAI-faithful) for PPO."""
+"""Random Network Distillation (RND) intrinsic reward for SB3 PPO."""
 
 from rnd.config import RNDConfig
 from rnd.obs_adapter import resolve_rnd_obs_keys
-from rnd.rnd_ppo import PPORND, RNDPPO
+from rnd.rnd_ppo import RNDPPO
 
-__all__ = ["RNDConfig", "PPORND", "RNDPPO", "resolve_rnd_obs_keys"]
+__all__ = ["RNDConfig", "RNDPPO", "resolve_rnd_obs_keys"]

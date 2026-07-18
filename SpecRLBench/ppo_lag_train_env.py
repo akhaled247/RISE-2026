@@ -20,15 +20,14 @@ Lag coeff ranges (freeze PPO knobs; only sweep Lag):
   penalty_init default 1.0   range {0.1, 1.0}  (frozen in S0–S3)
 
 Frozen PPO knobs (match ppo_train_env): lr=5e-5, n_steps=2048, n_envs=8,
-  batch_size=256, n_epochs=10, clip=0.2, target_kl=0.05, ent_coef=0.02,
+  batch_size unused by algo (OpenAI full-buffer); n_epochs=10, clip=0.2, target_kl=0.05, ent_coef=0.02,
   cost_gamma=0.99, cost_gae_lambda=0.97, vf_lr=1e-3, max_ep_len=1000.
 
 Eval: ppo_load_env rescue /50. Also watch train EpCost / Penalty — want EpCost→~0
   without rescue collapsing.
 
-EpCost caveat: WC wrapper does not set top-level info['cost']. default_cost_extractor
-  may still see nested cost_walls. If EpCost stays ~0 while agents hit walls,
-  constraint is inactive — fix extractor later if needed.
+EpCost caveat: default cost is info.get('cost', 0). WC wrapper may not set that;
+  pass cost_fn=... if EpCost stays ~0 while agents hit walls.
 """
 
 from __future__ import annotations
@@ -55,7 +54,6 @@ env_name = "PointLTL4MASAR1WC-v0"
 SWEEP_RUN = "S0"
 
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
-TRAINING_LOG_PATH = f"./_training_logs/ppo_lag_{env_name}_tensorboard/"
 
 # S0–S3: (cost_lim, penalty_lr, penalty_init)
 SWEEP_TABLE: dict[str, tuple[float, float, float]] = {
@@ -83,11 +81,9 @@ def train(
     ent_coef: float = 0.02,
     learning_rate: float = 5e-5,
     n_steps: int = 2048,
-    batch_size: int = 256,
     n_epochs: int = 10,
     clip_range: float = 0.2,
     target_kl: float = 0.05,
-    # Lag knobs overridden by SWEEP_TABLE when sweep_run is set
     cost_lim: float | None = None,
     penalty_init: float | None = None,
     penalty_lr: float | None = None,
@@ -114,18 +110,13 @@ def train(
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
 
     if startup_log:
-        print(f"Logging to {TRAINING_LOG_PATH}...")
-        print(
-            f"<<<{rollout_steps / batch_size}>>> buffer/batch ratio (OpenAI uses full buffer)"
-            f"\n <<<{total_timesteps // rollout_steps}>>> policy updates total"
-        )
         print("=" * 40)
         print(
             f"train env={env_name} level={level} sweep={sweep_run} "
             f"device={device} steps={total_timesteps}"
         )
         print(
-            f"PPOLag iter = {rollout_steps} env steps collect + "
+            f"PPOLag iter = {rollout_steps} env steps + "
             f"pi_iters={n_epochs} vf_iters={n_epochs} "
             f"cost_lim={cl} penalty_lr={plr} penalty_init={pinit}"
         )
@@ -133,21 +124,17 @@ def train(
     env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
     if startup_log:
         print("Warming up vector envs...")
-    env.seed(seed=0)  # constant env seed to reduce variation between master seeds
+    env.seed(seed=0)
     env.reset()
 
     model = PPOLagrangian(
-        "MultiInputPolicy",
         env,
-        verbose=0,
         learning_rate=learning_rate,
         n_steps=n_steps,
-        batch_size=batch_size,
         n_epochs=n_epochs,
         ent_coef=ent_coef,
         target_kl=target_kl,
         device=device,
-        tensorboard_log=TRAINING_LOG_PATH,
         seed=seed,
         clip_range=clip_range,
         cost_lim=cl,
@@ -160,33 +147,13 @@ def train(
     )
 
     env.seed(seed=0)
-    model.learn(
-        total_timesteps=total_timesteps,
-        log_interval=1,
-        progress_bar=True,
-        tb_log_name=(
-            f"PPOLag_{level}_{sweep_run}_t{name_time}"
-            f"_st{n_steps}"
-            f"_bs{batch_size}"
-            f"_tt{total_timesteps / 1_000_000:.1f}M"
-            f"_ec{ent_coef}"
-            f"_lr{learning_rate}"
-            f"_ep{n_epochs}"
-            f"_cr{clip_range}"
-            f"_kl{target_kl}"
-            f"_cl{cl}"
-            f"_plr{plr}"
-            f"_pi{pinit}"
-            f"_s{seed}"
-        ),
-    )
+    model.learn(total_timesteps=total_timesteps)
 
-    # ``ppo_lag`` tag required for ppo_load_env.py routing
     model_path = f"_models/ppo_lag_{level}_{sweep_run}_{name_time}_{env_name}_{seed}"
     vec_norm_path = f"{model_path}_vecnormalize.pkl"
     model.save(model_path)
     env.save(vec_norm_path)
-    print(f"saved model: {model_path}.zip")
+    print(f"saved model: {model_path}.pt")
     env.close()
     return model_path, vec_norm_path
 

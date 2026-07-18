@@ -1,4 +1,4 @@
-"""Unit tests for OpenAI-faithful PPORND / RND components."""
+"""Unit tests for RND PPO components (CartPole / synthetic)."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from rnd.config import RNDConfig
 from rnd.module import RNDModule
 from rnd.networks import RNDModel
 from rnd.obs_adapter import RNDObsAdapter, resolve_rnd_obs_keys
-from rnd.rnd_ppo import PPORND, RNDPPO
-from rnd.stats import RewardForwardFilter, RNDRunningStats
-from rnd.storage import InteractionStorage
+from rnd.rnd_ppo import RNDPPO
+from rnd.stats import RNDRunningStats
+from rnd.storage import RNDStorage
 
 
 def test_obs_adapter_box():
@@ -55,6 +55,14 @@ def test_obs_adapter_multi_keys():
         obs_keys=["buildings_lidar_0", "walls_lidar_0", "wall_sensor_0"],
     )
     assert adapter.input_dim == 16 + 16 + 4
+    obs = {
+        "walls_lidar_0": np.ones((2, 16), dtype=np.float32),
+        "buildings_lidar_0": np.zeros((2, 16), dtype=np.float32),
+        "surface_casualtys_lidar_0": np.ones((2, 16), dtype=np.float32),
+        "wall_sensor_0": np.zeros((2, 4), dtype=np.float32),
+    }
+    out = adapter.to_numpy(obs)
+    assert out.shape == (2, 36)
 
 
 def test_resolve_rnd_obs_keys_l4_l5_profiles():
@@ -72,22 +80,34 @@ def test_resolve_rnd_obs_keys_l4_l5_profiles():
     assert "walls_lidar_0" in l4
     assert "wall_sensor_0" in l4
     assert "buildings_lidar_0" not in l4
+    assert "entrapped_casualtys_lidar_0" not in l4
+
+    l5 = resolve_rnd_obs_keys(
+        space,
+        include_substrings=["buildings", "walls", "ltl_walls", "wall_sensor"],
+    )
+    assert "buildings_lidar_0" in l5
+    assert "building0_ltl_walls_lidar_0" in l5
+    assert "walls_lidar_0" in l5
+    assert "wall_sensor_0" in l5
+    assert "entrapped_casualtys_lidar_0" not in l5
+    assert "accelerometer" not in l5
 
 
-def test_config_openai_aliases():
-    cfg = RNDConfig(intrinsic_reward_coef=0.5).resolve()
-    assert cfg.int_coeff == 0.5
-    cfg2 = RNDConfig(feature_dim=256).resolve()
-    assert cfg2.rnd_rep_size == 256
+def test_sparse_config_defaults():
+    cfg = RNDConfig()
+    assert cfg.intrinsic_reward_coef == 0.5
+    assert cfg.feature_dim == 256
+    assert cfg.obs_keys is None
 
 
-def test_target_frozen_after_aux():
-    model = RNDModel(input_dim=8, rep_size=16, enlargement=1)
+def test_target_frozen_after_train():
+    model = RNDModel(input_dim=8, feature_dim=16)
     target_before = {k: v.clone() for k, v in model.target.state_dict().items()}
     x = th.randn(32, 8)
     opt = th.optim.Adam(model.predictor.parameters(), lr=1e-3)
     for _ in range(5):
-        loss, _, _ = model.aux_loss(x)
+        loss = model.predictor_loss(x)
         opt.zero_grad()
         loss.backward()
         opt.step()
@@ -95,226 +115,155 @@ def test_target_frozen_after_aux():
         assert th.allclose(v, target_before[k]), f"target param {k} changed"
 
 
-def test_openai_intrinsic_reward_is_mean_mse():
-    model = RNDModel(input_dim=8, rep_size=16, enlargement=1)
-    x = th.randn(4, 8)
-    with th.no_grad():
-        pred, tgt = model.forward(x)
-        expected = th.mean(th.square(tgt - pred), dim=-1)
-        got = model.prediction_error(x)
-    assert th.allclose(expected, got)
-
-
-def test_reward_forward_filter():
-    rff = RewardForwardFilter(0.99)
-    r0 = np.ones(2, dtype=np.float64)
-    out0 = rff.update(r0)
-    assert np.allclose(out0, r0)
-    r1 = np.ones(2, dtype=np.float64) * 2.0
-    out1 = rff.update(r1)
-    assert np.allclose(out1, 0.99 * r0 + r1)
-
-
-def test_intrinsic_norm_openai_no_done_reset():
-    stats = RNDRunningStats(obs_shape=(4,), n_envs=2, return_norm=True, gamma=0.99)
-    rews = np.ones((2, 5), dtype=np.float32)
-    normed = stats.normalize_intrinsic_rewards(rews)
-    assert normed.shape == (2, 5)
-    assert stats.rff_int.rewems is not None
-    assert float(stats.rff_int.rewems.mean()) > 1.0
-
-
-def test_interaction_storage_gae_shapes():
-    store = InteractionStorage(
-        n_envs=4, n_steps=8, obs_shape=(3,), action_dim=1, discrete=True
-    )
-    for t in range(8):
-        store.add_step(
-            t=t,
-            obs=np.zeros((4, 3), dtype=np.float32),
-            actions=np.zeros(4, dtype=np.int64),
-            neglogp=np.zeros(4, dtype=np.float32),
-            entropy=np.zeros(4, dtype=np.float32),
-            vpred_int=np.zeros(4, dtype=np.float32),
-            vpred_ext=np.zeros(4, dtype=np.float32),
-            news=np.zeros(4, dtype=np.float32),
-            rews_ext_prev=np.ones(4, dtype=np.float32) if t > 0 else None,
-        )
-    store.set_bootstrap(
-        ob_last=np.zeros((4, 3), dtype=np.float32),
-        new_last=np.zeros(4, dtype=np.float32),
-        vpred_int_last=np.zeros(4, dtype=np.float32),
-        vpred_ext_last=np.zeros(4, dtype=np.float32),
-        rews_ext_last=np.ones(4, dtype=np.float32),
-    )
-    store.set_intrinsic_rewards(np.ones((4, 8), dtype=np.float32) * 0.1)
-    store.compute_gae(
-        rews_int_norm=np.ones((4, 8), dtype=np.float32) * 0.1,
-        gamma=0.99,
-        gamma_ext=0.99,
-        lam=0.95,
-        int_coeff=1.0,
-        ext_coeff=2.0,
-        use_news=False,
-    )
-    assert store.buf_advs.shape == (4, 8)
-    batches = list(store.env_minibatches(nminibatches=2))
-    assert len(batches) == 2
-    assert batches[0]["obs"].shape[0] == 2
-
-
-def test_aux_loss_mask_proportion():
-    model = RNDModel(input_dim=8, rep_size=16, enlargement=1)
+def test_predictor_loss_decreases_on_fixed_batch():
+    model = RNDModel(input_dim=8, feature_dim=16)
     x = th.randn(64, 8)
-    loss_full, _, _ = model.aux_loss(x, proportion=1.0)
-    loss_half, _, _ = model.aux_loss(x, proportion=0.5)
-    assert loss_full.ndim == 0
-    assert loss_half.ndim == 0
+    opt = th.optim.Adam(model.predictor.parameters(), lr=1e-3)
+    losses = []
+    for _ in range(20):
+        loss = model.predictor_loss(x)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        losses.append(loss.item())
+    assert losses[-1] < losses[0]
 
 
-def test_ppornd_trains_cartpole():
+def test_intrinsic_return_norm_done_reset():
+    stats = RNDRunningStats(obs_shape=(4,), n_envs=2, return_norm=True)
+    r = np.array([1.0, 1.0], dtype=np.float64)
+    dones = np.array([0.0, 1.0], dtype=np.float64)
+    stats.normalize_intrinsic_reward(r, dones, update=True)
+    assert stats.int_returns[1] == 1.0  # reset then add: gamma*0*(1-1)+1
+    # next step: env1 continues, env2 restarted previous done already applied
+    r2 = np.array([1.0, 0.5], dtype=np.float64)
+    dones2 = np.array([0.0, 0.0], dtype=np.float64)
+    stats.normalize_intrinsic_reward(r2, dones2, update=True)
+    assert stats.int_returns[0] > 1.0
+
+
+def test_reward_norm_scale():
+    stats = RNDRunningStats(obs_shape=(2,), n_envs=4, return_norm=True, reward_clip=100.0)
+    # Warm up variance
+    for _ in range(50):
+        r = np.ones(4, dtype=np.float64) * 10.0
+        dones = np.zeros(4, dtype=np.float64)
+        stats.normalize_intrinsic_reward(r, dones, update=True)
+    r = np.ones(4, dtype=np.float64) * 10.0
+    normed = stats.normalize_intrinsic_reward(r, np.zeros(4), update=False)
+    # Should be order-1 after return-std normalization
+    assert np.mean(np.abs(normed)) < 5.0
+
+
+def test_rnd_storage_shapes():
+    store = RNDStorage(n_steps=5, n_envs=2, input_dim=3)
+    for i in range(5):
+        store.add(
+            rnd_obs=np.ones((2, 3), dtype=np.float32) * i,
+            raw_intrinsic=np.ones(2, dtype=np.float32),
+            norm_intrinsic=np.ones(2, dtype=np.float32) * 0.5,
+            extrinsic=np.zeros(2, dtype=np.float32),
+            combined=np.ones(2, dtype=np.float32) * 0.5,
+        )
+    assert store.full
+    batch = store.get_rnd_obs_batch(np.array([0, 1, 2]))
+    assert batch.shape == (3, 3)
+
+
+def test_rndppo_beta_zero_trains():
     env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
-    cfg = RNDConfig(
-        int_coeff=1.0,
-        ext_coeff=2.0,
-        rnd_rep_size=32,
-        update_ob_stats_from_random_agent=False,
-        random_obs_init_steps=0,
-        policy_size="small",
-    )
-    model = PPORND(
+    model = RNDPPO(
         "MlpPolicy",
         env,
         n_steps=64,
-        batch_size=128,
+        batch_size=32,
         n_epochs=2,
-        nminibatches=1,
-        rnd_config=cfg,
+        use_rnd=True,
+        intrinsic_reward_coef=0.0,
         verbose=0,
-        learning_rate=1e-3,
-        ent_coef=0.001,
-        clip_range=0.1,
     )
     model.learn(total_timesteps=128)
-    assert model._n_updates > 0
     env.close()
 
 
-def test_rndppo_alias_trains():
+def test_rndppo_with_rnd_trains_and_logs():
+    env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
+    cfg = RNDConfig(intrinsic_reward_coef=0.1, feature_dim=32, target_net_arch=[64], predictor_net_arch=[64, 64])
+    model = RNDPPO(
+        "MlpPolicy",
+        env,
+        n_steps=64,
+        batch_size=32,
+        n_epochs=2,
+        rnd_config=cfg,
+        verbose=0,
+    )
+    model.learn(total_timesteps=128)
+    assert model.rnd is not None
+    assert model.rnd._n_updates > 0
+    env.close()
+
+
+def test_rndppo_save_load_roundtrip():
+    env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
+    cfg = RNDConfig(intrinsic_reward_coef=0.05, feature_dim=16)
+    model = RNDPPO("MlpPolicy", env, n_steps=32, batch_size=16, n_epochs=1, rnd_config=cfg)
+    model.learn(total_timesteps=64)
+
+    # Snapshot target + predictor + obs rms
+    assert model.rnd is not None
+    target_sd = {k: v.clone() for k, v in model.rnd.model.target.state_dict().items()}
+    pred_sd = {k: v.clone() for k, v in model.rnd.model.predictor.state_dict().items()}
+    obs_mean = model.rnd.stats.obs_rms.mean.copy()
+    n_upd = model.rnd._n_updates
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = str(Path(tmp) / "rnd_model")
+        model.save(path)
+        loaded = RNDPPO.load(path, env=env)
+
+    assert loaded.rnd is not None
+    for k, v in loaded.rnd.model.target.state_dict().items():
+        assert th.allclose(v, target_sd[k])
+    for k, v in loaded.rnd.model.predictor.state_dict().items():
+        assert th.allclose(v, pred_sd[k])
+    assert np.allclose(loaded.rnd.stats.obs_rms.mean, obs_mean)
+    assert loaded.rnd._n_updates == n_upd
+    env.close()
+
+
+def test_eval_does_not_update_rnd_stats():
+    """predict() path must not touch RND stats (no collect_rollouts)."""
     env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
     model = RNDPPO(
         "MlpPolicy",
         env,
         n_steps=32,
+        batch_size=16,
         n_epochs=1,
-        nminibatches=1,
-        rnd_config=RNDConfig(
-            update_ob_stats_from_random_agent=False,
-            random_obs_init_steps=0,
-            policy_size="small",
-        ),
-        verbose=0,
-    )
-    model.learn(total_timesteps=64)
-    env.close()
-
-
-def test_ppornd_save_load_roundtrip():
-    env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
-    cfg = RNDConfig(
-        int_coeff=0.5,
-        rnd_rep_size=16,
-        update_ob_stats_from_random_agent=False,
-        random_obs_init_steps=0,
-        policy_size="small",
-    )
-    model = PPORND(
-        "MlpPolicy",
-        env,
-        n_steps=32,
-        n_epochs=1,
-        nminibatches=1,
-        rnd_config=cfg,
-    )
-    model.learn(total_timesteps=64)
-    assert model.rnd is not None and model.policy is not None
-    target_sd = {k: v.clone() for k, v in model.rnd.model.target.state_dict().items()}
-    pred_sd = {k: v.clone() for k, v in model.rnd.model.predictor.state_dict().items()}
-    pol_sd = {k: v.clone() for k, v in model.policy.state_dict().items()}
-    obs_mean = model.rnd.stats.ob_rms.mean.copy()
-
-    with tempfile.TemporaryDirectory() as tmp:
-        path = str(Path(tmp) / "rnd_model")
-        model.save(path)
-        assert Path(path + ".zip").is_file(), "SB3 zip must exist after save"
-        loaded = PPORND.load(path, env=env)
-        loaded_zip = PPORND.load(path + ".zip", env=env)
-
-    assert loaded.rnd is not None and loaded.policy is not None
-    for k, v in loaded.rnd.model.target.state_dict().items():
-        assert th.allclose(v, target_sd[k])
-    for k, v in loaded.rnd.model.predictor.state_dict().items():
-        assert th.allclose(v, pred_sd[k])
-    for k, v in loaded.policy.state_dict().items():
-        assert th.allclose(v, pol_sd[k])
-    assert np.allclose(loaded.rnd.stats.ob_rms.mean, obs_mean)
-    # path.zip suffix also works
-    assert loaded_zip.rnd is not None
-    for k, v in loaded_zip.policy.state_dict().items():
-        assert th.allclose(v, pol_sd[k])
-    env.close()
-
-
-def test_eval_does_not_update_rnd_stats():
-    env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
-    model = PPORND(
-        "MlpPolicy",
-        env,
-        n_steps=32,
-        n_epochs=1,
-        nminibatches=1,
-        rnd_config=RNDConfig(
-            update_ob_stats_from_random_agent=False,
-            random_obs_init_steps=0,
-            policy_size="small",
-        ),
+        rnd_config=RNDConfig(intrinsic_reward_coef=0.1),
     )
     model.learn(total_timesteps=64)
     assert model.rnd is not None
-    count_before = model.rnd.stats.ob_rms.count
-    mean_before = model.rnd.stats.ob_rms.mean.copy()
+    count_before = model.rnd.stats.obs_rms.count
+    mean_before = model.rnd.stats.obs_rms.mean.copy()
     obs = env.reset()
     for _ in range(10):
         action, _ = model.predict(obs, deterministic=True)
         obs, _, _, _ = env.step(action)
-    assert model.rnd.stats.ob_rms.count == count_before
-    assert np.allclose(model.rnd.stats.ob_rms.mean, mean_before)
-    env.close()
-
-
-def test_dual_value_heads_exist():
-    env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
-    model = PPORND(
-        "MlpPolicy",
-        env,
-        n_steps=16,
-        nminibatches=1,
-        rnd_config=RNDConfig(
-            update_ob_stats_from_random_agent=False,
-            random_obs_init_steps=0,
-            policy_size="small",
-        ),
-    )
-    assert model.policy is not None
-    assert hasattr(model.policy, "vf_int") and hasattr(model.policy, "vf_ext")
+    assert model.rnd.stats.obs_rms.count == count_before
+    assert np.allclose(model.rnd.stats.obs_rms.mean, mean_before)
     env.close()
 
 
 def test_module_compute_shapes():
     space = spaces.Box(low=-1, high=1, shape=(5,), dtype=np.float32)
-    mod = RNDModule(space, n_envs=3, config=RNDConfig(rnd_rep_size=8, policy_size="small"))
+    mod = RNDModule(space, n_envs=3, config=RNDConfig(feature_dim=8))
     obs = np.random.randn(3, 5).astype(np.float32)
     dones = np.zeros(3, dtype=np.float32)
     rnd_obs, raw, norm = mod.compute_intrinsic_reward(obs, dones, training=True)
+    assert rnd_obs.shape == (3, 5)
     assert raw.shape == (3,)
     assert norm.shape == (3,)
+    combined = mod.combine_rewards(np.ones(3), norm)
+    assert combined.shape == (3,)
