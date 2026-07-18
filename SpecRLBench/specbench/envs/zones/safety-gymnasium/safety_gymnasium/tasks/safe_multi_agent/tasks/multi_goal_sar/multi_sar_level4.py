@@ -24,7 +24,7 @@ from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_leve
 class MultiGoalSARLevel4(MultiGoalSARLevel0):
     """Multi-agent zone navigation with optional ring-placed interior walls."""
 
-    wall_count = 20
+    wall_count = 10
 
     def __init__(self, config) -> None:
         super().__init__(config=config)

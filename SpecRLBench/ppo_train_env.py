@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 
 # --- edit these before each run ---
-env_name = "PointLTL4MASAR1-v0"
+env_name = "PointLTL5MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
 
@@ -25,7 +25,7 @@ def train(
         n_envs = 8,
         ent_coef = 0.02,
         learning_rate = 5e-5,
-        n_steps = 2048,
+        n_steps = 4096,
         batch_size = 256,
         n_epochs = 10,
         clip_range = 0.2,
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         model_path, vec_norm_path = train(
             seed=int(i), #Tested up to and including env 3 at home
             startup_log=True,
-            total_timesteps=5_000_000)
+            total_timesteps=2_500_000)
         eval_model(
             env_name=env_name,
             render_mode=None,

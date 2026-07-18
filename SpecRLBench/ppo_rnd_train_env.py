@@ -46,7 +46,6 @@ ext_coeff = 1.0   # OpenAI Atari used 2.0; keep 1.0 so sweeps only touch int_coe
 # Level → RND obs key substrings (buildings/walls focus; casualties excluded)
 LEVEL_RND_PREFIXES: dict[str, list[str]] = {
     "PointLTL4MASAR1-v0": ["walls", "wall_sensor"],
-    "PointLTL4MASAR1WC-v0": ["walls", "wall_sensor"],
     "PointLTL5MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
     "PointLTL5MASAR1WC-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
     "PointLTL6MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
