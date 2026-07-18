@@ -302,6 +302,9 @@ class PPOLagrangian:
             pi_infos_np = {k: v.detach().cpu().numpy() for k, v in pi_infos.items()}
 
             step_out = self.env.step(self._clip_action(actions_np))
+            if not getattr(self, "_printed_first_step", False):
+                print("first env step ok", flush=True)
+                self._printed_first_step = True
             if len(step_out) == 5:
                 new_obs, rewards, terminated, truncated, infos = step_out
                 dones = np.logical_or(terminated, truncated)
@@ -465,10 +468,16 @@ class PPOLagrangian:
         self._ep_cost[:] = 0.0
         self._ep_len[:] = 0
         self.num_timesteps = 0
+        self._printed_first_step = False
         n_epochs = int(np.ceil(total_timesteps / self.buffer_size))
-        for _ in range(n_epochs):
+        for epoch in range(n_epochs):
             ep_cost = self.collect_rollouts()
             self.update(ep_cost)
+            print(
+                f"epoch={epoch} steps={self.num_timesteps} "
+                f"EpCost={ep_cost:.4g} Penalty={float(self.penalty.item()):.4g}",
+                flush=True,
+            )
             if self.num_timesteps >= total_timesteps:
                 break
         return self

@@ -121,7 +121,15 @@ def train(
             f"cost_lim={cl} penalty_lr={plr} penalty_init={pinit}"
         )
 
-    env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
+    env = make_vec(
+        env_name,
+        n_envs=n_envs,
+        render_mode=None,
+        sb3=True,
+        normalize=True,
+        # Avoid CUDA-before-fork deadlocks with SubprocVecEnv on Linux.
+        vec_env_kwargs={"start_method": "forkserver"} if sys.platform != "win32" else None,
+    )
     if startup_log:
         print("Warming up vector envs...")
     env.seed(seed=0)
