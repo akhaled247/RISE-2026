@@ -303,7 +303,6 @@ class PPOLagrangian:
 
             step_out = self.env.step(self._clip_action(actions_np))
             if not getattr(self, "_printed_first_step", False):
-                print("first env step ok", flush=True)
                 self._printed_first_step = True
             if len(step_out) == 5:
                 new_obs, rewards, terminated, truncated, infos = step_out
@@ -462,7 +461,7 @@ class PPOLagrangian:
             (th.mean((ret - v) ** 2) + th.mean((cret - vc) ** 2)).backward()
             self.vf_optimizer.step()
 
-    def learn(self, total_timesteps: int, **_kwargs: Any) -> PPOLagrangian:
+    def learn(self, total_timesteps: int, progress_bar: bool = True, **_kwargs: Any) -> PPOLagrangian:
         out = self.env.reset()
         self._last_obs = out[0] if isinstance(out, tuple) else out
         self._ep_cost[:] = 0.0
@@ -470,14 +469,25 @@ class PPOLagrangian:
         self.num_timesteps = 0
         self._printed_first_step = False
         n_epochs = int(np.ceil(total_timesteps / self.buffer_size))
-        for epoch in range(n_epochs):
+        epochs = range(n_epochs)
+        if progress_bar:
+            from tqdm import trange
+            epochs = trange(n_epochs, desc="PPOLagrangian")
+        for epoch in epochs:
             ep_cost = self.collect_rollouts()
             self.update(ep_cost)
-            print(
-                f"epoch={epoch} steps={self.num_timesteps} "
-                f"EpCost={ep_cost:.4g} Penalty={float(self.penalty.item()):.4g}",
-                flush=True,
-            )
+            if progress_bar and hasattr(epochs, "set_postfix"):
+                epochs.set_postfix(
+                    steps=self.num_timesteps,
+                    EpCost=f"{ep_cost:.4g}",
+                    Penalty=f"{float(self.penalty.item()):.4g}",
+                )
+            else:
+                print(
+                    f"epoch={epoch} steps={self.num_timesteps} "
+                    f"EpCost={ep_cost:.4g} Penalty={float(self.penalty.item()):.4g}",
+                    flush=True,
+                )
             if self.num_timesteps >= total_timesteps:
                 break
         return self

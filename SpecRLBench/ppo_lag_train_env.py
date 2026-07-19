@@ -49,9 +49,9 @@ from utils.env_utils import make_vec
 
 # --- edit these before each run ---
 # Levels: PointLTL4MASAR1WC-v0 | PointLTL5MASAR1WC-v0 | PointLTL6MASAR1WC-v0
-env_name = "PointLTL4MASAR1WC-v0"
+env_name = "PointLTL5MASAR1WC-v0"
 # Sweep id: "S0" | "S1" | "S2" | "S3"
-SWEEP_RUN = "S0"
+SWEEP_RUN = "S1"
 
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 
