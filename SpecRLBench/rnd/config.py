@@ -28,7 +28,6 @@ class RNDConfig:
     epsilon: float = 1e-8
     rms_epsilon: float = 1e-4
     max_grad_norm: float = 0.5
-    updates_per_policy_batch: int = 1
     # None => flatten+concat all Box keys for Dict spaces; str => single key
     obs_key: str | None = None
     # Explicit multi-key list (takes precedence over obs_key when set)

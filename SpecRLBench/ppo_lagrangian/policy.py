@@ -64,12 +64,7 @@ class CostValueMixin:
         params.extend(self.vf_features_extractor.parameters())  # type: ignore[attr-defined]
         return params
 
-
-class LagActorCriticPolicy(CostValueMixin, ActorCriticPolicy):
-    """MlpPolicy with cost critic."""
-
-    def _build(self, lr_schedule: Schedule) -> None:
-        super()._build(lr_schedule)
+    def _finish_lag_build(self, lr_schedule: Schedule) -> None:
         self._build_cost_net()
         # Rebuild optimizer to include cost_net (Tier 3 / SB3 single-optimizer path)
         self.optimizer = self.optimizer_class(
@@ -79,14 +74,17 @@ class LagActorCriticPolicy(CostValueMixin, ActorCriticPolicy):
         )  # type: ignore[call-arg]
 
 
+class LagActorCriticPolicy(CostValueMixin, ActorCriticPolicy):
+    """MlpPolicy with cost critic."""
+
+    def _build(self, lr_schedule: Schedule) -> None:
+        super()._build(lr_schedule)
+        self._finish_lag_build(lr_schedule)
+
+
 class LagMultiInputActorCriticPolicy(CostValueMixin, MultiInputActorCriticPolicy):
     """MultiInputPolicy with cost critic (Dict obs / SAR)."""
 
     def _build(self, lr_schedule: Schedule) -> None:
         super()._build(lr_schedule)
-        self._build_cost_net()
-        self.optimizer = self.optimizer_class(
-            self.parameters(),
-            lr=lr_schedule(1),
-            **self.optimizer_kwargs,
-        )  # type: ignore[call-arg]
+        self._finish_lag_build(lr_schedule)

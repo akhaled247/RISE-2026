@@ -94,7 +94,9 @@ class RNDModule(nn.Module):
         """One Adam step on predictor. Target stays frozen."""
         self.model.predictor.train()
         self.model.freeze_target()
-        loss = self.model.predictor_loss(rnd_obs_batch)
+        pred, tgt = self.model(rnd_obs_batch)
+        per_sample = 0.5 * ((pred - tgt) ** 2).sum(dim=-1)
+        loss = per_sample.mean()
         self.optimizer.zero_grad()
         loss.backward()
         grad_norm = float(
@@ -106,14 +108,15 @@ class RNDModule(nn.Module):
         self.optimizer.step()
         self._n_updates += 1
         with th.no_grad():
-            pred, tgt = self.model(rnd_obs_batch)
-            err = 0.5 * ((pred - tgt) ** 2).sum(dim=-1).mean().item()
+            err = float(per_sample.mean().item())
+            tgt_norm = float(tgt.norm(dim=-1).mean().item())
+            pred_norm = float(pred.norm(dim=-1).mean().item())
         return {
             "predictor_loss": float(loss.item()),
             "predictor_grad_norm": grad_norm,
-            "prediction_error_mean": float(err),
-            "target_feature_norm": float(tgt.norm(dim=-1).mean().item()),
-            "predictor_feature_norm": float(pred.norm(dim=-1).mean().item()),
+            "prediction_error_mean": err,
+            "target_feature_norm": tgt_norm,
+            "predictor_feature_norm": pred_norm,
         }
 
     def get_extra_state(self) -> dict[str, Any]:

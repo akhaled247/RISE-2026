@@ -251,10 +251,7 @@ class PPOLagrangian(PPO):
                     terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
                     with th.no_grad():
                         terminal_value = self.policy.predict_values(terminal_obs)[0]
-                        terminal_cvalue = self.policy.predict_cost_values(terminal_obs)[0]
                     rewards[idx] += self.gamma * float(terminal_value)
-                    # Cost bootstrap on truncate (keep array for buffer; GAE uses last_cost_values at end)
-                    _ = terminal_cvalue
                 if done:
                     self._rollout_ep_costs.append(float(self._ep_cost[idx]))
                     self._ep_cost[idx] = 0.0
