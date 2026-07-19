@@ -46,10 +46,14 @@ def test_buffer_gae_and_norm():
             pi_info={"mu": np.zeros(1, dtype=np.float32), "log_std": np.zeros(1, dtype=np.float32)},
         )
     buf.finish_path(last_val=0.0, last_cval=0.0)
-    data = buf.get()
+    data = next(buf.get(4))
     assert abs(float(np.mean(data["adv"]))) < 1e-5
     assert abs(float(np.mean(data["cadv"]))) < 1e-5
     assert abs(float(np.std(data["adv"])) - 1.0) < 1e-4
+    # Second epoch call reuses once-normalized flat data
+    batches = list(buf.get(2))
+    assert len(batches) == 2
+    assert batches[0]["adv"].shape[0] == 2
 
 
 def test_gaussian_formulas():
@@ -97,14 +101,14 @@ def test_learn_predict_save_load():
     model = PPOLagrangian(
         vec,
         n_steps=64,
+        batch_size=32,
         n_epochs=2,
-        pi_iters=2,
-        vf_iters=2,
         learning_rate=3e-4,
         cost_lim=25.0,
         seed=0,
         device="cpu",
         hidden_sizes=(32, 32),
+        log_interval=1,
     )
     model.learn(total_timesteps=128)
     obs = vec.reset()[0]
@@ -118,6 +122,8 @@ def test_learn_predict_save_load():
     loaded = PPOLagrangian.load(save_path, env=vec, device="cpu")
     a2, _ = loaded.predict(obs, deterministic=True)
     assert np.allclose(action, a2, atol=1e-5)
+    assert loaded.batch_size == 32
+    assert loaded.n_epochs == 2
     vec.close()
     print("test_learn_predict_save_load OK")
 

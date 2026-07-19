@@ -20,7 +20,7 @@ Lag coeff ranges (freeze PPO knobs; only sweep Lag):
   penalty_init default 1.0   range {0.1, 1.0}  (frozen in S0–S3)
 
 Frozen PPO knobs (match ppo_train_env): lr=5e-5, n_steps=2048, n_envs=8,
-  batch_size unused by algo (OpenAI full-buffer); n_epochs=10, clip=0.2, target_kl=0.05, ent_coef=0.02,
+  batch_size=256, n_epochs=10, clip=0.2, target_kl=0.05, ent_coef=0.02,
   cost_gamma=0.99, cost_gae_lambda=0.97, vf_lr=1e-3, max_ep_len=1000.
 
 Eval: ppo_load_env rescue /50. Also watch train EpCost / Penalty — want EpCost→~0
@@ -81,6 +81,7 @@ def train(
     ent_coef: float = 0.02,
     learning_rate: float = 5e-5,
     n_steps: int = 2048,
+    batch_size: int = 256,
     n_epochs: int = 10,
     clip_range: float = 0.2,
     target_kl: float = 0.05,
@@ -108,6 +109,8 @@ def train(
     level = _level_tag(env_name)
     rollout_steps = n_steps * n_envs
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    model_path = f"_models/ppo_lag_{level}_{sweep_run}_{name_time}_{env_name}_{seed}"
+    tb_log = f"{model_path}_tb"
 
     if startup_log:
         print("=" * 40)
@@ -117,7 +120,7 @@ def train(
         )
         print(
             f"PPOLag iter = {rollout_steps} env steps + "
-            f"pi_iters={n_epochs} vf_iters={n_epochs} "
+            f"n_epochs={n_epochs} batch_size={batch_size} "
             f"cost_lim={cl} penalty_lr={plr} penalty_init={pinit}"
         )
 
@@ -139,6 +142,7 @@ def train(
         env,
         learning_rate=learning_rate,
         n_steps=n_steps,
+        batch_size=batch_size,
         n_epochs=n_epochs,
         ent_coef=ent_coef,
         target_kl=target_kl,
@@ -152,12 +156,12 @@ def train(
         cost_gae_lambda=cost_gae_lambda,
         vf_lr=vf_lr,
         max_ep_len=max_ep_len,
+        tensorboard_log=tb_log,
     )
 
     env.seed(seed=0)
     model.learn(total_timesteps=total_timesteps)
 
-    model_path = f"_models/ppo_lag_{level}_{sweep_run}_{name_time}_{env_name}_{seed}"
     vec_norm_path = f"{model_path}_vecnormalize.pkl"
     model.save(model_path)
     env.save(vec_norm_path)

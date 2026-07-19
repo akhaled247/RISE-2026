@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Generator
 
 import numpy as np
 import scipy.signal
@@ -59,6 +59,8 @@ class LagrangianRolloutBuffer:
         self.gamma, self.lam = gamma, lam
         self.cost_gamma, self.cost_lam = cost_gamma, cost_lam
         self.ptr, self.path_start_idx, self.max_size = 0, 0, size
+        self.generator_ready = False
+        self._flat: dict[str, Any] | None = None
 
     def store(
         self,
@@ -103,28 +105,60 @@ class LagrangianRolloutBuffer:
         self.cret_buf[path_slice] = discount_cumsum(costs, self.cost_gamma)[:-1]
         self.path_start_idx = self.ptr
 
-    def get(self) -> dict[str, Any]:
-        assert self.ptr == self.max_size
-        self.ptr, self.path_start_idx = 0, 0
-        adv_mean, adv_std = float(np.mean(self.adv_buf)), float(np.std(self.adv_buf))
-        self.adv_buf = (self.adv_buf - adv_mean) / (adv_std + EPS)
-        self.cadv_buf -= float(np.mean(self.cadv_buf))
-        if self.obs_is_dict:
-            assert isinstance(self.obs_buf, dict)
-            obs: Any = {k: self.obs_buf[k].copy() for k in self.obs_buf}
-        else:
-            obs = self.obs_buf.copy()  # type: ignore[union-attr]
-        return {
-            "obs": obs,
-            "act": self.act_buf.copy(),
-            "adv": self.adv_buf.copy(),
-            "cadv": self.cadv_buf.copy(),
-            "ret": self.ret_buf.copy(),
-            "cret": self.cret_buf.copy(),
-            "logp": self.logp_buf.copy(),
-            "pi_info": {k: self.pi_info_bufs[k].copy() for k in self.pi_info_keys},
-        }
+    def get(self, batch_size: int | None = None) -> Generator[dict[str, Any], None, None]:
+        """Yield shuffled minibatches. Adv norm / cadv center once per rollout (not per-mb)."""
+        if not self.generator_ready:
+            assert self.ptr == self.max_size
+            # Advantage norm once on full buffer (OpenAI Lag); not SB3 per-minibatch re-norm.
+            adv_mean, adv_std = float(np.mean(self.adv_buf)), float(np.std(self.adv_buf))
+            self.adv_buf = (self.adv_buf - adv_mean) / (adv_std + EPS)
+            self.cadv_buf -= float(np.mean(self.cadv_buf))
+
+            if self.obs_is_dict:
+                assert isinstance(self.obs_buf, dict)
+                obs: Any = {k: self.obs_buf[k].copy() for k in self.obs_buf}
+            else:
+                obs = self.obs_buf.copy()  # type: ignore[union-attr]
+            self._flat = {
+                "obs": obs,
+                "act": self.act_buf.copy(),
+                "adv": self.adv_buf.copy(),
+                "cadv": self.cadv_buf.copy(),
+                "ret": self.ret_buf.copy(),
+                "cret": self.cret_buf.copy(),
+                "logp": self.logp_buf.copy(),
+                "pi_info": {k: self.pi_info_bufs[k].copy() for k in self.pi_info_keys},
+            }
+            self.generator_ready = True
+
+        assert self._flat is not None
+        flat = self._flat
+        n = self.max_size
+        if batch_size is None:
+            batch_size = n
+        indices = np.random.permutation(n)
+        start = 0
+        while start < n:
+            batch_inds = indices[start : start + batch_size]
+            start += batch_size
+            obs_f = flat["obs"]
+            if self.obs_is_dict:
+                obs_mb: Any = {k: obs_f[k][batch_inds] for k in obs_f}
+            else:
+                obs_mb = obs_f[batch_inds]
+            yield {
+                "obs": obs_mb,
+                "act": flat["act"][batch_inds],
+                "adv": flat["adv"][batch_inds],
+                "cadv": flat["cadv"][batch_inds],
+                "ret": flat["ret"][batch_inds],
+                "cret": flat["cret"][batch_inds],
+                "logp": flat["logp"][batch_inds],
+                "pi_info": {k: flat["pi_info"][k][batch_inds] for k in flat["pi_info"]},
+            }
 
     def reset(self) -> None:
         self.ptr = 0
         self.path_start_idx = 0
+        self.generator_ready = False
+        self._flat = None
