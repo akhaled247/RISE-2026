@@ -18,16 +18,16 @@ from utils.env_utils import make_env
 # Configuration
 # =============================================================================
 
-ENV_NAME = "PointLTL5MASAR1-v0"
+ENV_NAME = "PointLTL5MASAR1WC-v0"
 
 MODELS = [
-    "_models/ppo_20260716_2350_PointLTL5MASAR1-v0_0",
+    "_models/ppo_lag_L5_S0_20260717_2332_PointLTL5MASAR1WC-v0_0",
 ]
 
 EVAL_EPISODES = 50
 SEED = 0
 
-RENDER_MODE = None
+RENDER_MODE = 'human'
 DETERMINISTIC = True
 
 DEVICE = "cuda:1" if torch.cuda.is_available() else "cpu"

@@ -53,9 +53,12 @@ def make_env(env_name, render_mode=None, sb3=False):
         from specbench.envs.zones.safety_gym_wrapper_ma_sar_wall_terminate import SafetyGymWrapperMASARWallTerminate
         from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
         import safety_gymnasium
-        env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
+        if 'WC' in env_name:
+            env = safety_gymnasium.make(env_name.replace("WC", ""), disable_env_checker=True, render_mode=render_mode)
+        else:
+            env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
         if "SAR" in env_name:
-            if '5' in env_name or '6' in env_name:
+            if 'WC' in env_name:
                 env = SafetyGymWrapperMASARWallTerminate(env, sb3=sb3)
             else:
                 env = SafetyGymWrapperMASAR(env, sb3=sb3)
