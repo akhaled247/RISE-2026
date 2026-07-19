@@ -1,4 +1,4 @@
-"""PPO-Lagrangian (OpenAI Safety Starter Agents fidelity).
+"""PPO-Lagrangian as SB3 PPO subclass (Tier 2 openai parity + Tier 3 hook).
 
 objective_penalized=True, learn_penalty=True, penalty_param_loss=True.
 SB3-style minibatch PPO updates + OpenAI objective-penalized Lagrangian.
@@ -6,165 +6,28 @@ SB3-style minibatch PPO updates + OpenAI objective-penalized Lagrangian.
 
 from __future__ import annotations
 
-import time
-from collections import deque
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, ClassVar, Literal, TypeVar
 
 import numpy as np
 import torch as th
-import torch.nn as nn
 from gymnasium import spaces
+from stable_baselines3 import PPO
+from stable_baselines3.common.buffers import RolloutBuffer
+from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.policies import ActorCriticPolicy, BasePolicy
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
+from stable_baselines3.common.utils import explained_variance, obs_as_tensor
+from stable_baselines3.common.vec_env import VecEnv
+from torch import nn
+from torch.nn import functional as F
 from torch.optim import Adam
 
-from ppo_lagrangian.buffer import EPS, LagrangianRolloutBuffer
+from ppo_lagrangian.buffer import LagDictRolloutBuffer, LagRolloutBuffer
+from ppo_lagrangian.policy import LagActorCriticPolicy, LagMultiInputActorCriticPolicy
 
-LOG_STD_INIT = -0.5
-
-
-def _mlp(sizes: list[int], activation: type[nn.Module] = nn.Tanh) -> nn.Sequential:
-    layers: list[nn.Module] = []
-    for i in range(len(sizes) - 1):
-        layers.append(nn.Linear(sizes[i], sizes[i + 1]))
-        if i < len(sizes) - 2:
-            layers.append(activation())
-    return nn.Sequential(*layers)
-
-
-def _obs_dim(space: spaces.Space) -> int:
-    if isinstance(space, spaces.Box):
-        return int(np.prod(space.shape))
-    if isinstance(space, spaces.Dict):
-        return int(sum(np.prod(space.spaces[k].shape) for k in sorted(space.spaces.keys())))
-    raise NotImplementedError(type(space))
-
-
-def _obs_tensor(obs: Any, device: th.device, space: spaces.Space) -> th.Tensor:
-    if isinstance(space, spaces.Dict):
-        keys = sorted(space.spaces.keys())
-        sample = np.asarray(obs[keys[0]])
-        if sample.shape == space.spaces[keys[0]].shape:
-            flat = np.concatenate([np.asarray(obs[k], dtype=np.float32).reshape(-1) for k in keys])[None, :]
-        else:
-            b = sample.shape[0]
-            flat = np.concatenate(
-                [np.asarray(obs[k], dtype=np.float32).reshape(b, -1) for k in keys], axis=-1
-            )
-        return th.as_tensor(flat, dtype=th.float32, device=device)
-    arr = np.asarray(obs, dtype=np.float32)
-    if arr.shape == space.shape:  # type: ignore[union-attr]
-        arr = arr.reshape(1, -1)
-    else:
-        arr = arr.reshape(arr.shape[0], -1)
-    return th.as_tensor(arr, dtype=th.float32, device=device)
-
-
-def _gaussian_logp(x: th.Tensor, mu: th.Tensor, log_std: th.Tensor) -> th.Tensor:
-    pre = -0.5 * (((x - mu) / (th.exp(log_std) + EPS)) ** 2 + 2 * log_std + np.log(2 * np.pi))
-    return th.sum(pre, dim=-1)
-
-
-def _gaussian_kl(mu0: th.Tensor, log_std0: th.Tensor, mu1: th.Tensor, log_std1: th.Tensor) -> th.Tensor:
-    var0, var1 = th.exp(2 * log_std0), th.exp(2 * log_std1)
-    pre = 0.5 * (((mu1 - mu0) ** 2 + var0) / (var1 + EPS) - 1) + log_std1 - log_std0
-    return th.mean(th.sum(pre, dim=-1))
-
-
-def _gaussian_entropy(log_std: th.Tensor) -> th.Tensor:
-    return th.mean(th.sum(log_std + 0.5 * np.log(2 * np.pi * np.e), dim=-1))
-
-
-def _categorical_kl(logp0: th.Tensor, logp1: th.Tensor) -> th.Tensor:
-    return th.mean(th.sum(th.exp(logp1) * (logp1 - logp0), dim=-1))
-
-
-def _categorical_entropy(logp: th.Tensor) -> th.Tensor:
-    return th.mean(-th.sum(logp * th.exp(logp), dim=-1))
-
-
-class MLPActorCritic(nn.Module):
-    """pi / vf / vc (OpenAI mlp_actor_critic)."""
-
-    def __init__(
-        self,
-        observation_space: spaces.Space,
-        action_space: spaces.Space,
-        hidden_sizes: tuple[int, ...] = (64, 64),
-    ) -> None:
-        super().__init__()
-        self.observation_space = observation_space
-        self.action_space = action_space
-        self.obs_dim = _obs_dim(observation_space)
-        hid = list(hidden_sizes)
-        self.is_box = isinstance(action_space, spaces.Box)
-        self.is_discrete = isinstance(action_space, spaces.Discrete)
-
-        if self.is_box:
-            self.act_dim = int(np.prod(action_space.shape))
-            self.pi_net = _mlp([self.obs_dim] + hid + [self.act_dim])
-            self.log_std = nn.Parameter(LOG_STD_INIT * th.ones(self.act_dim, dtype=th.float32))
-            self.pi_info_shapes = {"mu": [self.act_dim], "log_std": [self.act_dim]}
-        elif self.is_discrete:
-            self.act_dim = int(action_space.n)
-            self.pi_net = _mlp([self.obs_dim] + hid + [self.act_dim])
-            self.log_std = None  # type: ignore[assignment]
-            self.pi_info_shapes = {"logp_all": [self.act_dim]}
-        else:
-            raise NotImplementedError(type(action_space))
-
-        self.vf = _mlp([self.obs_dim] + hid + [1])
-        self.vc = _mlp([self.obs_dim] + hid + [1])
-
-    def value(self, obs: th.Tensor) -> th.Tensor:
-        return self.vf(obs).squeeze(-1)
-
-    def cost_value(self, obs: th.Tensor) -> th.Tensor:
-        return self.vc(obs).squeeze(-1)
-
-    def step(self, obs: th.Tensor, deterministic: bool = False):
-        with th.no_grad():
-            v, vc = self.value(obs), self.cost_value(obs)
-            if self.is_box:
-                mu = self.pi_net(obs)
-                log_std = self.log_std.expand_as(mu)
-                pi = mu if deterministic else mu + th.randn_like(mu) * th.exp(log_std)
-                logp = _gaussian_logp(pi, mu, log_std)
-                pi_info = {"mu": mu.detach(), "log_std": log_std.detach()}
-            else:
-                logits = self.pi_net(obs)
-                logp_all = th.log_softmax(logits, dim=-1)
-                pi = th.argmax(logits, dim=-1) if deterministic else th.multinomial(
-                    th.softmax(logits, dim=-1), 1
-                ).squeeze(-1)
-                logp = logp_all.gather(-1, pi.unsqueeze(-1)).squeeze(-1)
-                pi_info = {"logp_all": logp_all.detach()}
-        return pi.detach(), v.detach(), vc.detach(), logp.detach(), pi_info
-
-    def evaluate_actions(self, obs: th.Tensor, act: th.Tensor, old_pi_info: dict[str, th.Tensor]):
-        v, vc = self.value(obs), self.cost_value(obs)
-        if self.is_box:
-            mu = self.pi_net(obs)
-            log_std = self.log_std.expand_as(mu)
-            logp = _gaussian_logp(act, mu, log_std)
-            ent = _gaussian_entropy(log_std)
-            d_kl = _gaussian_kl(mu, log_std, old_pi_info["mu"], old_pi_info["log_std"])
-        else:
-            logp_all = th.log_softmax(self.pi_net(obs), dim=-1)
-            if act.dim() > 1:
-                act = act.squeeze(-1)
-            logp = logp_all.gather(-1, act.long().unsqueeze(-1)).squeeze(-1)
-            ent = _categorical_entropy(logp_all)
-            d_kl = _categorical_kl(logp_all, old_pi_info["logp_all"])
-        return logp, ent, d_kl, v, vc
-
-    def pi_parameters(self) -> list[nn.Parameter]:
-        params = list(self.pi_net.parameters())
-        if self.log_std is not None:
-            params.append(self.log_std)
-        return params
-
-    def vf_parameters(self) -> list[nn.Parameter]:
-        return list(self.vf.parameters()) + list(self.vc.parameters())
+SelfPPOLagrangian = TypeVar("SelfPPOLagrangian", bound="PPOLagrangian")
 
 
 def _cost_from_info(info: dict) -> float:
@@ -172,305 +35,277 @@ def _cost_from_info(info: dict) -> float:
     return float(info.get("cost", 0))
 
 
-class PPOLagrangian:
-    """Objective-penalized PPO-Lagrangian."""
+class PPOLagrangian(PPO):
+    """SB3 PPO + OpenAI objective-penalized Lagrangian (dual critics).
+
+    ``lag_mode="openai"`` (default, Tier 2): once-per-rollout adv norm, dual
+    pi/vf optimizers, entropy inside Lag objective only.
+
+    ``lag_mode="sb3"`` (Tier 3): SB3 per-minibatch adv norm, single optimizer,
+    ``vf_coef * (v_loss + vc_loss)`` packed with Lag policy loss.
+    """
+
+    policy_aliases: ClassVar[dict[str, type[BasePolicy]]] = {
+        "MlpPolicy": LagActorCriticPolicy,
+        "MultiInputPolicy": LagMultiInputActorCriticPolicy,
+    }
 
     def __init__(
         self,
-        env: Any,
-        learning_rate: float = 3e-4,
+        policy: str | type[ActorCriticPolicy],
+        env: GymEnv | str,
+        learning_rate: float | Schedule = 3e-4,
         n_steps: int = 2048,
-        batch_size: int = 256,
+        batch_size: int = 64,
         n_epochs: int = 10,
         gamma: float = 0.99,
         gae_lambda: float = 0.97,
-        clip_range: float = 0.2,
+        clip_range: float | Schedule = 0.2,
+        clip_range_vf: None | float | Schedule = None,
+        normalize_advantage: bool = False,
         ent_coef: float = 0.0,
-        target_kl: float = 0.01,
+        vf_coef: float = 0.5,
         max_grad_norm: float = 0.5,
-        kl_margin: float = 1.2,  # deprecated; early stop uses 1.5 * target_kl
+        use_sde: bool = False,
+        sde_sample_freq: int = -1,
+        rollout_buffer_class: type[RolloutBuffer] | None = None,
+        rollout_buffer_kwargs: dict[str, Any] | None = None,
+        target_kl: float | None = 0.01,
+        stats_window_size: int = 100,
+        tensorboard_log: str | None = None,
+        policy_kwargs: dict[str, Any] | None = None,
+        verbose: int = 0,
+        seed: int | None = None,
+        device: th.device | str = "auto",
+        _init_setup_model: bool = True,
+        # --- Lag ---
         cost_lim: float = 25.0,
         penalty_init: float = 1.0,
         penalty_lr: float = 5e-2,
         cost_gamma: float = 0.99,
         cost_gae_lambda: float = 0.97,
         vf_lr: float = 1e-3,
-        vf_iters: int | None = None,  # deprecated alias for n_epochs
-        pi_iters: int | None = None,  # deprecated alias for n_epochs
-        max_ep_len: int = 1000,
-        hidden_sizes: tuple[int, ...] = (64, 64),
-        seed: int | None = None,
-        device: str | th.device = "auto",
         cost_fn: Callable[[dict], float] | None = None,
-        policy: str | None = None,
-        verbose: int = 0,
-        tensorboard_log: str | None = None,
-        log_interval: int = 1,
-        policy_kwargs: dict | None = None,
-        **_kwargs: Any,
-    ) -> None:
-        _ = policy
-        if policy_kwargs and "net_arch" in policy_kwargs:
-            arch = policy_kwargs["net_arch"]
-            hidden_sizes = tuple(arch) if not isinstance(arch, dict) else tuple(arch.get("pi", [64, 64]))
-
-        # pi_iters / vf_iters deprecated: if either set, use as n_epochs for compat
-        if pi_iters is not None or vf_iters is not None:
-            n_epochs = pi_iters if pi_iters is not None else vf_iters  # type: ignore[assignment]
-
-        self.env = env
-        self.observation_space = env.observation_space
-        self.action_space = env.action_space
-        self.n_envs = getattr(env, "num_envs", 1)
-        self.n_steps = n_steps
-        self.batch_size = batch_size
-        self.n_epochs = n_epochs
-        self.gamma = gamma
-        self.gae_lambda = gae_lambda
-        self.clip_ratio = clip_range
-        self.ent_coef = ent_coef
-        self.target_kl = target_kl
-        self.max_grad_norm = max_grad_norm
-        self.kl_margin = kl_margin
+        lag_mode: Literal["openai", "sb3"] = "openai",
+    ):
         self.cost_lim = cost_lim
+        self.penalty_init = penalty_init
         self.penalty_lr = penalty_lr
         self.cost_gamma = cost_gamma
         self.cost_gae_lambda = cost_gae_lambda
-        self.max_ep_len = max_ep_len
-        self.cost_fn = cost_fn or _cost_from_info
-        self.learning_rate = learning_rate
         self.vf_lr = vf_lr
-        self.penalty_init = penalty_init
-        self.hidden_sizes = hidden_sizes
-        self.seed = seed
-        self.verbose = verbose
-        self.tensorboard_log = tensorboard_log
-        self.log_interval = log_interval
-        self._tb_writer: Any = None
-        self._n_updates = 0
+        self.cost_fn = cost_fn or _cost_from_info
+        self.lag_mode = lag_mode
 
-        self.device = th.device("cuda" if th.cuda.is_available() else "cpu") if device == "auto" else th.device(device)
-        if seed is not None:
-            np.random.seed(seed)
-            th.manual_seed(seed)
+        # Tier 2: buffer does once-norm; Tier 3: SB3 per-mb normalize_advantage
+        if lag_mode == "openai":
+            normalize_advantage = False
+        elif lag_mode == "sb3":
+            normalize_advantage = True
 
-        self.ac = MLPActorCritic(self.observation_space, self.action_space, hidden_sizes).to(self.device)
-        self.pi_optimizer = Adam(self.ac.pi_parameters(), lr=learning_rate)
-        self.vf_optimizer = Adam(self.ac.vf_parameters(), lr=vf_lr)
-        param_init = float(np.log(max(np.exp(penalty_init) - 1.0, 1e-8)))
-        self.penalty_param = nn.Parameter(th.tensor(param_init, dtype=th.float32, device=self.device))
-        self.penalty_optimizer = Adam([self.penalty_param], lr=penalty_lr)
+        self.penalty_param: nn.Parameter | None = None
+        self.penalty_optimizer: Adam | None = None
+        self.pi_optimizer: Adam | None = None
+        self.vf_optimizer: Adam | None = None
+        self._rollout_ep_costs: list[float] = []
+        self._ep_cost = np.zeros(1, dtype=np.float64)
+        self._last_ep_cost_mean = 0.0
 
-        self.buffer_size = int(n_steps * self.n_envs)
-        if isinstance(self.observation_space, spaces.Dict):
-            obs_shape: Any = {k: self.observation_space.spaces[k].shape for k in self.observation_space.spaces}
-        else:
-            obs_shape = self.observation_space.shape
-        act_shape = self.action_space.shape if isinstance(self.action_space, spaces.Box) else ()
-        self.buffer = LagrangianRolloutBuffer(
-            self.buffer_size,
-            obs_shape,
-            act_shape if act_shape is not None else (),
-            self.ac.pi_info_shapes,
-            gamma,
-            gae_lambda,
-            cost_gamma,
-            cost_gae_lambda,
+        buf_kwargs = dict(rollout_buffer_kwargs or {})
+        buf_kwargs.setdefault("cost_gamma", cost_gamma)
+        buf_kwargs.setdefault("cost_gae_lambda", cost_gae_lambda)
+        buf_kwargs.setdefault("normalize_advantage_once", lag_mode == "openai")
+
+        super().__init__(
+            policy=policy,
+            env=env,
+            learning_rate=learning_rate,
+            n_steps=n_steps,
+            batch_size=batch_size,
+            n_epochs=n_epochs,
+            gamma=gamma,
+            gae_lambda=gae_lambda,
+            clip_range=clip_range,
+            clip_range_vf=clip_range_vf,
+            normalize_advantage=normalize_advantage,
+            ent_coef=ent_coef,
+            vf_coef=vf_coef,
+            max_grad_norm=max_grad_norm,
+            use_sde=use_sde,
+            sde_sample_freq=sde_sample_freq,
+            rollout_buffer_class=rollout_buffer_class,
+            rollout_buffer_kwargs=buf_kwargs,
+            target_kl=target_kl,
+            stats_window_size=stats_window_size,
+            tensorboard_log=tensorboard_log,
+            policy_kwargs=policy_kwargs,
+            verbose=verbose,
+            seed=seed,
+            device=device,
+            _init_setup_model=_init_setup_model,
         )
-        self.num_timesteps = 0
-        self._last_obs: Any = None
-        self._ep_cost = np.zeros(self.n_envs, dtype=np.float64)
-        self._ep_rew = np.zeros(self.n_envs, dtype=np.float64)
-        self._ep_len = np.zeros(self.n_envs, dtype=np.int64)
-        self._ep_info_buffer: deque[dict[str, float]] = deque(maxlen=100)
-        self._start_time: float | None = None
-        self._last_train_stats: dict[str, float] = {}
-        self._tb_writer = None
 
     @property
     def penalty(self) -> th.Tensor:
+        assert self.penalty_param is not None
         return th.nn.functional.softplus(self.penalty_param)
 
-    def _clip_action(self, action: np.ndarray) -> np.ndarray:
-        if isinstance(self.action_space, spaces.Box):
-            return np.clip(action, self.action_space.low, self.action_space.high)
-        return action
-
-    def _mb_to_tensors(self, data: dict[str, Any]) -> dict[str, Any]:
-        device = self.device
-        if isinstance(data["obs"], dict):
-            obs = _obs_tensor(data["obs"], device, self.observation_space)
-        else:
-            obs = th.as_tensor(data["obs"].reshape(data["obs"].shape[0], -1), dtype=th.float32, device=device)
-        act = th.as_tensor(data["act"], dtype=th.float32, device=device)
-        if isinstance(self.action_space, spaces.Discrete):
-            act = act.long().view(-1)
-        return {
-            "obs": obs,
-            "act": act,
-            "adv": th.as_tensor(data["adv"], dtype=th.float32, device=device),
-            "cadv": th.as_tensor(data["cadv"], dtype=th.float32, device=device),
-            "ret": th.as_tensor(data["ret"], dtype=th.float32, device=device),
-            "cret": th.as_tensor(data["cret"], dtype=th.float32, device=device),
-            "logp_old": th.as_tensor(data["logp"], dtype=th.float32, device=device),
-            "pi_info": {
-                k: th.as_tensor(data["pi_info"][k], dtype=th.float32, device=device) for k in data["pi_info"]
-            },
-        }
-
-    def collect_rollouts(self) -> float:
-        """Collect n_steps * n_envs transitions. Returns mean EpCost for Lagrange."""
-        self.ac.eval()
-        self.buffer.reset()
-        if self._last_obs is None:
-            out = self.env.reset()
-            self._last_obs = out[0] if isinstance(out, tuple) else out
-
-        n_steps, n_envs = self.n_steps, self.n_envs
-        ep_costs: list[float] = []
-        stage_boot_v = np.zeros((n_steps, n_envs), dtype=np.float32)
-        stage_boot_cv = np.zeros((n_steps, n_envs), dtype=np.float32)
-        stage_finish = np.zeros((n_steps, n_envs), dtype=bool)
-
-        for t in range(n_steps):
-            obs_t = self._last_obs
-            obs_tensor = _obs_tensor(obs_t, self.device, self.observation_space)
-            actions, values, cvalues, logps, pi_infos = self.ac.step(obs_tensor)
-            actions_np = actions.cpu().numpy()
-            values_np = values.cpu().numpy()
-            cvalues_np = cvalues.cpu().numpy()
-            logps_np = logps.cpu().numpy()
-            pi_infos_np = {k: v.detach().cpu().numpy() for k, v in pi_infos.items()}
-
-            step_out = self.env.step(self._clip_action(actions_np))
-            if not getattr(self, "_printed_first_step", False):
-                self._printed_first_step = True
-            if len(step_out) == 5:
-                new_obs, rewards, terminated, truncated, infos = step_out
-                dones = np.logical_or(terminated, truncated)
-                truncated = np.asarray(truncated).reshape(n_envs)
-            else:
-                new_obs, rewards, dones, infos = step_out
-                truncated = np.array([bool(i.get("TimeLimit.truncated", False)) for i in infos])
-
-            rewards = np.asarray(rewards, dtype=np.float64).reshape(n_envs)
-            dones = np.asarray(dones).reshape(n_envs)
-            costs = np.array([self.cost_fn(infos[i]) for i in range(n_envs)], dtype=np.float32)
-            self.num_timesteps += n_envs
-
-            if t == 0:
-                act_tail = actions_np.shape[1:] if actions_np.ndim > 1 else ()
-                self._s_act = np.zeros((n_steps, n_envs) + act_tail, dtype=np.float32)
-                self._s_rew = np.zeros((n_steps, n_envs), dtype=np.float32)
-                self._s_cost = np.zeros((n_steps, n_envs), dtype=np.float32)
-                self._s_val = np.zeros((n_steps, n_envs), dtype=np.float32)
-                self._s_cval = np.zeros((n_steps, n_envs), dtype=np.float32)
-                self._s_logp = np.zeros((n_steps, n_envs), dtype=np.float32)
-                self._s_done = np.zeros((n_steps, n_envs), dtype=bool)
-                self._s_trunc = np.zeros((n_steps, n_envs), dtype=bool)
-                self._s_pi = {
-                    k: np.zeros((n_steps, n_envs) + v.shape[1:], dtype=np.float32)
-                    for k, v in pi_infos_np.items()
-                }
-                if isinstance(self.observation_space, spaces.Dict):
-                    self._s_obs_d = {
-                        k: np.zeros(
-                            (n_steps, n_envs) + self.observation_space.spaces[k].shape, dtype=np.float32
-                        )
-                        for k in self.observation_space.spaces
-                    }
-                else:
-                    self._s_obs = np.zeros(
-                        (n_steps, n_envs) + self.observation_space.shape, dtype=np.float32  # type: ignore[operator]
-                    )
-
+    def _setup_model(self) -> None:
+        # Choose Lag buffer by obs space (same rule as SB3 OnPolicyAlgorithm)
+        if self.rollout_buffer_class is None:
             if isinstance(self.observation_space, spaces.Dict):
-                for k in self.observation_space.spaces:
-                    self._s_obs_d[k][t] = np.asarray(obs_t[k], dtype=np.float32)
+                self.rollout_buffer_class = LagDictRolloutBuffer
             else:
-                self._s_obs[t] = np.asarray(obs_t, dtype=np.float32)
+                self.rollout_buffer_class = LagRolloutBuffer
 
-            self._s_act[t] = actions_np.reshape(self._s_act[t].shape)
-            self._s_rew[t] = rewards
-            self._s_cost[t] = costs
-            self._s_val[t] = values_np
-            self._s_cval[t] = cvalues_np
-            self._s_logp[t] = logps_np
-            self._s_done[t] = dones
-            self._s_trunc[t] = truncated
-            for k, v in pi_infos_np.items():
-                self._s_pi[k][t] = v
+        super()._setup_model()
 
+        n_envs = self.n_envs
+        self._ep_cost = np.zeros(n_envs, dtype=np.float64)
+
+        param_init = float(np.log(max(np.exp(self.penalty_init) - 1.0, 1e-8)))
+        self.penalty_param = nn.Parameter(th.tensor(param_init, dtype=th.float32, device=self.device))
+        self.penalty_optimizer = Adam([self.penalty_param], lr=self.penalty_lr)
+
+        assert isinstance(self.policy, (LagActorCriticPolicy, LagMultiInputActorCriticPolicy))
+        if self.lag_mode == "openai":
+            self.pi_optimizer = Adam(self.policy.pi_parameters(), lr=self.lr_schedule(1))
+            self.vf_optimizer = Adam(self.policy.vf_parameters(), lr=self.vf_lr)
+
+    def _excluded_save_params(self) -> list[str]:
+        excluded = super()._excluded_save_params()
+        excluded.extend(["pi_optimizer", "vf_optimizer", "penalty_optimizer", "_rollout_ep_costs"])
+        return excluded
+
+    def _get_torch_save_params(self) -> tuple[list[str], list[str]]:
+        state_dicts, torch_vars = super()._get_torch_save_params()
+        state_dicts = list(state_dicts)
+        # penalty_param is an nn.Parameter; save via named attr
+        torch_vars = list(torch_vars) + ["penalty_param"]
+        if self.lag_mode == "openai":
+            state_dicts.extend(["pi_optimizer", "vf_optimizer", "penalty_optimizer"])
+        else:
+            state_dicts.append("penalty_optimizer")
+        return state_dicts, torch_vars
+
+    def collect_rollouts(
+        self,
+        env: VecEnv,
+        callback: BaseCallback,
+        rollout_buffer: RolloutBuffer,
+        n_rollout_steps: int,
+    ) -> bool:
+        assert self._last_obs is not None
+        assert isinstance(rollout_buffer, (LagRolloutBuffer, LagDictRolloutBuffer))
+        assert isinstance(self.policy, (LagActorCriticPolicy, LagMultiInputActorCriticPolicy))
+        self.policy.set_training_mode(False)
+
+        n_steps = 0
+        rollout_buffer.reset()
+        self._rollout_ep_costs = []
+        if self.use_sde:
+            self.policy.reset_noise(env.num_envs)
+
+        callback.on_rollout_start()
+
+        while n_steps < n_rollout_steps:
+            if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
+                self.policy.reset_noise(env.num_envs)
+
+            with th.no_grad():
+                obs_tensor = obs_as_tensor(self._last_obs, self.device)  # type: ignore[arg-type]
+                actions, values, log_probs = self.policy(obs_tensor)
+                cost_values = self.policy.predict_cost_values(obs_tensor)
+            actions = actions.cpu().numpy()
+
+            clipped_actions = actions
+            if isinstance(self.action_space, spaces.Box):
+                if self.policy.squash_output:
+                    clipped_actions = self.policy.unscale_action(clipped_actions)
+                else:
+                    clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
+
+            new_obs, rewards, dones, infos = env.step(clipped_actions)
+            self.num_timesteps += env.num_envs
+
+            costs = np.array([self.cost_fn(infos[i]) for i in range(env.num_envs)], dtype=np.float32)
             self._ep_cost += costs
-            self._ep_rew += rewards
-            self._ep_len += 1
-            for i in range(n_envs):
-                if dones[i]:
-                    stage_finish[t, i] = True
-                    if truncated[i] and infos[i].get("terminal_observation") is not None:
-                        with th.no_grad():
-                            to = _obs_tensor(infos[i]["terminal_observation"], self.device, self.observation_space)
-                            stage_boot_v[t, i] = float(self.ac.value(to)[0].item())
-                            stage_boot_cv[t, i] = float(self.ac.cost_value(to)[0].item())
-                    else:
-                        stage_boot_v[t, i] = 0.0
-                        stage_boot_cv[t, i] = 0.0
-                if dones[i] or self._ep_len[i] >= self.max_ep_len:
-                    ep_costs.append(float(self._ep_cost[i]))
-                    self._ep_info_buffer.append(
-                        {
-                            "r": float(self._ep_rew[i]),
-                            "l": float(self._ep_len[i]),
-                            "c": float(self._ep_cost[i]),
-                        }
-                    )
-                    self._ep_cost[i] = 0.0
-                    self._ep_rew[i] = 0.0
-                    self._ep_len[i] = 0
 
-            self._last_obs = new_obs
+            callback.update_locals(locals())
+            if not callback.on_step():
+                return False
+
+            self._update_info_buffer(infos, dones)
+            n_steps += 1
+
+            if isinstance(self.action_space, spaces.Discrete):
+                actions = actions.reshape(-1, 1)
+
+            # Timeout bootstrap reward + cost
+            for idx, done in enumerate(dones):
+                if (
+                    done
+                    and infos[idx].get("terminal_observation") is not None
+                    and infos[idx].get("TimeLimit.truncated", False)
+                ):
+                    terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
+                    with th.no_grad():
+                        terminal_value = self.policy.predict_values(terminal_obs)[0]
+                        terminal_cvalue = self.policy.predict_cost_values(terminal_obs)[0]
+                    rewards[idx] += self.gamma * float(terminal_value)
+                    # Cost bootstrap on truncate (keep array for buffer; GAE uses last_cost_values at end)
+                    _ = terminal_cvalue
+                if done:
+                    self._rollout_ep_costs.append(float(self._ep_cost[idx]))
+                    self._ep_cost[idx] = 0.0
+
+            rollout_buffer.add(
+                self._last_obs,  # type: ignore[arg-type]
+                actions,
+                rewards,
+                self._last_episode_starts,  # type: ignore[arg-type]
+                values,
+                log_probs,
+                cost=costs,
+                cost_value=cost_values,
+            )
+            self._last_obs = new_obs  # type: ignore[assignment]
+            self._last_episode_starts = dones
 
         with th.no_grad():
-            last_t = _obs_tensor(self._last_obs, self.device, self.observation_space)
-            last_val = self.ac.value(last_t).cpu().numpy()
-            last_cval = self.ac.cost_value(last_t).cpu().numpy()
+            values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
+            last_cost_values = self.policy.predict_cost_values(obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
 
-        for i in range(n_envs):
-            for t in range(n_steps):
-                obs_i = (
-                    {k: self._s_obs_d[k][t, i] for k in self._s_obs_d}
-                    if isinstance(self.observation_space, spaces.Dict)
-                    else self._s_obs[t, i]
-                )
-                self.buffer.store(
-                    obs_i,
-                    self._s_act[t, i],
-                    float(self._s_rew[t, i]),
-                    float(self._s_val[t, i]),
-                    float(self._s_cost[t, i]),
-                    float(self._s_cval[t, i]),
-                    float(self._s_logp[t, i]),
-                    {k: self._s_pi[k][t, i] for k in self._s_pi},
-                )
-                if stage_finish[t, i]:
-                    self.buffer.finish_path(float(stage_boot_v[t, i]), float(stage_boot_cv[t, i]))
-            if self.buffer.path_start_idx < self.buffer.ptr:
-                if bool(self._s_done[-1, i]) and not bool(self._s_trunc[-1, i]):
-                    lv, lcv = 0.0, 0.0
-                else:
-                    lv, lcv = float(last_val[i]), float(last_cval[i])
-                self.buffer.finish_path(lv, lcv)
+        rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
+        rollout_buffer.compute_cost_returns_and_advantage(last_cost_values=last_cost_values, dones=dones)
 
-        assert self.buffer.ptr == self.buffer.max_size
-        return float(np.mean(ep_costs)) if ep_costs else 0.0
+        self._last_ep_cost_mean = (
+            float(np.mean(self._rollout_ep_costs)) if self._rollout_ep_costs else 0.0
+        )
+        self.logger.record("rollout/ep_cost_mean", self._last_ep_cost_mean)
+        self.logger.record("train/penalty", float(self.penalty.item()))
 
-    def update(self, ep_cost_mean: float) -> dict[str, float]:
+        callback.update_locals(locals())
+        callback.on_rollout_end()
+        return True
+
+    def train(self) -> None:
         # SB3-style minibatch PPO updates + OpenAI objective-penalized Lagrangian.
-        self.ac.train()
+        assert self.penalty_param is not None and self.penalty_optimizer is not None
+        assert isinstance(self.policy, (LagActorCriticPolicy, LagMultiInputActorCriticPolicy))
+
+        self.policy.set_training_mode(True)
+        self._update_learning_rate(self.policy.optimizer)
+        if self.lag_mode == "openai" and self.pi_optimizer is not None:
+            # Keep pi LR in sync with schedule
+            for pg in self.pi_optimizer.param_groups:
+                pg["lr"] = self.lr_schedule(self._current_progress_remaining)
+
+        clip_range = self.clip_range(self._current_progress_remaining)  # type: ignore[operator]
 
         # Penalty update once per rollout (before policy/value minibatch training)
         self.penalty_optimizer.zero_grad()
-        (-self.penalty_param * (ep_cost_mean - self.cost_lim)).backward()
+        (-self.penalty_param * (self._last_ep_cost_mean - self.cost_lim)).backward()
         self.penalty_optimizer.step()
 
         pg_losses: list[float] = []
@@ -484,29 +319,45 @@ class PPOLagrangian:
         continue_training = True
 
         for epoch in range(self.n_epochs):
-            for mb in self.buffer.get(self.batch_size):
-                t = self._mb_to_tensors(mb)
-                obs, act = t["obs"], t["act"]
-                adv, cadv = t["adv"], t["cadv"]
-                ret, cret = t["ret"], t["cret"]
-                logp_old, pi_info = t["logp_old"], t["pi_info"]
+            for rollout_data in self.rollout_buffer.get(self.batch_size):
+                actions = rollout_data.actions
+                if isinstance(self.action_space, spaces.Discrete):
+                    actions = actions.long().flatten()
 
-                logp, ent, _, _, _ = self.ac.evaluate_actions(obs, act, pi_info)
-                ratio = th.exp(logp - logp_old)
-                min_adv = th.where(adv > 0, (1 + self.clip_ratio) * adv, (1 - self.clip_ratio) * adv)
-                surr_adv = th.mean(th.minimum(ratio * adv, min_adv))
-                surr_cost = th.mean(ratio * cadv)
+                values, cost_values, log_prob, entropy = self.policy.evaluate_actions(
+                    rollout_data.observations, actions
+                )
+                values = values.flatten()
+                cost_values = cost_values.flatten()
+
+                advantages = rollout_data.advantages
+                cost_advantages = rollout_data.cost_advantages
+                # Tier 3: SB3 per-minibatch reward adv re-norm
+                if self.normalize_advantage and len(advantages) > 1:
+                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+                ratio = th.exp(log_prob - rollout_data.old_log_prob)
+                # Clipped surrogate (same form as OpenAI / SB3)
+                policy_loss_1 = advantages * ratio
+                policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
+                surr_adv = th.min(policy_loss_1, policy_loss_2).mean()
+                surr_cost = (ratio * cost_advantages).mean()
                 pen = self.penalty.detach()
+
+                if entropy is None:
+                    ent = -log_prob.mean()
+                else:
+                    ent = entropy.mean()
                 # Entropy only inside Lag objective (not a second SB3 entropy term)
                 pi_obj = (surr_adv + self.ent_coef * ent - pen * surr_cost) / (1.0 + pen)
                 policy_loss = -pi_obj
-                entropy_loss = float((-ent).item())  # ent already mean; SB3: -mean(entropy)
+                entropy_loss = float((-ent).item())
 
                 with th.no_grad():
-                    log_ratio = logp - logp_old
+                    log_ratio = log_prob - rollout_data.old_log_prob
                     approx_kl = th.mean((th.exp(log_ratio) - 1) - log_ratio).item()
                     approx_kl_divs.append(approx_kl)
-                    clip_fractions.append(th.mean((th.abs(ratio - 1) > self.clip_ratio).float()).item())
+                    clip_fractions.append(th.mean((th.abs(ratio - 1) > clip_range).float()).item())
 
                 if self.target_kl is not None and approx_kl > 1.5 * self.target_kl:
                     continue_training = False
@@ -514,205 +365,106 @@ class PPOLagrangian:
                         print(f"Early stopping at epoch {epoch} due to reaching max kl: {approx_kl:.2f}")
                     break
 
-                self.pi_optimizer.zero_grad()
-                policy_loss.backward()
-                th.nn.utils.clip_grad_norm_(self.ac.pi_parameters(), self.max_grad_norm)
-                self.pi_optimizer.step()
+                v_loss = F.mse_loss(rollout_data.returns, values)
+                vc_loss = F.mse_loss(rollout_data.cost_returns, cost_values)
 
-                # Fresh value forward (separate optimizer; avoid shared-graph with pi)
-                v = self.ac.value(obs)
-                vc = self.ac.cost_value(obs)
-                v_loss = th.mean((ret - v) ** 2)
-                vc_loss = th.mean((cret - vc) ** 2)
-                self.vf_optimizer.zero_grad()
-                (v_loss + vc_loss).backward()
-                th.nn.utils.clip_grad_norm_(self.ac.vf_parameters(), self.max_grad_norm)
-                self.vf_optimizer.step()
+                if self.lag_mode == "openai":
+                    assert self.pi_optimizer is not None and self.vf_optimizer is not None
+                    self.pi_optimizer.zero_grad()
+                    policy_loss.backward()
+                    th.nn.utils.clip_grad_norm_(self.policy.pi_parameters(), self.max_grad_norm)
+                    self.pi_optimizer.step()
+
+                    # Fresh value forward (separate optimizer; avoid shared-graph with pi)
+                    values2 = self.policy.predict_values(rollout_data.observations).flatten()
+                    cost_values2 = self.policy.predict_cost_values(rollout_data.observations).flatten()
+                    v_loss = F.mse_loss(rollout_data.returns, values2)
+                    vc_loss = F.mse_loss(rollout_data.cost_returns, cost_values2)
+                    self.vf_optimizer.zero_grad()
+                    (v_loss + vc_loss).backward()
+                    th.nn.utils.clip_grad_norm_(self.policy.vf_parameters(), self.max_grad_norm)
+                    self.vf_optimizer.step()
+                    last_loss = float(policy_loss.item() + v_loss.item() + vc_loss.item())
+                else:
+                    # Tier 3: single optimizer, packed loss
+                    loss = policy_loss + self.vf_coef * (v_loss + vc_loss)
+                    self.policy.optimizer.zero_grad()
+                    loss.backward()
+                    th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                    self.policy.optimizer.step()
+                    last_loss = float(loss.item())
 
                 pg_losses.append(float(policy_loss.item()))
                 value_losses.append(float(v_loss.item()))
                 cost_value_losses.append(float(vc_loss.item()))
                 entropy_losses.append(entropy_loss)
                 surr_costs.append(float(surr_cost.item()))
-                last_loss = float(policy_loss.item() + v_loss.item() + vc_loss.item())
 
             self._n_updates += 1
             if not continue_training:
                 break
 
-        stats = {
-            "policy_gradient_loss": float(np.mean(pg_losses)) if pg_losses else 0.0,
-            "value_loss": float(np.mean(value_losses)) if value_losses else 0.0,
-            "cost_value_loss": float(np.mean(cost_value_losses)) if cost_value_losses else 0.0,
-            "entropy_loss": float(np.mean(entropy_losses)) if entropy_losses else 0.0,
-            "approx_kl": float(np.mean(approx_kl_divs)) if approx_kl_divs else 0.0,
-            "clip_fraction": float(np.mean(clip_fractions)) if clip_fractions else 0.0,
-            "surr_cost": float(np.mean(surr_costs)) if surr_costs else 0.0,
-            "loss": last_loss,
-            "penalty": float(self.penalty.item()),
-            "n_updates": float(self._n_updates),
-        }
-        self._last_train_stats = stats
-        return stats
-
-    def _dump_logs(self, iteration: int) -> None:
-        """Print + optional TB scalars in SB3-style groups (after each rollout/update)."""
-        if self.log_interval > 0 and iteration % self.log_interval != 0:
-            return
-
-        ep_rew_mean = float(np.mean([e["r"] for e in self._ep_info_buffer])) if self._ep_info_buffer else 0.0
-        ep_len_mean = float(np.mean([e["l"] for e in self._ep_info_buffer])) if self._ep_info_buffer else 0.0
-        ep_cost_mean = float(np.mean([e["c"] for e in self._ep_info_buffer])) if self._ep_info_buffer else 0.0
-        elapsed = max(time.time() - (self._start_time or time.time()), 1e-8)
-        fps = float(self.num_timesteps / elapsed)
-        train = self._last_train_stats
-
-        rollout = {
-            "ep_rew_mean": ep_rew_mean,
-            "ep_len_mean": ep_len_mean,
-            "ep_cost_mean": ep_cost_mean,
-        }
-        time_stats = {
-            "fps": fps,
-            "total_timesteps": float(self.num_timesteps),
-        }
-
-        print("---------------------------------", flush=True)
-        print("| rollout/            |          |", flush=True)
-        print(f"|    ep_rew_mean      | {ep_rew_mean:8.2f} |", flush=True)
-        print(f"|    ep_len_mean      | {ep_len_mean:8.2f} |", flush=True)
-        print(f"|    ep_cost_mean     | {ep_cost_mean:8.4g} |", flush=True)
-        print("| time/               |          |", flush=True)
-        print(f"|    fps              | {fps:8.0f} |", flush=True)
-        print(f"|    total_timesteps  | {self.num_timesteps:8d} |", flush=True)
-        print("| train/              |          |", flush=True)
-        print(f"|    approx_kl        | {train.get('approx_kl', 0):8.4g} |", flush=True)
-        print(f"|    clip_fraction    | {train.get('clip_fraction', 0):8.4g} |", flush=True)
-        print(f"|    entropy_loss     | {train.get('entropy_loss', 0):8.4g} |", flush=True)
-        print(f"|    loss             | {train.get('loss', 0):8.4g} |", flush=True)
-        print(f"|    n_updates        | {int(train.get('n_updates', 0)):8d} |", flush=True)
-        print(f"|    policy_gradient_loss | {train.get('policy_gradient_loss', 0):8.4g} |", flush=True)
-        print(f"|    value_loss       | {train.get('value_loss', 0):8.4g} |", flush=True)
-        print(f"|    cost_value_loss  | {train.get('cost_value_loss', 0):8.4g} |", flush=True)
-        print(f"|    surr_cost        | {train.get('surr_cost', 0):8.4g} |", flush=True)
-        print(f"|    penalty          | {train.get('penalty', 0):8.4g} |", flush=True)
-        print("---------------------------------", flush=True)
-
-        if self._tb_writer is not None:
-            step = self.num_timesteps
-            for k, v in rollout.items():
-                self._tb_writer.add_scalar(f"rollout/{k}", v, step)
-            for k, v in time_stats.items():
-                self._tb_writer.add_scalar(f"time/{k}", v, step)
-            for k, v in train.items():
-                self._tb_writer.add_scalar(f"train/{k}", v, step)
-            self._tb_writer.flush()
+        explained_var = explained_variance(
+            self.rollout_buffer.values.flatten(),
+            self.rollout_buffer.returns.flatten(),
+        )
+        self.logger.record("train/entropy_loss", np.mean(entropy_losses) if entropy_losses else 0.0)
+        self.logger.record("train/policy_gradient_loss", np.mean(pg_losses) if pg_losses else 0.0)
+        self.logger.record("train/value_loss", np.mean(value_losses) if value_losses else 0.0)
+        self.logger.record("train/cost_value_loss", np.mean(cost_value_losses) if cost_value_losses else 0.0)
+        self.logger.record("train/approx_kl", np.mean(approx_kl_divs) if approx_kl_divs else 0.0)
+        self.logger.record("train/clip_fraction", np.mean(clip_fractions) if clip_fractions else 0.0)
+        self.logger.record("train/surr_cost", np.mean(surr_costs) if surr_costs else 0.0)
+        self.logger.record("train/loss", last_loss)
+        self.logger.record("train/explained_variance", explained_var)
+        self.logger.record("train/penalty", float(self.penalty.item()))
+        self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
+        self.logger.record("train/clip_range", clip_range)
 
     def learn(
-      self,
-      total_timesteps: int,
-      tb_log_name: str = "PPOLagrangian",
-      **_kwargs: Any,
-  ) -> PPOLagrangian:
-        if self.tensorboard_log is not None and self._tb_writer is None:
-            try:
-                from torch.utils.tensorboard import SummaryWriter
-                save_path = Path(self.tensorboard_log) / tb_log_name
-                save_path.mkdir(parents=True, exist_ok=True)
-                print(f'Training Log Path: {str(save_path)}')
-                self._tb_writer = SummaryWriter(str(save_path))
-            except ImportError:
-                self._tb_writer = None
-        out = self.env.reset()
-        self._last_obs = out[0] if isinstance(out, tuple) else out
-        self._ep_cost[:] = 0.0
-        self._ep_rew[:] = 0.0
-        self._ep_len[:] = 0
-        self.num_timesteps = 0
-        self._printed_first_step = False
-        self._start_time = time.time()
-        n_iters = int(np.ceil(total_timesteps / self.buffer_size))
-        for iteration in range(1, n_iters + 1):
-            ep_cost = self.collect_rollouts()
-            self.update(ep_cost)
-            self._dump_logs(iteration)
-            if self.num_timesteps >= total_timesteps:
-                break
-        if self._tb_writer is not None:
-            self._tb_writer.close()
-        return self
-
-    def predict(self, observation: Any, deterministic: bool = False, **_kwargs: Any):
-        self.ac.eval()
-        actions, _, _, _, _ = self.ac.step(
-            _obs_tensor(observation, self.device, self.observation_space), deterministic=deterministic
-        )
-        a = self._clip_action(actions.cpu().numpy())
-        if a.shape[0] == 1 and not hasattr(self.env, "num_envs"):
-            a = a[0]
-        return a, None
-
-    def save(self, path: str | Path) -> None:
-        path = Path(path)
-        if path.suffix not in {".pt", ".pth", ".zip"}:
-            path = path.with_suffix(".pt")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        th.save(
-            {
-                "cfg": {
-                    "learning_rate": self.learning_rate,
-                    "n_steps": self.n_steps,
-                    "batch_size": self.batch_size,
-                    "n_epochs": self.n_epochs,
-                    "gamma": self.gamma,
-                    "gae_lambda": self.gae_lambda,
-                    "clip_range": self.clip_ratio,
-                    "ent_coef": self.ent_coef,
-                    "target_kl": self.target_kl,
-                    "max_grad_norm": self.max_grad_norm,
-                    "kl_margin": self.kl_margin,
-                    "cost_lim": self.cost_lim,
-                    "penalty_init": self.penalty_init,
-                    "penalty_lr": self.penalty_lr,
-                    "cost_gamma": self.cost_gamma,
-                    "cost_gae_lambda": self.cost_gae_lambda,
-                    "vf_lr": self.vf_lr,
-                    "max_ep_len": self.max_ep_len,
-                    "hidden_sizes": self.hidden_sizes,
-                    "seed": self.seed,
-                    "num_timesteps": self.num_timesteps,
-                },
-                "ac": self.ac.state_dict(),
-                "pi_optimizer": self.pi_optimizer.state_dict(),
-                "vf_optimizer": self.vf_optimizer.state_dict(),
-                "penalty_param": self.penalty_param.detach().cpu(),
-                "penalty_optimizer": self.penalty_optimizer.state_dict(),
-            },
-            path,
+        self: SelfPPOLagrangian,
+        total_timesteps: int,
+        callback: MaybeCallback = None,
+        log_interval: int = 1,
+        tb_log_name: str = "PPOLagrangian",
+        reset_num_timesteps: bool = True,
+        progress_bar: bool = False,
+    ) -> SelfPPOLagrangian:
+        return super().learn(
+            total_timesteps=total_timesteps,
+            callback=callback,
+            log_interval=log_interval,
+            tb_log_name=tb_log_name,
+            reset_num_timesteps=reset_num_timesteps,
+            progress_bar=progress_bar,
         )
 
     @classmethod
-    def load(cls, path: str | Path, env: Any, device: str | th.device = "auto", **kwargs: Any) -> PPOLagrangian:
+    def load(  # type: ignore[override]
+        cls,
+        path: str | Path,
+        env: GymEnv | None = None,
+        device: th.device | str = "auto",
+        custom_objects: dict[str, Any] | None = None,
+        force_reset: bool = True,
+        **kwargs: Any,
+    ) -> PPOLagrangian:
         path = Path(path)
-        if not path.exists():
-            for ext in (".pt", ".pth", ".zip"):
-                if path.with_suffix(ext).exists():
-                    path = path.with_suffix(ext)
-                    break
-            else:
-                if Path(str(path) + ".pt").exists():
-                    path = Path(str(path) + ".pt")
-        state = th.load(path, map_location="cpu", weights_only=False)
-        cfg = dict(state["cfg"])
-        cfg.pop("num_timesteps", None)
-        # Drop deprecated keys from old checkpoints
-        cfg.pop("pi_iters", None)
-        cfg.pop("vf_iters", None)
-        model = cls(env=env, device=device, **{**cfg, **kwargs})
-        model.ac.load_state_dict(state["ac"])
-        model.pi_optimizer.load_state_dict(state["pi_optimizer"])
-        model.vf_optimizer.load_state_dict(state["vf_optimizer"])
-        model.penalty_param.data.copy_(state["penalty_param"].to(model.device))
-        model.penalty_optimizer.load_state_dict(state["penalty_optimizer"])
-        model.num_timesteps = state["cfg"].get("num_timesteps", 0)
-        return model
+        # Legacy .pt unsupported after Tier-2 SB3 refactor
+        if path.suffix in {".pt", ".pth"} or (
+            not path.exists()
+            and not path.with_suffix(".zip").exists()
+            and Path(str(path) + ".pt").exists()
+        ):
+            raise ValueError(
+                "Legacy PPOLagrangian .pt checkpoints are unsupported after the SB3 Tier-2 "
+                "refactor. Retrain and save as SB3 .zip (PPOLagrangian.save)."
+            )
+        return super().load(  # type: ignore[return-value]
+            path=path,
+            env=env,
+            device=device,
+            custom_objects=custom_objects,
+            force_reset=force_reset,
+            **kwargs,
+        )

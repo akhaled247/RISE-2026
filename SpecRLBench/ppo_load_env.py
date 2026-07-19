@@ -62,6 +62,7 @@ def eval_model(
     if "ppo_lag" in name_l or "ppolagrangian" in name_l:
         from ppo_lagrangian import PPOLagrangian
 
+        # SB3 Tier-2: .zip only (legacy .pt raises ValueError)
         model = PPOLagrangian.load(model_path, env=vec_env, device=DEVICE)
     elif "rnd_ppo" in name_l:
         from rnd import RNDPPO

@@ -1,164 +1,303 @@
-"""Rollout buffer (OpenAI CPOBuffer): reward/cost GAE + returns."""
+"""Lag rollout buffers: SB3 RolloutBuffer/DictRolloutBuffer + cost GAE."""
 
 from __future__ import annotations
 
-from typing import Any, Generator
+from typing import Generator, NamedTuple
 
 import numpy as np
-import scipy.signal
+import torch as th
+from gymnasium import spaces
+from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
+from stable_baselines3.common.vec_env import VecNormalize
 
 EPS = 1e-8
 
 
-def _shape(length: int, shape: int | tuple[int, ...] | None) -> tuple[int, ...]:
-    if shape is None:
-        return (length,)
-    return (length, shape) if np.isscalar(shape) else (length, *shape)
+class LagRolloutBufferSamples(NamedTuple):
+    observations: th.Tensor
+    actions: th.Tensor
+    old_values: th.Tensor
+    old_log_prob: th.Tensor
+    advantages: th.Tensor
+    returns: th.Tensor
+    old_cost_values: th.Tensor
+    cost_advantages: th.Tensor
+    cost_returns: th.Tensor
 
 
-def discount_cumsum(x: np.ndarray, discount: float) -> np.ndarray:
-    return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
+class LagDictRolloutBufferSamples(NamedTuple):
+    observations: dict[str, th.Tensor]
+    actions: th.Tensor
+    old_values: th.Tensor
+    old_log_prob: th.Tensor
+    advantages: th.Tensor
+    returns: th.Tensor
+    old_cost_values: th.Tensor
+    cost_advantages: th.Tensor
+    cost_returns: th.Tensor
 
 
-class LagrangianRolloutBuffer:
-    """On-policy buffer. Cost TD uses reward gamma (OpenAI quirk)."""
+def _compute_cost_gae(
+    costs: np.ndarray,
+    cost_values: np.ndarray,
+    episode_starts: np.ndarray,
+    last_cost_values: np.ndarray,
+    dones: np.ndarray,
+    buffer_size: int,
+    gamma: float,
+    cost_gamma: float,
+    cost_gae_lambda: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """OpenAI quirk: cost TD deltas use reward gamma; returns use cost_gamma."""
+    advantages = np.zeros_like(costs)
+    last_gae_lam = 0.0
+    for step in reversed(range(buffer_size)):
+        if step == buffer_size - 1:
+            next_non_terminal = 1.0 - dones.astype(np.float32)
+            next_values = last_cost_values
+        else:
+            next_non_terminal = 1.0 - episode_starts[step + 1]
+            next_values = cost_values[step + 1]
+        # TD delta uses reward gamma (OpenAI CPOBuffer quirk)
+        delta = costs[step] + gamma * next_values * next_non_terminal - cost_values[step]
+        last_gae_lam = delta + cost_gamma * cost_gae_lambda * next_non_terminal * last_gae_lam
+        advantages[step] = last_gae_lam
+    returns = advantages + cost_values
+    return advantages, returns
+
+
+class LagRolloutBuffer(RolloutBuffer):
+    """Box-obs rollout buffer with cost fields."""
+
+    costs: np.ndarray
+    cost_values: np.ndarray
+    cost_advantages: np.ndarray
+    cost_returns: np.ndarray
 
     def __init__(
         self,
-        size: int,
-        obs_shape: tuple[int, ...] | dict[str, tuple[int, ...]],
-        act_shape: tuple[int, ...],
-        pi_info_shapes: dict[str, list[int] | tuple[int, ...]],
+        buffer_size: int,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
+        device: th.device | str = "auto",
+        gae_lambda: float = 1,
         gamma: float = 0.99,
-        lam: float = 0.97,
+        n_envs: int = 1,
         cost_gamma: float = 0.99,
-        cost_lam: float = 0.97,
-    ) -> None:
-        self.obs_is_dict = isinstance(obs_shape, dict)
-        if self.obs_is_dict:
-            self.obs_buf: dict[str, np.ndarray] | np.ndarray = {
-                k: np.zeros(_shape(size, v), dtype=np.float32) for k, v in obs_shape.items()
-            }
-        else:
-            self.obs_buf = np.zeros(_shape(size, obs_shape), dtype=np.float32)
-
-        self.act_buf = np.zeros(_shape(size, act_shape), dtype=np.float32)
-        self.adv_buf = np.zeros(size, dtype=np.float32)
-        self.rew_buf = np.zeros(size, dtype=np.float32)
-        self.ret_buf = np.zeros(size, dtype=np.float32)
-        self.val_buf = np.zeros(size, dtype=np.float32)
-        self.cadv_buf = np.zeros(size, dtype=np.float32)
-        self.cost_buf = np.zeros(size, dtype=np.float32)
-        self.cret_buf = np.zeros(size, dtype=np.float32)
-        self.cval_buf = np.zeros(size, dtype=np.float32)
-        self.logp_buf = np.zeros(size, dtype=np.float32)
-        self.pi_info_bufs = {
-            k: np.zeros([size] + list(v), dtype=np.float32) for k, v in pi_info_shapes.items()
-        }
-        self.pi_info_keys = sorted(self.pi_info_bufs.keys())
-        self.gamma, self.lam = gamma, lam
-        self.cost_gamma, self.cost_lam = cost_gamma, cost_lam
-        self.ptr, self.path_start_idx, self.max_size = 0, 0, size
-        self.generator_ready = False
-        self._flat: dict[str, Any] | None = None
-
-    def store(
-        self,
-        obs: np.ndarray | dict[str, np.ndarray],
-        act: np.ndarray,
-        rew: float,
-        val: float,
-        cost: float,
-        cval: float,
-        logp: float,
-        pi_info: dict[str, np.ndarray],
-    ) -> None:
-        assert self.ptr < self.max_size
-        if self.obs_is_dict:
-            assert isinstance(self.obs_buf, dict)
-            for k in self.obs_buf:
-                self.obs_buf[k][self.ptr] = obs[k]
-        else:
-            self.obs_buf[self.ptr] = obs  # type: ignore[index]
-        self.act_buf[self.ptr] = act
-        self.rew_buf[self.ptr] = rew
-        self.val_buf[self.ptr] = val
-        self.cost_buf[self.ptr] = cost
-        self.cval_buf[self.ptr] = cval
-        self.logp_buf[self.ptr] = logp
-        for k in self.pi_info_keys:
-            self.pi_info_bufs[k][self.ptr] = pi_info[k]
-        self.ptr += 1
-
-    def finish_path(self, last_val: float = 0.0, last_cval: float = 0.0) -> None:
-        path_slice = slice(self.path_start_idx, self.ptr)
-        rews = np.append(self.rew_buf[path_slice], last_val)
-        vals = np.append(self.val_buf[path_slice], last_val)
-        deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]
-        self.adv_buf[path_slice] = discount_cumsum(deltas, self.gamma * self.lam)
-        self.ret_buf[path_slice] = discount_cumsum(rews, self.gamma)[:-1]
-
-        costs = np.append(self.cost_buf[path_slice], last_cval)
-        cvals = np.append(self.cval_buf[path_slice], last_cval)
-        cdeltas = costs[:-1] + self.gamma * cvals[1:] - cvals[:-1]
-        self.cadv_buf[path_slice] = discount_cumsum(cdeltas, self.cost_gamma * self.cost_lam)
-        self.cret_buf[path_slice] = discount_cumsum(costs, self.cost_gamma)[:-1]
-        self.path_start_idx = self.ptr
-
-    def get(self, batch_size: int | None = None) -> Generator[dict[str, Any], None, None]:
-        """Yield shuffled minibatches. Adv norm / cadv center once per rollout (not per-mb)."""
-        if not self.generator_ready:
-            assert self.ptr == self.max_size
-            # Advantage norm once on full buffer (OpenAI Lag); not SB3 per-minibatch re-norm.
-            adv_mean, adv_std = float(np.mean(self.adv_buf)), float(np.std(self.adv_buf))
-            self.adv_buf = (self.adv_buf - adv_mean) / (adv_std + EPS)
-            self.cadv_buf -= float(np.mean(self.cadv_buf))
-
-            if self.obs_is_dict:
-                assert isinstance(self.obs_buf, dict)
-                obs: Any = {k: self.obs_buf[k].copy() for k in self.obs_buf}
-            else:
-                obs = self.obs_buf.copy()  # type: ignore[union-attr]
-            self._flat = {
-                "obs": obs,
-                "act": self.act_buf.copy(),
-                "adv": self.adv_buf.copy(),
-                "cadv": self.cadv_buf.copy(),
-                "ret": self.ret_buf.copy(),
-                "cret": self.cret_buf.copy(),
-                "logp": self.logp_buf.copy(),
-                "pi_info": {k: self.pi_info_bufs[k].copy() for k in self.pi_info_keys},
-            }
-            self.generator_ready = True
-
-        assert self._flat is not None
-        flat = self._flat
-        n = self.max_size
-        if batch_size is None:
-            batch_size = n
-        indices = np.random.permutation(n)
-        start = 0
-        while start < n:
-            batch_inds = indices[start : start + batch_size]
-            start += batch_size
-            obs_f = flat["obs"]
-            if self.obs_is_dict:
-                obs_mb: Any = {k: obs_f[k][batch_inds] for k in obs_f}
-            else:
-                obs_mb = obs_f[batch_inds]
-            yield {
-                "obs": obs_mb,
-                "act": flat["act"][batch_inds],
-                "adv": flat["adv"][batch_inds],
-                "cadv": flat["cadv"][batch_inds],
-                "ret": flat["ret"][batch_inds],
-                "cret": flat["cret"][batch_inds],
-                "logp": flat["logp"][batch_inds],
-                "pi_info": {k: flat["pi_info"][k][batch_inds] for k in flat["pi_info"]},
-            }
+        cost_gae_lambda: float = 0.97,
+        normalize_advantage_once: bool = True,
+    ):
+        self.cost_gamma = cost_gamma
+        self.cost_gae_lambda = cost_gae_lambda
+        self.normalize_advantage_once = normalize_advantage_once
+        super().__init__(buffer_size, observation_space, action_space, device, gae_lambda, gamma, n_envs)
 
     def reset(self) -> None:
-        self.ptr = 0
-        self.path_start_idx = 0
-        self.generator_ready = False
-        self._flat = None
+        super().reset()
+        self.costs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.cost_values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.cost_advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.cost_returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+
+    def add(  # type: ignore[override]
+        self,
+        obs: np.ndarray,
+        action: np.ndarray,
+        reward: np.ndarray,
+        episode_start: np.ndarray,
+        value: th.Tensor,
+        log_prob: th.Tensor,
+        cost: np.ndarray | None = None,
+        cost_value: th.Tensor | None = None,
+    ) -> None:
+        if cost is None:
+            cost = np.zeros(self.n_envs, dtype=np.float32)
+        if cost_value is None:
+            cost_value = th.zeros(self.n_envs, device=value.device)
+        self.costs[self.pos] = np.asarray(cost, dtype=np.float32)
+        self.cost_values[self.pos] = cost_value.clone().cpu().numpy().flatten()
+        super().add(obs, action, reward, episode_start, value, log_prob)
+
+    def compute_returns_and_advantage(self, last_values: th.Tensor, dones: np.ndarray) -> None:
+        super().compute_returns_and_advantage(last_values, dones)
+        # Advantage norm once on full buffer (OpenAI Lag); not SB3 per-minibatch.
+        if self.normalize_advantage_once:
+            adv = self.advantages
+            self.advantages = (adv - adv.mean()) / (adv.std() + EPS)
+
+    def compute_cost_returns_and_advantage(self, last_cost_values: th.Tensor, dones: np.ndarray) -> None:
+        last_cv = last_cost_values.clone().cpu().numpy().flatten()
+        self.cost_advantages, self.cost_returns = _compute_cost_gae(
+            self.costs,
+            self.cost_values,
+            self.episode_starts,
+            last_cv,
+            dones,
+            self.buffer_size,
+            self.gamma,
+            self.cost_gamma,
+            self.cost_gae_lambda,
+        )
+        # Center cost advantages once (no std)
+        self.cost_advantages = self.cost_advantages - self.cost_advantages.mean()
+
+    def get(self, batch_size: int | None = None) -> Generator[LagRolloutBufferSamples, None, None]:  # type: ignore[override]
+        assert self.full
+        indices = np.random.permutation(self.buffer_size * self.n_envs)
+        if not self.generator_ready:
+            for tensor in (
+                "observations",
+                "actions",
+                "values",
+                "log_probs",
+                "advantages",
+                "returns",
+                "cost_values",
+                "cost_advantages",
+                "cost_returns",
+            ):
+                self.__dict__[tensor] = self.swap_and_flatten(self.__dict__[tensor])
+            self.generator_ready = True
+        if batch_size is None:
+            batch_size = self.buffer_size * self.n_envs
+        start_idx = 0
+        while start_idx < self.buffer_size * self.n_envs:
+            yield self._get_samples(indices[start_idx : start_idx + batch_size])
+            start_idx += batch_size
+
+    def _get_samples(  # type: ignore[override]
+        self,
+        batch_inds: np.ndarray,
+        env: VecNormalize | None = None,
+    ) -> LagRolloutBufferSamples:
+        data = (
+            self.observations[batch_inds],
+            self.actions[batch_inds].astype(np.float32, copy=False),
+            self.values[batch_inds].flatten(),
+            self.log_probs[batch_inds].flatten(),
+            self.advantages[batch_inds].flatten(),
+            self.returns[batch_inds].flatten(),
+            self.cost_values[batch_inds].flatten(),
+            self.cost_advantages[batch_inds].flatten(),
+            self.cost_returns[batch_inds].flatten(),
+        )
+        return LagRolloutBufferSamples(*tuple(map(self.to_torch, data)))
+
+
+class LagDictRolloutBuffer(DictRolloutBuffer):
+    """Dict-obs rollout buffer with cost fields (SAR / MultiInput)."""
+
+    costs: np.ndarray
+    cost_values: np.ndarray
+    cost_advantages: np.ndarray
+    cost_returns: np.ndarray
+
+    def __init__(
+        self,
+        buffer_size: int,
+        observation_space: spaces.Dict,
+        action_space: spaces.Space,
+        device: th.device | str = "auto",
+        gae_lambda: float = 1,
+        gamma: float = 0.99,
+        n_envs: int = 1,
+        cost_gamma: float = 0.99,
+        cost_gae_lambda: float = 0.97,
+        normalize_advantage_once: bool = True,
+    ):
+        self.cost_gamma = cost_gamma
+        self.cost_gae_lambda = cost_gae_lambda
+        self.normalize_advantage_once = normalize_advantage_once
+        super().__init__(buffer_size, observation_space, action_space, device, gae_lambda, gamma, n_envs)
+
+    def reset(self) -> None:
+        super().reset()
+        self.costs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.cost_values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.cost_advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.cost_returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+
+    def add(  # type: ignore[override]
+        self,
+        obs: dict[str, np.ndarray],
+        action: np.ndarray,
+        reward: np.ndarray,
+        episode_start: np.ndarray,
+        value: th.Tensor,
+        log_prob: th.Tensor,
+        cost: np.ndarray | None = None,
+        cost_value: th.Tensor | None = None,
+    ) -> None:
+        if cost is None:
+            cost = np.zeros(self.n_envs, dtype=np.float32)
+        if cost_value is None:
+            cost_value = th.zeros(self.n_envs, device=value.device)
+        self.costs[self.pos] = np.asarray(cost, dtype=np.float32)
+        self.cost_values[self.pos] = cost_value.clone().cpu().numpy().flatten()
+        super().add(obs, action, reward, episode_start, value, log_prob)
+
+    def compute_returns_and_advantage(self, last_values: th.Tensor, dones: np.ndarray) -> None:
+        super().compute_returns_and_advantage(last_values, dones)
+        if self.normalize_advantage_once:
+            adv = self.advantages
+            self.advantages = (adv - adv.mean()) / (adv.std() + EPS)
+
+    def compute_cost_returns_and_advantage(self, last_cost_values: th.Tensor, dones: np.ndarray) -> None:
+        last_cv = last_cost_values.clone().cpu().numpy().flatten()
+        self.cost_advantages, self.cost_returns = _compute_cost_gae(
+            self.costs,
+            self.cost_values,
+            self.episode_starts,
+            last_cv,
+            dones,
+            self.buffer_size,
+            self.gamma,
+            self.cost_gamma,
+            self.cost_gae_lambda,
+        )
+        self.cost_advantages = self.cost_advantages - self.cost_advantages.mean()
+
+    def get(  # type: ignore[override]
+        self,
+        batch_size: int | None = None,
+    ) -> Generator[LagDictRolloutBufferSamples, None, None]:
+        assert self.full
+        indices = np.random.permutation(self.buffer_size * self.n_envs)
+        if not self.generator_ready:
+            for key, obs in self.observations.items():
+                self.observations[key] = self.swap_and_flatten(obs)
+            for tensor in (
+                "actions",
+                "values",
+                "log_probs",
+                "advantages",
+                "returns",
+                "cost_values",
+                "cost_advantages",
+                "cost_returns",
+            ):
+                self.__dict__[tensor] = self.swap_and_flatten(self.__dict__[tensor])
+            self.generator_ready = True
+        if batch_size is None:
+            batch_size = self.buffer_size * self.n_envs
+        start_idx = 0
+        while start_idx < self.buffer_size * self.n_envs:
+            yield self._get_samples(indices[start_idx : start_idx + batch_size])
+            start_idx += batch_size
+
+    def _get_samples(  # type: ignore[override]
+        self,
+        batch_inds: np.ndarray,
+        env: VecNormalize | None = None,
+    ) -> LagDictRolloutBufferSamples:
+        return LagDictRolloutBufferSamples(
+            observations={key: self.to_torch(obs[batch_inds]) for key, obs in self.observations.items()},
+            actions=self.to_torch(self.actions[batch_inds].astype(np.float32, copy=False)),
+            old_values=self.to_torch(self.values[batch_inds].flatten()),
+            old_log_prob=self.to_torch(self.log_probs[batch_inds].flatten()),
+            advantages=self.to_torch(self.advantages[batch_inds].flatten()),
+            returns=self.to_torch(self.returns[batch_inds].flatten()),
+            old_cost_values=self.to_torch(self.cost_values[batch_inds].flatten()),
+            cost_advantages=self.to_torch(self.cost_advantages[batch_inds].flatten()),
+            cost_returns=self.to_torch(self.cost_returns[batch_inds].flatten()),
+        )

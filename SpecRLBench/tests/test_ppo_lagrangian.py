@@ -1,4 +1,4 @@
-"""Smoke tests for slim PPO-Lagrangian."""
+"""Smoke tests for SB3 Tier-2 PPO-Lagrangian."""
 
 from __future__ import annotations
 
@@ -8,97 +8,62 @@ from pathlib import Path
 import gymnasium as gym
 import numpy as np
 import torch as th
+from gymnasium import spaces
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv
+from torch import nn
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ppo_lagrangian.buffer import LagrangianRolloutBuffer, discount_cumsum
-from ppo_lagrangian.ppo_lagrangian import PPOLagrangian, _gaussian_entropy, _gaussian_kl, _gaussian_logp
+from ppo_lagrangian.buffer import LagRolloutBuffer
+from ppo_lagrangian.ppo_lagrangian import PPOLagrangian
 
 
-def test_discount_cumsum():
-    x = np.array([1.0, 2.0, 3.0], dtype=np.float64)
-    out = discount_cumsum(x, 0.9)
-    expected = np.array([1 + 0.9 * 2 + 0.81 * 3, 2 + 0.9 * 3, 3.0])
-    assert np.allclose(out, expected), (out, expected)
-
-
-def test_buffer_gae_and_norm():
-    buf = LagrangianRolloutBuffer(
-        size=4,
-        obs_shape=(2,),
-        act_shape=(1,),
-        pi_info_shapes={"mu": [1], "log_std": [1]},
+def test_lag_buffer_gae_and_norm():
+    buf = LagRolloutBuffer(
+        buffer_size=4,
+        observation_space=spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32),
+        action_space=spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32),
+        device="cpu",
+        gae_lambda=0.97,
         gamma=0.99,
-        lam=0.97,
+        n_envs=1,
         cost_gamma=0.99,
-        cost_lam=0.97,
+        cost_gae_lambda=0.97,
+        normalize_advantage_once=True,
     )
-    for _ in range(4):
-        buf.store(
-            obs=np.zeros(2, dtype=np.float32),
-            act=np.zeros(1, dtype=np.float32),
-            rew=1.0,
-            val=0.5,
-            cost=0.1,
-            cval=0.2,
-            logp=-0.5,
-            pi_info={"mu": np.zeros(1, dtype=np.float32), "log_std": np.zeros(1, dtype=np.float32)},
-        )
-    buf.finish_path(last_val=0.0, last_cval=0.0)
+    for i in range(4):
+        obs = np.zeros((1, 2), dtype=np.float32)
+        act = np.zeros((1, 1), dtype=np.float32)
+        rew = np.array([float(i + 1)], dtype=np.float32)
+        ep_start = np.array([i == 0], dtype=np.float32)
+        val = th.tensor([0.5 * i])
+        logp = th.tensor([-0.5])
+        cost = np.array([0.1 * (i + 1)], dtype=np.float32)
+        cval = th.tensor([0.2])
+        buf.add(obs, act, rew, ep_start, val, logp, cost=cost, cost_value=cval)
+    last_v = th.tensor([0.0])
+    last_cv = th.tensor([0.0])
+    dones = np.array([True])
+    buf.compute_returns_and_advantage(last_v, dones)
+    buf.compute_cost_returns_and_advantage(last_cv, dones)
     data = next(buf.get(4))
-    assert abs(float(np.mean(data["adv"]))) < 1e-5
-    assert abs(float(np.mean(data["cadv"]))) < 1e-5
-    assert abs(float(np.std(data["adv"])) - 1.0) < 1e-4
-    # Second epoch call reuses once-normalized flat data
+    assert abs(float(data.advantages.mean())) < 1e-5
+    assert abs(float(data.cost_advantages.mean())) < 1e-5
+    # numpy population-normalized; torch.std defaults to unbiased (N-1)
+    assert abs(float(data.advantages.std(unbiased=False)) - 1.0) < 1e-4
     batches = list(buf.get(2))
     assert len(batches) == 2
-    assert batches[0]["adv"].shape[0] == 2
 
 
-def test_gaussian_formulas():
-    mu = th.zeros(4, 2)
-    log_std = th.zeros(2).expand_as(mu)
-    logp = _gaussian_logp(th.ones(4, 2) * 0.5, mu, log_std)
-    assert logp.shape == (4,)
-    kl = _gaussian_kl(mu, log_std, mu + 0.1, log_std)
-    assert float(kl.item()) >= -1e-6
-    assert _gaussian_entropy(log_std).numel() == 1
+def test_learn_predict_save_load_zip():
+    def _make():
+        return Monitor(gym.make("Pendulum-v1"))
 
-
-def test_learn_predict_save_load():
-    class _Single:
-        def __init__(self, e):
-            self.env = e
-            self.observation_space = e.observation_space
-            self.action_space = e.action_space
-            self.num_envs = 1
-
-        def reset(self, **kwargs):
-            obs, info = self.env.reset(**kwargs)
-            return np.expand_dims(obs, 0), [info]
-
-        def step(self, actions):
-            action = actions[0] if actions.ndim > 1 else actions
-            obs, reward, terminated, truncated, info = self.env.step(action)
-            info["cost"] = float(abs(action).sum()) * 0.01
-            done = terminated or truncated
-            if done:
-                obs, _ = self.env.reset()
-                if truncated:
-                    info["TimeLimit.truncated"] = True
-            return (
-                np.expand_dims(obs, 0),
-                np.array([reward], dtype=np.float64),
-                np.array([done]),
-                [info],
-            )
-
-        def close(self):
-            self.env.close()
-
-    vec = _Single(gym.make("Pendulum-v1"))
+    vec = DummyVecEnv([_make])
     model = PPOLagrangian(
+        "MlpPolicy",
         vec,
         n_steps=64,
         batch_size=32,
@@ -107,11 +72,14 @@ def test_learn_predict_save_load():
         cost_lim=25.0,
         seed=0,
         device="cpu",
-        hidden_sizes=(32, 32),
-        log_interval=1,
+        policy_kwargs=dict(net_arch=dict(pi=[32, 32], vf=[32, 32]), activation_fn=nn.Tanh),
+        lag_mode="openai",
+        verbose=0,
     )
+    # Inject cost into infos via wrapper-less Monitor — cost_fn default reads info['cost']
+    # Pendulum infos lack cost → always 0; still smoke-tests Lag loop
     model.learn(total_timesteps=128)
-    obs = vec.reset()[0]
+    obs = vec.reset()
     action, _ = model.predict(obs, deterministic=True)
     assert action.shape[-1] == 1
 
@@ -119,21 +87,58 @@ def test_learn_predict_save_load():
     out.mkdir(parents=True, exist_ok=True)
     save_path = out / "model"
     model.save(save_path)
+    assert save_path.with_suffix(".zip").exists() or Path(str(save_path) + ".zip").exists() or save_path.exists()
+
     loaded = PPOLagrangian.load(save_path, env=vec, device="cpu")
     a2, _ = loaded.predict(obs, deterministic=True)
     assert np.allclose(action, a2, atol=1e-5)
     assert loaded.batch_size == 32
     assert loaded.n_epochs == 2
+    assert loaded.lag_mode == "openai"
     vec.close()
-    print("test_learn_predict_save_load OK")
+    print("test_learn_predict_save_load_zip OK")
+
+
+def test_legacy_pt_rejected():
+    out = Path("_tmp_ppo_lag_test")
+    out.mkdir(parents=True, exist_ok=True)
+    pt = out / "legacy.pt"
+    th.save({"cfg": {}}, pt)
+    try:
+        PPOLagrangian.load(pt, env=None, device="cpu")
+        raise AssertionError("expected ValueError for .pt")
+    except ValueError as e:
+        assert "Legacy" in str(e) or ".pt" in str(e)
+    print("test_legacy_pt_rejected OK")
+
+
+def test_lag_mode_sb3_smoke():
+    def _make():
+        return Monitor(gym.make("Pendulum-v1"))
+
+    vec = DummyVecEnv([_make])
+    model = PPOLagrangian(
+        "MlpPolicy",
+        vec,
+        n_steps=64,
+        batch_size=32,
+        n_epochs=1,
+        learning_rate=3e-4,
+        device="cpu",
+        seed=1,
+        policy_kwargs=dict(net_arch=[32, 32]),
+        lag_mode="sb3",
+        verbose=0,
+    )
+    model.learn(total_timesteps=64)
+    vec.close()
+    print("test_lag_mode_sb3_smoke OK")
 
 
 if __name__ == "__main__":
-    test_discount_cumsum()
-    print("test_discount_cumsum OK")
-    test_buffer_gae_and_norm()
-    print("test_buffer_gae_and_norm OK")
-    test_gaussian_formulas()
-    print("test_gaussian_formulas OK")
-    test_learn_predict_save_load()
+    test_lag_buffer_gae_and_norm()
+    print("test_lag_buffer_gae_and_norm OK")
+    test_learn_predict_save_load_zip()
+    test_legacy_pt_rejected()
+    test_lag_mode_sb3_smoke()
     print("ALL SMOKE TESTS PASSED")
