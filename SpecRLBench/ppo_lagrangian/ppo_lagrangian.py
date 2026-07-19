@@ -285,15 +285,7 @@ class PPOLagrangian:
         self._ep_info_buffer: deque[dict[str, float]] = deque(maxlen=100)
         self._start_time: float | None = None
         self._last_train_stats: dict[str, float] = {}
-
-        if tensorboard_log is not None:
-            try:
-                from torch.utils.tensorboard import SummaryWriter
-
-                Path(tensorboard_log).mkdir(parents=True, exist_ok=True)
-                self._tb_writer = SummaryWriter(str(tensorboard_log))
-            except ImportError:
-                self._tb_writer = None
+        self._tb_writer = None
 
     @property
     def penalty(self) -> th.Tensor:
@@ -352,7 +344,6 @@ class PPOLagrangian:
 
             step_out = self.env.step(self._clip_action(actions_np))
             if not getattr(self, "_printed_first_step", False):
-                print("first env step ok", flush=True)
                 self._printed_first_step = True
             if len(step_out) == 5:
                 new_obs, rewards, terminated, truncated, infos = step_out
@@ -617,7 +608,21 @@ class PPOLagrangian:
                 self._tb_writer.add_scalar(f"train/{k}", v, step)
             self._tb_writer.flush()
 
-    def learn(self, total_timesteps: int, **_kwargs: Any) -> PPOLagrangian:
+    def learn(
+      self,
+      total_timesteps: int,
+      tb_log_name: str = "PPOLagrangian",
+      **_kwargs: Any,
+  ) -> PPOLagrangian:
+        if self.tensorboard_log is not None and self._tb_writer is None:
+            try:
+                from torch.utils.tensorboard import SummaryWriter
+                save_path = Path(self.tensorboard_log) / tb_log_name
+                save_path.mkdir(parents=True, exist_ok=True)
+                print(f'Training Log Path: {str(save_path)}')
+                self._tb_writer = SummaryWriter(str(save_path))
+            except ImportError:
+                self._tb_writer = None
         out = self.env.reset()
         self._last_obs = out[0] if isinstance(out, tuple) else out
         self._ep_cost[:] = 0.0

@@ -50,7 +50,7 @@ def make_env(env_name, render_mode=None, sb3=False):
     elif env_name.startswith("Point") or env_name.startswith("Car") or env_name.startswith("Ant"):
         from specbench.envs.zones.safety_gym_wrapper_ma import SafetyGymWrapperMA
         from specbench.envs.zones.safety_gym_wrapper_ma_sar import SafetyGymWrapperMASAR
-        from specbench.envs.zones.safety_gym_wrapper_ma_sar_wall_terminate import SafetyGymWrapperMASARWallTerminate
+        from SpecRLBench.specbench.envs.zones.safety_gym_wrapper_ma_sar_wc import SafetyGymWrapperMASARWC
         from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
         import safety_gymnasium
         if 'WC' in env_name:
@@ -59,7 +59,7 @@ def make_env(env_name, render_mode=None, sb3=False):
             env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
         if "SAR" in env_name:
             if 'WC' in env_name:
-                env = SafetyGymWrapperMASARWallTerminate(env, sb3=sb3)
+                env = SafetyGymWrapperMASARWC(env, sb3=sb3)
             else:
                 env = SafetyGymWrapperMASAR(env, sb3=sb3)
         elif "MA" in env_name:

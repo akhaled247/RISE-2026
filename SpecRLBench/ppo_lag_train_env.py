@@ -51,7 +51,7 @@ from utils.env_utils import make_vec
 # Levels: PointLTL4MASAR1WC-v0 | PointLTL5MASAR1WC-v0 | PointLTL6MASAR1WC-v0
 env_name = "PointLTL5MASAR1WC-v0"
 # Sweep id: "S0" | "S1" | "S2" | "S3"
-SWEEP_RUN = "S1"
+SWEEP_RUN = "S0"
 
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 
@@ -110,7 +110,7 @@ def train(
     rollout_steps = n_steps * n_envs
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
     model_path = f"_models/ppo_lag_{level}_{sweep_run}_{name_time}_{env_name}_{seed}"
-    tb_log = f"{model_path}_tb"
+    TRAINING_LOG_PATH = f"./_training_logs/ppo_lag_{env_name}_tensorboard/"
 
     if startup_log:
         print("=" * 40)
@@ -156,11 +156,20 @@ def train(
         cost_gae_lambda=cost_gae_lambda,
         vf_lr=vf_lr,
         max_ep_len=max_ep_len,
-        tensorboard_log=tb_log,
+        tensorboard_log=TRAINING_LOG_PATH,
     )
 
     env.seed(seed=0)
-    model.learn(total_timesteps=total_timesteps)
+    model.learn(
+        total_timesteps=total_timesteps,
+        tb_log_name=(      
+        f"_t{name_time}"  
+        f"_st{n_steps}"
+        f"_bs{batch_size}"
+        f"_tt{total_timesteps / 1_000_000:.1f}M"
+        f"_ec{ent_coef}"
+        f"_lr{learning_rate}"
+        f"_s{seed}"))
 
     vec_norm_path = f"{model_path}_vecnormalize.pkl"
     model.save(model_path)

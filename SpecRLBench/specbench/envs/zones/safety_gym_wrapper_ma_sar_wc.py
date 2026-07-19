@@ -13,7 +13,7 @@ from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
 )
 
 
-class SafetyGymWrapperMASARWallTerminate(gymnasium.Wrapper):
+class SafetyGymWrapperMASARWC(gymnasium.Wrapper):
     """
     A wrapper from safety gymnasium LTL environments to the gymnasium API.
     """
@@ -87,9 +87,9 @@ class SafetyGymWrapperMASARWallTerminate(gymnasium.Wrapper):
         # one agent may violate its own subgoal such that the whole spec cannot be satisfied
         # (the episode should terminate), but it does not necessarily mean the other agent's
         # action is not valid.
-
         info['propositions'] = []
         info['casualty_visible'] = False
+        info['cost'] = 0
         for i, a in enumerate(self.env.unwrapped.possible_agents):
             agent_info: dict = info[a]
             active_props = {}
@@ -119,6 +119,7 @@ class SafetyGymWrapperMASARWallTerminate(gymnasium.Wrapper):
             #     terminated[a] = True
             # print(info[a])
             if info[a]['cost_walls']>0:
+                info['cost'] += 1
                 terminated[a] = True
 
             # if (f'cost_walls_{i}' in info['propositions']): print('collision')
@@ -169,6 +170,7 @@ class SafetyGymWrapperMASARWallTerminate(gymnasium.Wrapper):
         obs, info = super().reset(seed=seed, options=options)
         info['propositions'] = []
         info['casualty_visible'] = False
+        info['cost'] = 0
         self.prev_casualty_visible = False
         self.prev_entered_building = False
         for i, a in enumerate(self.env.unwrapped.possible_agents):
