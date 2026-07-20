@@ -18,13 +18,18 @@ Assumes true-sparse extrinsic reward (you own env sparse switch).
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import torch
 from gymnasium import spaces
 from stable_baselines3 import PPO
 from stable_baselines3.common.logger import configure
 
+# Allow `python train/ppo_rnd_train_env.py` from SpecRLBench root.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
 from ppo_load_env import eval_model

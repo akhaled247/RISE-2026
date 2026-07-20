@@ -1,6 +1,6 @@
 """Train PPOLagrangian (SB3 Tier-2) on SpecRLBench WC sparse SAR.
 
-Modeled after ``ppo_rnd_train_env.py``. Saves under ``_models/ppo_lag_*`` so
+Modeled after ``train/ppo_rnd_train_env.py``. Saves under ``_models/ppo_lag_*`` so
 ``ppo_load_env.py`` routes to ``PPOLagrangian.load`` (.zip).
 
 Edit knobs under ``--- edit these ---`` before each run.
@@ -27,10 +27,15 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import torch
 from torch import nn
 from stable_baselines3.common.logger import configure
+
+# Allow `python train/ppo_lag_train_env.py` from SpecRLBench root.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
 from ppo_lagrangian import PPOLag

@@ -1,12 +1,18 @@
+import sys
+from datetime import datetime
+from pathlib import Path
 
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.logger import configure
 
+# Allow `python train/ppo_train_env.py` from SpecRLBench root.
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import ThroughputCallback, make_vec
 from ppo_load_env import eval_model
-from datetime import datetime
 
 # --- edit these before each run ---
 env_name = "PointLTL0MASAR1-v0"
