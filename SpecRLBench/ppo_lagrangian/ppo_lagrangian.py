@@ -27,7 +27,7 @@ from torch.optim import Adam
 from ppo_lagrangian.buffer import LagDictRolloutBuffer, LagRolloutBuffer
 from ppo_lagrangian.policy import LagActorCriticPolicy, LagMultiInputActorCriticPolicy
 
-SelfPPOLagrangian = TypeVar("SelfPPOLagrangian", bound="PPOLagrangian")
+SelfPPOLagrangian = TypeVar("SelfPPOLagrangian", bound="PPOLag")
 
 
 def _cost_from_info(info: dict) -> float:
@@ -35,7 +35,7 @@ def _cost_from_info(info: dict) -> float:
     return float(info.get("cost", 0))
 
 
-class PPOLagrangian(PPO):
+class PPOLag(PPO):
     """SB3 PPO + OpenAI objective-penalized Lagrangian (dual critics).
 
     ``lag_mode="openai"`` (default, Tier 2): once-per-rollout adv norm, dual
@@ -445,7 +445,7 @@ class PPOLagrangian(PPO):
         custom_objects: dict[str, Any] | None = None,
         force_reset: bool = True,
         **kwargs: Any,
-    ) -> PPOLagrangian:
+    ) -> PPOLag:
         path = Path(path)
         # Legacy .pt unsupported after Tier-2 SB3 refactor
         if path.suffix in {".pt", ".pth"} or (

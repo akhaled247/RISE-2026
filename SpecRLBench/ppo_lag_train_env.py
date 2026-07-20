@@ -27,18 +27,13 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime
-from pathlib import Path
 
 import torch
 from torch import nn
 from stable_baselines3.common.logger import configure
 
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
-sys.path.insert(0, str(ROOT))
-
 import safety_gymnasium  # noqa: F401
-from ppo_lagrangian import PPOLagrangian
+from ppo_lagrangian import PPOLag
 from ppo_load_env import eval_model
 from utils.env_utils import make_vec
 
@@ -46,28 +41,9 @@ from utils.env_utils import make_vec
 # Levels: PointLTL4MASAR1WC-v0 | PointLTL5MASAR1WC-v0 | PointLTL6MASAR1WC-v0
 env_name = "PointLTL5MASAR1WC-v0"
 # Sweep id: "S0" | "S1" | "S2" | "S3"
-SWEEP_RUN = "S1"
 
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 TRAINING_LOG_PATH = f"./_training_logs/ppo_lag_{env_name}_tensorboard/"
-
-# S0–S3: (cost_lim, penalty_lr, penalty_init)
-SWEEP_TABLE: dict[str, tuple[float, float, float]] = {
-    "S0": (0.0, 1e-2, 1.0),   # recommended WC default
-    "S1": (0.0, 5e-2, 1.0),   # OpenAI-hot penalty LR
-    "S2": (0.0, 5e-3, 1.0),   # gentle λ
-    "S3": (1.0, 1e-2, 1.0),   # soft limit
-}
-
-
-def _level_tag(env_id: str) -> str:
-    if "LTL4" in env_id:
-        return "L4"
-    if "LTL5" in env_id:
-        return "L5"
-    if "LTL6" in env_id:
-        return "L6"
-    return "LX"
 
 
 def train(
@@ -81,52 +57,40 @@ def train(
     n_epochs: int = 10,
     clip_range: float = 0.2,
     target_kl: float = 0.05,
-    cost_lim: float | None = None,
-    penalty_init: float | None = None,
-    penalty_lr: float | None = None,
+    cost_lim: float = 0.0,
+    penalty_init: float = 1.0 ,
+    penalty_lr: float = 2.5e-2, # [1e-2, 5e-2]
     cost_gamma: float = 0.99,
     cost_gae_lambda: float = 0.97,
     vf_lr: float = 1e-3,
     lag_mode: str = "openai",
-    sweep_run: str = SWEEP_RUN,
     startup_log: bool = True,
 ) -> tuple[str, str]:
-    if sweep_run not in SWEEP_TABLE:
-        raise KeyError(f"Unknown SWEEP_RUN={sweep_run!r}; choose from {list(SWEEP_TABLE)}")
 
-    cl, plr, pinit = SWEEP_TABLE[sweep_run]
-    if cost_lim is not None:
-        cl = cost_lim
-    if penalty_lr is not None:
-        plr = penalty_lr
-    if penalty_init is not None:
-        pinit = penalty_init
-
-    level = _level_tag(env_name)
     rollout_steps = n_steps * n_envs
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
-    model_path = f"_models/ppo_lag_{level}_{sweep_run}_{name_time}_{env_name}_{seed}"
+    model_path = f"_models/ppo_lag_{name_time}_{env_name}_{seed}"
     tb_log_name = (
-            f"lag_t{name_time}"
+            f"PPO_lag_t{name_time}"
             f"_st{n_steps}"
             f"_bs{batch_size}"
             f"_tt{total_timesteps / 1_000_000:.1f}M"
             f"_ec{ent_coef}"
             f"_lr{learning_rate}"
             f"_s{seed}"
-            f"_{sweep_run}")
+            f"_plr{penalty_lr}")
     log_dir = f"{TRAINING_LOG_PATH}{tb_log_name}"
 
     if startup_log:
         print("=" * 40)
         print(
-            f"train env={env_name} level={level} sweep={sweep_run} "
+            f"train env={env_name} "
             f"device={device} steps={total_timesteps} lag_mode={lag_mode}"
         )
         print(
             f"PPOLag iter = {rollout_steps} env steps + "
             f"n_epochs={n_epochs} batch_size={batch_size} "
-            f"cost_lim={cl} penalty_lr={plr} penalty_init={pinit}"
+            f"cost_lim={cost_lim} penalty_lr={penalty_lr} penalty_init={penalty_init}"
         )
         print(f"Logging to {TRAINING_LOG_PATH}...")
 
@@ -144,7 +108,7 @@ def train(
     env.seed(seed=0)
     env.reset()
 
-    model = PPOLagrangian(
+    model = PPOLag(
         "MultiInputPolicy",
         env,
         learning_rate=learning_rate,
@@ -165,9 +129,9 @@ def train(
             activation_fn=nn.Tanh,
             log_std_init=-0.5,
         ),
-        cost_lim=cl,
-        penalty_init=pinit,
-        penalty_lr=plr,
+        cost_lim=cost_lim,
+        penalty_init=penalty_init,
+        penalty_lr=penalty_lr,
         cost_gamma=cost_gamma,
         cost_gae_lambda=cost_gae_lambda,
         vf_lr=vf_lr,
@@ -193,11 +157,11 @@ def train(
 
 if __name__ == "__main__":
     for i in range(1):
+        # print(f'{i}/5')
         model_path, _ = train(
             seed=int(i),
             startup_log=True,
             total_timesteps=5_000_000,
-            sweep_run=SWEEP_RUN,
         )
         eval_model(
             env_name=env_name,

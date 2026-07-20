@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from ppo_lagrangian.buffer import LagRolloutBuffer
-from ppo_lagrangian.ppo_lagrangian import PPOLagrangian
+from ppo_lagrangian.ppo_lagrangian import PPOLag
 
 
 def test_lag_buffer_gae_and_norm():
@@ -62,7 +62,7 @@ def test_learn_predict_save_load_zip():
         return Monitor(gym.make("Pendulum-v1"))
 
     vec = DummyVecEnv([_make])
-    model = PPOLagrangian(
+    model = PPOLag(
         "MlpPolicy",
         vec,
         n_steps=64,
@@ -89,7 +89,7 @@ def test_learn_predict_save_load_zip():
     model.save(save_path)
     assert save_path.with_suffix(".zip").exists() or Path(str(save_path) + ".zip").exists() or save_path.exists()
 
-    loaded = PPOLagrangian.load(save_path, env=vec, device="cpu")
+    loaded = PPOLag.load(save_path, env=vec, device="cpu")
     a2, _ = loaded.predict(obs, deterministic=True)
     assert np.allclose(action, a2, atol=1e-5)
     assert loaded.batch_size == 32
@@ -105,7 +105,7 @@ def test_legacy_pt_rejected():
     pt = out / "legacy.pt"
     th.save({"cfg": {}}, pt)
     try:
-        PPOLagrangian.load(pt, env=None, device="cpu")
+        PPOLag.load(pt, env=None, device="cpu")
         raise AssertionError("expected ValueError for .pt")
     except ValueError as e:
         assert "Legacy" in str(e) or ".pt" in str(e)
@@ -117,7 +117,7 @@ def test_lag_mode_sb3_smoke():
         return Monitor(gym.make("Pendulum-v1"))
 
     vec = DummyVecEnv([_make])
-    model = PPOLagrangian(
+    model = PPOLag(
         "MlpPolicy",
         vec,
         n_steps=64,

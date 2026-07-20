@@ -21,7 +21,7 @@ from utils.env_utils import make_env
 ENV_NAME = "PointLTL5MASAR1WC-v0"
 
 MODELS = [
-    "_models/ppo_lag_L5_S0_20260719_1510_PointLTL5MASAR1WC-v0_0",
+    "_models/ppo_lag_L5_S1_20260719_2333_PointLTL5MASAR1WC-v0_0",
 ]
 
 EVAL_EPISODES = 50
@@ -60,14 +60,14 @@ def eval_model(
     # Route by filename tag.
     name_l = Path(model_path).name.lower()
     if "ppo_lag" in name_l or "ppolagrangian" in name_l:
-        from ppo_lagrangian import PPOLagrangian
+        from ppo_lagrangian import PPOLag
 
         # SB3 Tier-2: .zip only (legacy .pt raises ValueError)
-        model = PPOLagrangian.load(model_path, env=vec_env, device=DEVICE)
+        model = PPOLag.load(model_path, env=vec_env, device=DEVICE)
     elif "rnd_ppo" in name_l:
-        from rnd import RNDPPO
+        from rnd import RND
 
-        model = RNDPPO.load(model_path, env=vec_env, device=DEVICE)
+        model = RND.load(model_path, env=vec_env, device=DEVICE)
     else:
         model = PPO.load(model_path, env=vec_env, device=DEVICE)
 

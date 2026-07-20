@@ -1,25 +1,17 @@
-import sys
-from pathlib import Path
 
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.logger import configure
 
-
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
-
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import ThroughputCallback, make_vec
 from ppo_load_env import eval_model
-import time
 from datetime import datetime
 
 # --- edit these before each run ---
-env_name = "PointLTL4MASAR1-v0"
+env_name = "PointLTL0MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
-
 
 def train(
         total_timesteps = 1_000_000,
@@ -108,7 +100,7 @@ if __name__ == "__main__":
         model_path, vec_norm_path = train(
             seed=int(i), #Tested up to and including env 3 at home
             startup_log=True,
-            total_timesteps=2_500_000)
+            total_timesteps=1_000_000)
         eval_model(
             env_name=env_name,
             render_mode=None,

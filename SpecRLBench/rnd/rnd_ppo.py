@@ -21,7 +21,7 @@ from rnd.module import RNDModule
 from rnd.storage import RNDStorage
 
 
-class RNDPPO(PPO):
+class RND(PPO):
     """PPO with Random Network Distillation intrinsic rewards.
 
     Intrinsic rewards are computed from ``s_{t+1}`` after each env step and

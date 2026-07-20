@@ -18,9 +18,7 @@ Assumes true-sparse extrinsic reward (you own env sparse switch).
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime
-from pathlib import Path
 
 import torch
 from gymnasium import spaces
@@ -28,18 +26,14 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.logger import configure
 
 
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
-sys.path.insert(0, str(ROOT))
-
 import safety_gymnasium  # noqa: F401
 from ppo_load_env import eval_model
-from rnd import RNDConfig, RNDPPO, resolve_rnd_obs_keys
+from rnd import RNDConfig, RND, resolve_rnd_obs_keys
 from utils.env_utils import make_vec
 
 # --- edit these before each run ---
 # Levels: PointLTL4MASAR1-v0 (walls only) | PointLTL5MASAR1-v0 (walls + buildings)
-env_name = "PointLTL6MASAR1-v0"
+env_name = "PointLTL4MASAR1-v0"
 # Sweep id: "S0" | "S1" | "S2" | "S3" | "S4"  (see table in module docstring)
 SWEEP_RUN = "S2"
 
@@ -51,7 +45,7 @@ LEVEL_RND_PREFIXES: dict[str, list[str]] = {
     "PointLTL4MASAR1-v0": ["walls", "wall_sensor"],
     "PointLTL4MASAR1WC-v0": ["walls", "wall_sensor"],
     "PointLTL5MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
-    "PointLTL5MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
+    "PointLTL5MASAR1WC-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
     "PointLTL6MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
     "PointLTL6MASAR1WC-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
 }
@@ -103,7 +97,7 @@ def train(
     rollout_steps = n_steps * n_envs
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
     tb_log_name = (
-            f"{algo_tag}_{level}_{sweep_run}_t{name_time}"
+            f"RND_{sweep_run}_t{name_time}"
             f"_st{n_steps}"
             f"_bs{batch_size}"
             f"_tt{total_timesteps / 1_000_000:.1f}M"
@@ -153,41 +147,23 @@ def train(
         obs_keys=rnd_obs_keys,
     )
 
-    if use_rnd:
-        model = RNDPPO(
-            "MultiInputPolicy",
-            env,
-            verbose=0,
-            learning_rate=learning_rate,
-            n_steps=n_steps,
-            batch_size=batch_size,
-            n_epochs=n_epochs,
-            ent_coef=ent_coef,
-            target_kl=target_kl,
-            device=device,
-            tensorboard_log=TRAINING_LOG_PATH,
-            seed=seed,
-            clip_range=clip_range,
-            rnd_config=rnd_config,
-        )
-        algo_tag = "RNDPPO"
-    else:
-        model = PPO(
-            "MultiInputPolicy",
-            env,
-            verbose=0,
-            learning_rate=learning_rate,
-            n_steps=n_steps,
-            batch_size=batch_size,
-            n_epochs=n_epochs,
-            ent_coef=ent_coef,
-            target_kl=target_kl,
-            device=device,
-            tensorboard_log=TRAINING_LOG_PATH,
-            seed=seed,
-            clip_range=clip_range,
-        )
-        algo_tag = "PPO"
+    model = RND(
+        "MultiInputPolicy",
+        env,
+        verbose=0,
+        learning_rate=learning_rate,
+        n_steps=n_steps,
+        batch_size=batch_size,
+        n_epochs=n_epochs,
+        ent_coef=ent_coef,
+        target_kl=target_kl,
+        device=device,
+        tensorboard_log=TRAINING_LOG_PATH,
+        seed=seed,
+        clip_range=clip_range,
+        rnd_config=rnd_config,
+    )
+
     model.set_logger(configure(log_dir, ["csv", "tensorboard"]))
     env.seed(seed=0)
     model.learn(
@@ -211,13 +187,15 @@ def train(
 
 
 if __name__ == "__main__":
-    model_path, _ = train(
-        seed=0,
-        startup_log=True,
-        total_timesteps=5_000_000,
-        sweep_run=SWEEP_RUN,
-    )
-    eval_model(
+    for i in range(1):
+        # print(f"{i}/5")    
+        model_path, _ = train(
+            seed=0,
+            startup_log=True,
+            total_timesteps=5_000_000,
+            sweep_run=SWEEP_RUN,
+        )
+        eval_model(
         env_name=env_name,
         render_mode=None,
         m_path=model_path,

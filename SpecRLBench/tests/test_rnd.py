@@ -15,7 +15,7 @@ from rnd.config import RNDConfig
 from rnd.module import RNDModule
 from rnd.networks import RNDModel
 from rnd.obs_adapter import RNDObsAdapter, resolve_rnd_obs_keys
-from rnd.rnd_ppo import RNDPPO
+from rnd.rnd_ppo import RND
 from rnd.stats import RNDRunningStats
 from rnd.storage import RNDStorage
 
@@ -172,7 +172,7 @@ def test_rnd_storage_shapes():
 
 def test_rndppo_beta_zero_trains():
     env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
-    model = RNDPPO(
+    model = RND(
         "MlpPolicy",
         env,
         n_steps=64,
@@ -189,7 +189,7 @@ def test_rndppo_beta_zero_trains():
 def test_rndppo_with_rnd_trains_and_logs():
     env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
     cfg = RNDConfig(intrinsic_reward_coef=0.1, feature_dim=32, target_net_arch=[64], predictor_net_arch=[64, 64])
-    model = RNDPPO(
+    model = RND(
         "MlpPolicy",
         env,
         n_steps=64,
@@ -207,7 +207,7 @@ def test_rndppo_with_rnd_trains_and_logs():
 def test_rndppo_save_load_roundtrip():
     env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
     cfg = RNDConfig(intrinsic_reward_coef=0.05, feature_dim=16)
-    model = RNDPPO("MlpPolicy", env, n_steps=32, batch_size=16, n_epochs=1, rnd_config=cfg)
+    model = RND("MlpPolicy", env, n_steps=32, batch_size=16, n_epochs=1, rnd_config=cfg)
     model.learn(total_timesteps=64)
 
     # Snapshot target + predictor + obs rms
@@ -220,7 +220,7 @@ def test_rndppo_save_load_roundtrip():
     with tempfile.TemporaryDirectory() as tmp:
         path = str(Path(tmp) / "rnd_model")
         model.save(path)
-        loaded = RNDPPO.load(path, env=env)
+        loaded = RND.load(path, env=env)
 
     assert loaded.rnd is not None
     for k, v in loaded.rnd.model.target.state_dict().items():
@@ -235,7 +235,7 @@ def test_rndppo_save_load_roundtrip():
 def test_eval_does_not_update_rnd_stats():
     """predict() path must not touch RND stats (no collect_rollouts)."""
     env = DummyVecEnv([lambda: gym.make("CartPole-v1")])
-    model = RNDPPO(
+    model = RND(
         "MlpPolicy",
         env,
         n_steps=32,
