@@ -18,10 +18,10 @@ from utils.env_utils import make_env
 # Configuration
 # =============================================================================
 
-ENV_NAME = "PointLTL5MASAR1WC-v0"
+ENV_NAME = "PointLTL0MASAR1-v0"
 
 MODELS = [
-    "_models/ppo_lag_L5_S1_20260719_2333_PointLTL5MASAR1WC-v0_0",
+    "_models/trpo_20260720_1256_PointLTL0MASAR1-v0_0",
 ]
 
 EVAL_EPISODES = 50
@@ -59,6 +59,9 @@ def eval_model(
 
     # Route by filename tag.
     name_l = Path(model_path).name.lower()
+    if "trpo" in name_l:
+        from sb3_contrib import TRPO
+        model = TRPO.load(model_path, env=vec_env, device=DEVICE)
     if "ppo_lag" in name_l or "ppolagrangian" in name_l:
         from ppo_lagrangian import PPOLag
 
@@ -132,18 +135,14 @@ def eval_model(
 
     print("=" * 40)
     print(
-        f"Mean reward:        {np.mean(episode_rewards):.3f} +/- {np.std(episode_rewards):.3f}"
+        f"Mean reward: {np.mean(episode_rewards):.3f} +/- {np.std(episode_rewards):.3f}"
     )
     print(
-        f"Rescue rate:        {rescue_count}/{eval_episodes} "
+        f"Rescue rate: {rescue_count}/{eval_episodes} "
         f"({100 * rescue_count / eval_episodes:.1f}%)"
     )
-    # print(f"s0-Vis rescue %:    {sum(visible_step_0_rescues)}/{len(visible_step_0_rescues)} "
-    #       f"({100 * sum(visible_step_0_rescues) / len(visible_step_0_rescues):.1f}%)")
-    # print(f"s0-Invis rescue %:  {sum(invisible_step_0_rescues)}/{len(invisible_step_0_rescues)} "
-    #       f"({100 * sum(invisible_step_0_rescues) / len(invisible_step_0_rescues):.1f}%)")
     print(
-        f"Mean ep_len:        {np.mean(totals_steps):.3f} +/- {np.std(totals_steps):.3f}"
+        f"Mean ep_len: {np.mean(totals_steps):.3f} +/- {np.std(totals_steps):.3f}"
     )
 
     return {

@@ -48,7 +48,7 @@ env_name = "PointLTL5MASAR1WC-v0"
 # Sweep id: "S0" | "S1" | "S2" | "S3"
 
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
-TRAINING_LOG_PATH = f"./_training_logs/ppo_lag_{env_name}_tensorboard/"
+TRAINING_LOG_PATH = f"./_training_logs/{env_name}_tensorboard/"
 
 
 def train(
@@ -76,7 +76,7 @@ def train(
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
     model_path = f"_models/ppo_lag_{name_time}_{env_name}_{seed}"
     tb_log_name = (
-            f"PPO_lag_t{name_time}"
+            f"PPO_Lag_t{name_time}"
             f"_st{n_steps}"
             f"_bs{batch_size}"
             f"_tt{total_timesteps / 1_000_000:.1f}M"
