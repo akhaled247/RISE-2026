@@ -48,7 +48,7 @@ def eval_model(
     vec_norm_path = f"{model_path}_vecnormalize.pkl"
 
     print("=" * 40)
-    print(f"eval env={env_name} device={DEVICE}")
+    print(f"eval env={env_name} device={DEVICE} render_mode={render_mode}")
     print(f"loading {model_path}")
 
     base_env = make_env(env_name, sb3=True, render_mode=render_mode)

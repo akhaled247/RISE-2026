@@ -31,6 +31,7 @@ from pathlib import Path
 
 import torch
 from torch import nn
+from stable_baselines3.common.logger import configure
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
@@ -45,7 +46,7 @@ from utils.env_utils import make_vec
 # Levels: PointLTL4MASAR1WC-v0 | PointLTL5MASAR1WC-v0 | PointLTL6MASAR1WC-v0
 env_name = "PointLTL5MASAR1WC-v0"
 # Sweep id: "S0" | "S1" | "S2" | "S3"
-SWEEP_RUN = "S0"
+SWEEP_RUN = "S1"
 
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 TRAINING_LOG_PATH = f"./_training_logs/ppo_lag_{env_name}_tensorboard/"
@@ -105,6 +106,16 @@ def train(
     rollout_steps = n_steps * n_envs
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
     model_path = f"_models/ppo_lag_{level}_{sweep_run}_{name_time}_{env_name}_{seed}"
+    tb_log_name = (
+            f"lag_t{name_time}"
+            f"_st{n_steps}"
+            f"_bs{batch_size}"
+            f"_tt{total_timesteps / 1_000_000:.1f}M"
+            f"_ec{ent_coef}"
+            f"_lr{learning_rate}"
+            f"_s{seed}"
+            f"_{sweep_run}")
+    log_dir = f"{TRAINING_LOG_PATH}{tb_log_name}"
 
     if startup_log:
         print("=" * 40)
@@ -161,22 +172,15 @@ def train(
         cost_gae_lambda=cost_gae_lambda,
         vf_lr=vf_lr,
         lag_mode=lag_mode,  # type: ignore[arg-type]
-        verbose=1,
+        verbose=0,
     )
+    model.set_logger(configure(log_dir, ["csv", "tensorboard"]))
 
     env.seed(seed=0)
     model.learn(
         total_timesteps=total_timesteps,
-        tb_log_name=(
-            f"PPOLag_t{name_time}"
-            f"_st{n_steps}"
-            f"_bs{batch_size}"
-            f"_tt{total_timesteps / 1_000_000:.1f}M"
-            f"_ec{ent_coef}"
-            f"_lr{learning_rate}"
-            f"_s{seed}"
-            f"_{sweep_run}"
-        ),
+        progress_bar=True,
+        tb_log_name=tb_log_name
     )
 
     vec_norm_path = f"{model_path}_vecnormalize.pkl"

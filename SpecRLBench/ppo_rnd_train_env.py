@@ -25,6 +25,8 @@ from pathlib import Path
 import torch
 from gymnasium import spaces
 from stable_baselines3 import PPO
+from stable_baselines3.common.logger import configure
+
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
@@ -37,12 +39,12 @@ from utils.env_utils import make_vec
 
 # --- edit these before each run ---
 # Levels: PointLTL4MASAR1-v0 (walls only) | PointLTL5MASAR1-v0 (walls + buildings)
-env_name = "PointLTL4MASAR1WC-v0"
+env_name = "PointLTL6MASAR1-v0"
 # Sweep id: "S0" | "S1" | "S2" | "S3" | "S4"  (see table in module docstring)
 SWEEP_RUN = "S2"
 
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
-TRAINING_LOG_PATH = f"./_training_logs/rnd_ppo_{env_name}_tensorboard/"
+TRAINING_LOG_PATH = f"./_training_logs/ppo_rnd_{env_name}_tensorboard/"
 
 # Level → RND obs key substrings (buildings/walls focus; casualties excluded)
 LEVEL_RND_PREFIXES: dict[str, list[str]] = {
@@ -50,7 +52,7 @@ LEVEL_RND_PREFIXES: dict[str, list[str]] = {
     "PointLTL4MASAR1WC-v0": ["walls", "wall_sensor"],
     "PointLTL5MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
     "PointLTL5MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
-    "PointLTL6MASAR1WC-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
+    "PointLTL6MASAR1-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
     "PointLTL6MASAR1WC-v0": ["buildings", "walls", "ltl_walls", "wall_sensor"],
 }
 
@@ -100,6 +102,17 @@ def train(
     level = _level_tag(env_name)
     rollout_steps = n_steps * n_envs
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    tb_log_name = (
+            f"{algo_tag}_{level}_{sweep_run}_t{name_time}"
+            f"_st{n_steps}"
+            f"_bs{batch_size}"
+            f"_tt{total_timesteps / 1_000_000:.1f}M"
+            f"_ec{ent_coef}"
+            f"_lr{learning_rate}"
+            f"_beta{intrinsic_reward_coef}"
+            f"_s{seed}"
+        )
+    log_dir = f"{TRAINING_LOG_PATH}{tb_log_name}"
 
     if startup_log:
         print(f"Logging to {TRAINING_LOG_PATH}...")
@@ -175,26 +188,17 @@ def train(
             clip_range=clip_range,
         )
         algo_tag = "PPO"
-
+    model.set_logger(configure(log_dir, ["csv", "tensorboard"]))
     env.seed(seed=0)
     model.learn(
         total_timesteps=total_timesteps,
         log_interval=1,
         progress_bar=True,
-        tb_log_name=(
-            f"{algo_tag}_{level}_{sweep_run}_t{name_time}"
-            f"_st{n_steps}"
-            f"_bs{batch_size}"
-            f"_tt{total_timesteps / 1_000_000:.1f}M"
-            f"_ec{ent_coef}"
-            f"_lr{learning_rate}"
-            f"_beta{intrinsic_reward_coef}"
-            f"_s{seed}"
-        ),
+        tb_log_name=tb_log_name,
     )
 
     model_path = (
-        f"_models/rnd_ppo_{level}_{sweep_run}_{name_time}_{env_name}_{seed}"
+        f"_models/ppo_rnd_{level}_{sweep_run}_{name_time}_{env_name}_{seed}"
         if use_rnd
         else f"_models/ppo_{level}_{sweep_run}_{name_time}_{env_name}_{seed}"
     )

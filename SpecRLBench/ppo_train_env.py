@@ -3,6 +3,8 @@ from pathlib import Path
 
 import torch
 from stable_baselines3 import PPO
+from stable_baselines3.common.logger import configure
+
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
@@ -14,7 +16,7 @@ import time
 from datetime import datetime
 
 # --- edit these before each run ---
-env_name = "PointLTL5MASAR1-v0"
+env_name = "PointLTL4MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 TRAINING_LOG_PATH = f"./_training_logs/ppo_{env_name}_tensorboard/"
 
@@ -25,7 +27,7 @@ def train(
         n_envs = 8,
         ent_coef = 0.02,
         learning_rate = 5e-5,
-        n_steps = 4096,
+        n_steps = 2048,
         batch_size = 256,
         n_epochs = 10,
         clip_range = 0.2,
@@ -34,6 +36,21 @@ def train(
 ) -> tuple[str, str]:
     rollout_steps = n_steps * n_envs
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    tb_log_name = (
+            f"PPO_t{name_time}"
+            f"_st{n_steps}"
+            f"_bs{batch_size}"
+            f"_tt{total_timesteps/1_000_000:.1f}M"
+            f"_ec{ent_coef}"
+            f"_lr{learning_rate}"
+            f"_ep{n_epochs}"
+            f"_cr{clip_range}"
+            f"_kl{target_kl}"
+            f"_s{seed}"
+        )
+    log_dir = f"{TRAINING_LOG_PATH}{tb_log_name}"
+    
+
     if startup_log:
         print(f"Logging to {TRAINING_LOG_PATH}...")
         print(f"<<<{rollout_steps/batch_size}>>> minibatches per rollout"
@@ -66,25 +83,14 @@ def train(
         seed=seed,
         clip_range=clip_range,
     )
-    
+    model.set_logger(configure(log_dir, ["csv", "tensorboard"]))
     env.seed(seed=0) #Constants env seed to reduce variation between master seeds
     model.learn(
         total_timesteps=total_timesteps,
         log_interval=1,
         progress_bar=True,
         # callback=ThroughputCallback(total_timesteps),
-        tb_log_name=(
-            f"PPO_t{name_time}"
-            f"_st{n_steps}"
-            f"_bs{batch_size}"
-            f"_tt{total_timesteps/1_000_000:.1f}M"
-            f"_ec{ent_coef}"
-            f"_lr{learning_rate}"
-            f"_ep{n_epochs}"
-            f"_cr{clip_range}"
-            f"_kl{target_kl}"
-            f"_s{seed}"
-        ),
+        tb_log_name=tb_log_name,
     )
 
     model_path=f"_models/ppo_{name_time}_{env_name}_{seed}"
