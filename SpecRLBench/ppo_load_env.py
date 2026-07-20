@@ -57,17 +57,30 @@ def eval_model(
     vec_env.training = False
     vec_env.norm_reward = False
 
-    # Route by filename tag.
+    # Route by filename tag (elif chain — first match wins).
     name_l = Path(model_path).name.lower()
-    if "trpo" in name_l:
+    if "trpo_lag" in name_l or "trpolagrangian" in name_l:
+        from trpo_lagrangian import TRPOLag
+
+        model = TRPOLag.load(model_path, env=vec_env, device=DEVICE)
+    elif "sac_lag" in name_l or "saclag" in name_l or "saclagrangian" in name_l:
+        from sac_lagrangian import SACLag
+
+        model = SACLag.load(model_path, env=vec_env, device=DEVICE)
+    elif "trpo" in name_l:
         from sb3_contrib import TRPO
+
         model = TRPO.load(model_path, env=vec_env, device=DEVICE)
-    if "ppo_lag" in name_l or "ppolagrangian" in name_l:
+    elif "sac" in name_l and "lag" not in name_l:
+        from stable_baselines3 import SAC
+
+        model = SAC.load(model_path, env=vec_env, device=DEVICE)
+    elif "ppo_lag" in name_l or "ppolagrangian" in name_l:
         from ppo_lagrangian import PPOLag
 
         # SB3 Tier-2: .zip only (legacy .pt raises ValueError)
         model = PPOLag.load(model_path, env=vec_env, device=DEVICE)
-    elif "rnd_ppo" in name_l:
+    elif "rnd_ppo" in name_l or "ppornd" in name_l:
         from rnd import RND
 
         model = RND.load(model_path, env=vec_env, device=DEVICE)

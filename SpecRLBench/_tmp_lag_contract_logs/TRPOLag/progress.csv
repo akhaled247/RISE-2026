@@ -1,0 +1,3 @@
+time/iterations,time/total_timesteps,rollout/ep_cost_mean,time/fps,time/time_elapsed,train/penalty,train/kl_divergence_loss,train/policy_objective,train/surr_cost,train/is_line_search_success,train/std,train/cost_value_loss,train/learning_rate,train/n_updates,train/value_loss,train/explained_variance
+1,64,0.0,1267,0,1.0,,,,,,,,,,
+2,128,0.0,909,0,0.9686859250068665,0.007479317486286163,0.03474325314164162,-1.862645149230957e-09,1.0,1.01246178150177,0.15321867913007736,0.001,1,3685.8338623046875,-0.007795810699462891

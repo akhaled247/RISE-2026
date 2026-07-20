@@ -24,15 +24,15 @@ from torch import nn
 from torch.nn import functional as F
 from torch.optim import Adam
 
-from ppo_lagrangian.buffer import LagDictRolloutBuffer, LagRolloutBuffer
-from ppo_lagrangian.policy import LagActorCriticPolicy, LagMultiInputActorCriticPolicy
+from lagrangian.cost import cost_from_info
+from lagrangian.dual import LagPenalty
+from lagrangian.metrics import LOG_COST_VALUE_LOSS, LOG_EP_COST, LOG_PENALTY, LOG_SURR_COST
+from lagrangian.on_policy.buffer import LagDictRolloutBuffer, LagRolloutBuffer
+from lagrangian.on_policy.collect import EpCostTracker
+from lagrangian.on_policy.objective import openai_lag_pi_objective
+from lagrangian.on_policy.policy import LagActorCriticPolicy, LagMultiInputActorCriticPolicy
 
 SelfPPOLagrangian = TypeVar("SelfPPOLagrangian", bound="PPOLag")
-
-
-def _cost_from_info(info: dict) -> float:
-    """OpenAI: info.get('cost', 0)."""
-    return float(info.get("cost", 0))
 
 
 class PPOLag(PPO):
@@ -94,7 +94,7 @@ class PPOLag(PPO):
         self.cost_gamma = cost_gamma
         self.cost_gae_lambda = cost_gae_lambda
         self.vf_lr = vf_lr
-        self.cost_fn = cost_fn or _cost_from_info
+        self.cost_fn = cost_fn or cost_from_info
         self.lag_mode = lag_mode
 
         # Tier 2: buffer does once-norm; Tier 3: SB3 per-mb normalize_advantage
@@ -103,12 +103,12 @@ class PPOLag(PPO):
         elif lag_mode == "sb3":
             normalize_advantage = True
 
+        self.lag_penalty: LagPenalty | None = None
         self.penalty_param: nn.Parameter | None = None
         self.penalty_optimizer: Adam | None = None
         self.pi_optimizer: Adam | None = None
         self.vf_optimizer: Adam | None = None
-        self._rollout_ep_costs: list[float] = []
-        self._ep_cost = np.zeros(1, dtype=np.float64)
+        self._ep_cost_tracker = EpCostTracker()
         self._last_ep_cost_mean = 0.0
 
         buf_kwargs = dict(rollout_buffer_kwargs or {})
@@ -147,8 +147,8 @@ class PPOLag(PPO):
 
     @property
     def penalty(self) -> th.Tensor:
-        assert self.penalty_param is not None
-        return th.nn.functional.softplus(self.penalty_param)
+        assert self.lag_penalty is not None
+        return self.lag_penalty.penalty
 
     def _setup_model(self) -> None:
         # Choose Lag buffer by obs space (same rule as SB3 OnPolicyAlgorithm)
@@ -160,12 +160,12 @@ class PPOLag(PPO):
 
         super()._setup_model()
 
-        n_envs = self.n_envs
-        self._ep_cost = np.zeros(n_envs, dtype=np.float64)
+        self._ep_cost_tracker.reset_envs(self.n_envs)
 
-        param_init = float(np.log(max(np.exp(self.penalty_init) - 1.0, 1e-8)))
-        self.penalty_param = nn.Parameter(th.tensor(param_init, dtype=th.float32, device=self.device))
-        self.penalty_optimizer = Adam([self.penalty_param], lr=self.penalty_lr)
+        self.lag_penalty = LagPenalty(self.penalty_init, self.penalty_lr, self.device)
+        # Alias for SB3 .zip save/load (torch_vars + optimizer state_dicts)
+        self.penalty_param = self.lag_penalty.penalty_param
+        self.penalty_optimizer = self.lag_penalty.optimizer
 
         assert isinstance(self.policy, (LagActorCriticPolicy, LagMultiInputActorCriticPolicy))
         if self.lag_mode == "openai":
@@ -174,7 +174,9 @@ class PPOLag(PPO):
 
     def _excluded_save_params(self) -> list[str]:
         excluded = super()._excluded_save_params()
-        excluded.extend(["pi_optimizer", "vf_optimizer", "penalty_optimizer", "_rollout_ep_costs"])
+        excluded.extend(
+            ["pi_optimizer", "vf_optimizer", "penalty_optimizer", "lag_penalty", "_ep_cost_tracker"]
+        )
         return excluded
 
     def _get_torch_save_params(self) -> tuple[list[str], list[str]]:
@@ -202,7 +204,7 @@ class PPOLag(PPO):
 
         n_steps = 0
         rollout_buffer.reset()
-        self._rollout_ep_costs = []
+        self._ep_cost_tracker.begin_window()
         if self.use_sde:
             self.policy.reset_noise(env.num_envs)
 
@@ -229,7 +231,7 @@ class PPOLag(PPO):
             self.num_timesteps += env.num_envs
 
             costs = np.array([self.cost_fn(infos[i]) for i in range(env.num_envs)], dtype=np.float32)
-            self._ep_cost += costs
+            self._ep_cost_tracker.on_step(costs, dones)
 
             callback.update_locals(locals())
             if not callback.on_step():
@@ -241,7 +243,7 @@ class PPOLag(PPO):
             if isinstance(self.action_space, spaces.Discrete):
                 actions = actions.reshape(-1, 1)
 
-            # Timeout bootstrap reward + cost
+            # Timeout bootstrap reward (cost GAE uses dones / episode_starts)
             for idx, done in enumerate(dones):
                 if (
                     done
@@ -252,9 +254,6 @@ class PPOLag(PPO):
                     with th.no_grad():
                         terminal_value = self.policy.predict_values(terminal_obs)[0]
                     rewards[idx] += self.gamma * float(terminal_value)
-                if done:
-                    self._rollout_ep_costs.append(float(self._ep_cost[idx]))
-                    self._ep_cost[idx] = 0.0
 
             rollout_buffer.add(
                 self._last_obs,  # type: ignore[arg-type]
@@ -276,11 +275,9 @@ class PPOLag(PPO):
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
         rollout_buffer.compute_cost_returns_and_advantage(last_cost_values=last_cost_values, dones=dones)
 
-        self._last_ep_cost_mean = (
-            float(np.mean(self._rollout_ep_costs)) if self._rollout_ep_costs else 0.0
-        )
-        self.logger.record("rollout/ep_cost_mean", self._last_ep_cost_mean)
-        self.logger.record("train/penalty", float(self.penalty.item()))
+        self._last_ep_cost_mean = self._ep_cost_tracker.finalize_mean()
+        self.logger.record(LOG_EP_COST, self._last_ep_cost_mean)
+        self.logger.record(LOG_PENALTY, float(self.penalty.item()))
 
         callback.update_locals(locals())
         callback.on_rollout_end()
@@ -288,7 +285,7 @@ class PPOLag(PPO):
 
     def train(self) -> None:
         # SB3-style minibatch PPO updates + OpenAI objective-penalized Lagrangian.
-        assert self.penalty_param is not None and self.penalty_optimizer is not None
+        assert self.lag_penalty is not None
         assert isinstance(self.policy, (LagActorCriticPolicy, LagMultiInputActorCriticPolicy))
 
         self.policy.set_training_mode(True)
@@ -301,9 +298,7 @@ class PPOLag(PPO):
         clip_range = self.clip_range(self._current_progress_remaining)  # type: ignore[operator]
 
         # Penalty update once per rollout (before policy/value minibatch training)
-        self.penalty_optimizer.zero_grad()
-        (-self.penalty_param * (self._last_ep_cost_mean - self.cost_lim)).backward()
-        self.penalty_optimizer.step()
+        self.lag_penalty.update(self._last_ep_cost_mean, self.cost_lim)
 
         pg_losses: list[float] = []
         value_losses: list[float] = []
@@ -346,13 +341,13 @@ class PPOLag(PPO):
                 else:
                     ent = entropy.mean()
                 # Entropy only inside Lag objective (not a second SB3 entropy term)
-                pi_obj = (surr_adv + self.ent_coef * ent - pen * surr_cost) / (1.0 + pen)
+                pi_obj = openai_lag_pi_objective(surr_adv, surr_cost, ent, pen, self.ent_coef)
                 policy_loss = -pi_obj
                 entropy_loss = float((-ent).item())
 
                 with th.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
-                    approx_kl = th.mean((th.exp(log_ratio) - 1) - log_ratio).item()
+                    approx_kl = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().item()
                     approx_kl_divs.append(approx_kl)
                     clip_fractions.append(th.mean((th.abs(ratio - 1) > clip_range).float()).item())
 
@@ -408,13 +403,13 @@ class PPOLag(PPO):
         self.logger.record("train/entropy_loss", np.mean(entropy_losses) if entropy_losses else 0.0)
         self.logger.record("train/policy_gradient_loss", np.mean(pg_losses) if pg_losses else 0.0)
         self.logger.record("train/value_loss", np.mean(value_losses) if value_losses else 0.0)
-        self.logger.record("train/cost_value_loss", np.mean(cost_value_losses) if cost_value_losses else 0.0)
+        self.logger.record(LOG_COST_VALUE_LOSS, np.mean(cost_value_losses) if cost_value_losses else 0.0)
         self.logger.record("train/approx_kl", np.mean(approx_kl_divs) if approx_kl_divs else 0.0)
         self.logger.record("train/clip_fraction", np.mean(clip_fractions) if clip_fractions else 0.0)
-        self.logger.record("train/surr_cost", np.mean(surr_costs) if surr_costs else 0.0)
+        self.logger.record(LOG_SURR_COST, np.mean(surr_costs) if surr_costs else 0.0)
         self.logger.record("train/loss", last_loss)
         self.logger.record("train/explained_variance", explained_var)
-        self.logger.record("train/penalty", float(self.penalty.item()))
+        self.logger.record(LOG_PENALTY, float(self.penalty.item()))
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         self.logger.record("train/clip_range", clip_range)
 
