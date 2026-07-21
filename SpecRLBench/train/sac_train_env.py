@@ -135,7 +135,7 @@ if __name__ == "__main__":
         print(envs_timesteps[i])
 
         model_path, vec_norm_path = train(
-            seed=int(i),
+            seed=0nt(i),
             startup_log=True,
             e_name=env_names[i],
             total_timesteps=envs_timesteps[i],

@@ -112,7 +112,7 @@ if __name__ == "__main__":
     for i, _ in enumerate(env_names):
         print(envs_timesteps[i])
         model_path, vec_norm_path = train(
-            seed=int(i), #Tested up to and including env 3 at home
+            seed=0, #Tested up to and including env 3 at home
             startup_log=True,
             e_name=env_names[i],
             total_timesteps=envs_timesteps[i])

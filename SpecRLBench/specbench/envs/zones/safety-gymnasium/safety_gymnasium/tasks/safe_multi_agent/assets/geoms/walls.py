@@ -15,6 +15,7 @@
 """Wall."""
 
 from dataclasses import dataclass, field
+import re
 
 import numpy as np
 
@@ -97,11 +98,11 @@ class Walls(Geom):  # pylint: disable=too-many-instance-attributes
             name2 = self.engine.model.geom(g2).name
 
             if "gremlin" in name1 and "wall" in name2:
-                agent_id = int(name1.split("_")[-1])
+                agent_id = int(re.search(r"gremlin(\d+)obj", name1).group(1))
                 current_contact[agent_id] = True
 
             elif "wall" in name1 and "gremlin" in name2:
-                agent_id = int(name2.split("_")[-1])
+                agent_id = int(re.search(r"gremlin(\d+)obj", name2).group(1))
                 current_contact[agent_id] = True
 
         # Give cost only on the first contact frame

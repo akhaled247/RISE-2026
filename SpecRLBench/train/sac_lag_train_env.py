@@ -125,7 +125,7 @@ if __name__ == "__main__":
     for i, (e_name, total_timesteps) in enumerate(zip(env_names, envs_timesteps)):
         print(total_timesteps)
         model_path, _ = train(
-            seed=i,
+            seed=0,
             startup_log=True,
             e_name=e_name,
             total_timesteps=total_timesteps,
