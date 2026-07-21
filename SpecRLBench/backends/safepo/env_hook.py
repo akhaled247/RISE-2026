@@ -11,6 +11,7 @@ from typing import Any
 
 _PATCHED = False
 _ORIGINAL_MAKE = None
+_PARALLEL = True  # set by runners / set_parallel before SafePO main()
 
 SPECRL_PREFIXES = ("PointLTL", "CarLTL", "AntLTL")
 
@@ -19,16 +20,24 @@ def is_specrlbench_env(env_id: str) -> bool:
     return any(env_id.startswith(p) for p in SPECRL_PREFIXES)
 
 
+def set_parallel(parallel: bool) -> None:
+    """Control SafetyAsync vs Sync for SpecRL CMDP vec (SafePO factory has no kw)."""
+    global _PARALLEL
+    _PARALLEL = bool(parallel)
+
+
 def make_specrlbench_sa_env(
     num_envs: int,
     env_id: str,
     seed: int | None = None,
     *,
     training: bool = True,
+    parallel: bool = True,
 ):
     """Return ``(env, obs_space, act_space)`` matching SafePO's SA contract.
 
     ``training=False`` freezes obs RMS updates (eval / post-train load).
+    ``parallel=True`` (default) uses SafetyAsyncVectorEnv when ``num_envs > 1``.
     """
     from envs.cmdp.factory import make_cmdp_env, make_cmdp_vec
 
@@ -39,6 +48,7 @@ def make_specrlbench_sa_env(
             normalize_obs=True,
             training=training,
             seed=seed,
+            parallel=parallel,
         )
         obs_space = env.single_observation_space
         act_space = env.single_action_space
@@ -127,7 +137,9 @@ def patch_safepo_env_factory() -> None:
     @functools.wraps(_ORIGINAL_MAKE)
     def _patched(num_envs: int, env_id: str, seed: int | None = None):
         if is_specrlbench_env(env_id):
-            return make_specrlbench_sa_env(num_envs, env_id, seed)
+            return make_specrlbench_sa_env(
+                num_envs, env_id, seed, parallel=_PARALLEL
+            )
         return _ORIGINAL_MAKE(num_envs, env_id, seed)
 
     safepo_env.make_sa_mujoco_env = _patched

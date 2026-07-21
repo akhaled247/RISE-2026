@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from backends.safepo.config import ALGO_DEFAULTS, SafePOTrainConfig
-from backends.safepo.env_hook import patch_safepo_env_factory
+from backends.safepo.env_hook import patch_safepo_env_factory, set_parallel
 from backends.safepo.registry import resolve_algo
 
 # Map SpecRLBench algo names → SafePO single_agent modules
@@ -200,6 +200,9 @@ def train_with_safepo(
 
     ensure_specrlbench_paths()
     patch_safepo_env_factory()
+
+    # SpecRL vec parallelism (SafetyAsync); not SafePO MA ``args.parallel``.
+    set_parallel(bool(merged.pop("parallel", _CFG.parallel)))
 
     import importlib
 

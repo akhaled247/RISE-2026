@@ -101,6 +101,13 @@ def build_parser(default_algo: str) -> argparse.ArgumentParser:
         default=True,
         help="Toggles TensorBoard SummaryWriter in EpochLogger",
     )
+    p.add_argument(
+        "--parallel",
+        type=_str2bool,
+        default=_CFG.parallel,
+        help="True → SafetyAsyncVectorEnv when num-envs>1 (SB3 Subproc-like); "
+        "False → SyncVectorSafetyEnv (serial)",
+    )
     return p
 
 
@@ -136,6 +143,7 @@ def main(default_algo: str = "ppo") -> None:
         lagrangian_multiplier_lr=args.lagrangian_multiplier_lr,
         write_terminal=args.write_terminal,
         use_tensorboard=args.use_tensorboard,
+        parallel=args.parallel,
     )
 
 

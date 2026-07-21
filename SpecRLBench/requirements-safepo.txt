@@ -10,11 +10,14 @@
 #
 #   cd SpecRLBench
 #   pip install -e specbench/envs/zones/safety-gymnasium
-#   # clone SafePO into repo if missing:
-#   #   git clone https://github.com/PKU-Alignment/Safe-Policy-Optimization.git \
+#   # SafePO: use SpecRLBenchMods fork (not PKU main):
+#   #   git clone -b SpecRLBenchMods \
+#   #       https://github.com/akhaled247/Safe-Policy-Optimization.git \
 #   #       ../Safe-Policy-Optimization
 #   #   touch ../Safe-Policy-Optimization/safepo/single_agent/__init__.py
 #   pip install -e ../Safe-Policy-Optimization --no-deps
+#   # or: pip install "safepo @ git+https://github.com/akhaled247/Safe-Policy-Optimization.git@SpecRLBenchMods"
+#   #     then still touch single_agent/__init__.py if import fails
 #   pip install "torch>=2.0" "numpy<2" "pyyaml>=6.0" "tensorboard>=2.14" \
 #       "tqdm>=4.65" seaborn pandas joblib "moviepy>=1.0.3" "rich>=13.3.0" \
 #       scipy "wandb>=0.13.0"
@@ -23,7 +26,11 @@
 # the shell treats ``--device`` as a command → ``--device: command not found``.
 #
 #   python train/ppo_train_env.py --task PointLTL4MASAR1WC-v0 --seed 0 \
-#       --total-steps 40000 --num-envs 1 --steps-per-epoch 2000 --device cpu
+#       --total-steps 40000 --num-envs 8 --steps-per-epoch 16384 --device cpu \
+#       --parallel True
+#
+# --parallel True (default): SafetyAsyncVectorEnv when num-envs>1 (SB3-like).
+# --parallel False: SyncVectorSafetyEnv (serial; debug only).
 #
 # Official SafePO docs ``make benchmark`` = their stock SafetyGym suite, not SpecRL WC.
 

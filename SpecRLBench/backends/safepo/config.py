@@ -16,6 +16,7 @@ class SafePOTrainConfig:
     total_steps: int = 1_000_000
     steps_per_epoch: int = 16_384  # n_envs * local_steps; default 8*2048
     num_envs: int = 8
+    parallel: bool = True  # SafetyAsyncVectorEnv when num_envs > 1
     gamma: float = 0.99
     lam: float = 0.97
     lam_c: float = 0.97

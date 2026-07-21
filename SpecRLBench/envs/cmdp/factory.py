@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+from functools import partial
 from typing import Any, Callable
 
 import numpy as np
@@ -51,6 +53,36 @@ def make_cmdp_env(
     if normalize_obs:
         env = ObsNormalizeWrapper(env, clip_obs=clip_obs, training=training)
     return env
+
+
+def _make_cmdp_worker_env(
+    env_name: str,
+    normalize_obs: bool,
+    training: bool,
+    clip_obs: float,
+    render_mode: str | None = None,
+):
+    """Top-level picklable factory for SafetyAsyncVectorEnv workers (spawn-safe)."""
+    # Windows spawn starts a fresh interpreter — restore SpecRL + SG paths.
+    try:
+        from backends.safepo.paths import ensure_specrlbench_paths
+
+        ensure_specrlbench_paths()
+    except Exception:
+        pass
+    return make_cmdp_env(
+        env_name,
+        render_mode=render_mode,
+        normalize_obs=normalize_obs,
+        autoreset=False,  # SafetyAsync worker autoresets + final_observation
+        training=training,
+        clip_obs=clip_obs,
+    )
+
+
+def _mp_context() -> str:
+    """Match SB3: fork on Linux, spawn on Windows."""
+    return "fork" if sys.platform != "win32" else "spawn"
 
 
 class SyncVectorSafetyEnv:
@@ -162,6 +194,84 @@ class SyncVectorSafetyEnv:
         self.reset(seed=seed)
 
 
+class AsyncVectorSafetyEnv:
+    """Thin adapter: SafetyAsyncVectorEnv + SpecRL RMS API for SafePO save/eval."""
+
+    def __init__(self, vec):
+        self._vec = vec
+        self.num_envs = vec.num_envs
+        self.single_observation_space = vec.single_observation_space
+        self.single_action_space = vec.single_action_space
+        self.observation_space = vec.observation_space
+        self.action_space = vec.action_space
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._vec, name)
+
+    @property
+    def obs_rms(self):
+        """First worker RMS (SafePO logger ``env.obs_rms``)."""
+        try:
+            states = self._vec.call("get_rms_state")
+        except Exception:
+            states = None
+        if not states:
+            class _Dummy:
+                mean = None
+                var = None
+                count = 0
+
+            return _Dummy()
+        st = states[0]
+        from envs.cmdp.normalize import RunningMeanStd
+
+        shape = np.asarray(st["mean"]).shape
+        out = RunningMeanStd(shape=shape)
+        out.mean = np.asarray(st["mean"], dtype=np.float64)
+        out.var = np.asarray(st["var"], dtype=np.float64)
+        out.count = float(st["count"])
+        return out
+
+    def get_normalize_states(self) -> list[dict] | None:
+        try:
+            states = list(self._vec.call("get_rms_state"))
+        except Exception:
+            return None
+        if not states or any(s is None for s in states):
+            return None
+        return states
+
+    def set_normalize_states(self, states: list[dict]) -> None:
+        if len(states) != self.num_envs:
+            raise ValueError(
+                f"Expected {self.num_envs} RMS states, got {len(states)}"
+            )
+        self._vec.set_attr("_pending_rms", states)
+        self._vec.call("flush_pending_rms")
+
+    def set_training(self, training: bool) -> None:
+        self._vec.set_attr("training", training)
+
+    def reset(self, seed: int | None = None, **kwargs):
+        if seed is not None:
+            kwargs = dict(kwargs)
+            kwargs["seed"] = seed
+        obs, info = self._vec.reset(**kwargs)
+        # SafePO discards reset info; keep dict (not list).
+        if isinstance(info, list):
+            info = {}
+        return obs, info if isinstance(info, dict) else {}
+
+    def step(self, actions: np.ndarray):
+        return self._vec.step(actions)
+
+    def close(self) -> None:
+        self._vec.close()
+
+    def seed(self, seed: int = 0) -> None:
+        self.reset(seed=seed)
+
+
 def make_cmdp_vec(
     env_name: str,
     n_envs: int = 1,
@@ -171,23 +281,49 @@ def make_cmdp_vec(
     training: bool = True,
     clip_obs: float = 10.0,
     seed: int | None = 0,
-) -> SyncVectorSafetyEnv:
-    """Vectorized CMDP envs for SafePO training."""
+    parallel: bool = True,
+) -> SyncVectorSafetyEnv | AsyncVectorSafetyEnv:
+    """Vectorized CMDP envs for SafePO training.
 
-    def _thunk(rank: int):
-        def _fn():
-            return make_cmdp_env(
+    ``parallel=True`` (default) and ``n_envs > 1`` → SafetyAsyncVectorEnv
+    (true multi-process, matches stock SafePO / SB3 SubprocVecEnv).
+    Otherwise → SyncVectorSafetyEnv (serial; tests / debug).
+    """
+    use_async = bool(parallel) and n_envs > 1
+
+    if use_async:
+        from safety_gymnasium.vector.async_vector_env import SafetyAsyncVectorEnv
+
+        env_fns = [
+            partial(
+                _make_cmdp_worker_env,
                 env_name,
-                render_mode=render_mode,
-                normalize_obs=normalize_obs,
-                autoreset=True,
-                training=training,
-                clip_obs=clip_obs,
+                normalize_obs,
+                training,
+                clip_obs,
+                render_mode,
             )
+            for _ in range(n_envs)
+        ]
+        raw = SafetyAsyncVectorEnv(env_fns, context=_mp_context())
+        env: SyncVectorSafetyEnv | AsyncVectorSafetyEnv = AsyncVectorSafetyEnv(raw)
+    else:
 
-        return _fn
+        def _thunk(rank: int):
+            def _fn():
+                return make_cmdp_env(
+                    env_name,
+                    render_mode=render_mode,
+                    normalize_obs=normalize_obs,
+                    autoreset=True,
+                    training=training,
+                    clip_obs=clip_obs,
+                )
 
-    env = SyncVectorSafetyEnv([_thunk(i) for i in range(n_envs)])
+            return _fn
+
+        env = SyncVectorSafetyEnv([_thunk(i) for i in range(n_envs)])
+
     if seed is not None:
         env.reset(seed=seed)
     return env

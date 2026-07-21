@@ -98,6 +98,13 @@ class ObsNormalizeWrapper(gymnasium.Wrapper):
         self.clip_obs = float(state.get("clip_obs", self.clip_obs))
         self.epsilon = float(state.get("epsilon", self.epsilon))
 
+    def flush_pending_rms(self) -> None:
+        """Apply ``_pending_rms`` set via AsyncVectorEnv ``set_attr`` (per-env)."""
+        st = getattr(self, "_pending_rms", None)
+        if st is not None:
+            self.set_rms_state(st)
+            self._pending_rms = None
+
 
 def find_obs_normalize_wrapper(env: Any) -> ObsNormalizeWrapper | None:
     """Walk ``.env`` chain (and SyncVector first sub-env) for ObsNormalizeWrapper."""
