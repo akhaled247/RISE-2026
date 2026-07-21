@@ -43,17 +43,24 @@ from ppo_load_env import eval_model
 from utils.env_utils import make_vec
 
 # --- edit these before each run ---
-# Levels: PointLTL4MASAR1WC-v0 | PointLTL5MASAR1WC-v0 | PointLTL6MASAR1WC-v0
+env_names = [
+    "PointLTL4MASAR1WC-v0",
+    "PointLTL5MASAR1WC-v0",
+    "PointLTL6MASAR1WC-v0",
+]
+envs_timesteps = [
+    3_000_000,
+    4_000_000,
+    5_000_000,
+]
 env_name = "PointLTL5MASAR1WC-v0"
-# Sweep id: "S0" | "S1" | "S2" | "S3"
-
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
-TRAINING_LOG_PATH = f"./_training_logs/{env_name}_tensorboard/"
 
 
 def train(
     total_timesteps: int = 1_000_000,
     seed: int = 0,
+    e_name: str = env_name,
     n_envs: int = 8,
     ent_coef: float = 0.02,
     learning_rate: float = 5e-5,
@@ -64,32 +71,33 @@ def train(
     target_kl: float = 0.05,
     cost_lim: float = 0.0,
     penalty_init: float = 0.25,
-    penalty_lr: float = 1e-2, # [1e-2, 5e-2]
+    penalty_lr: float = 1e-2,  # [1e-2, 5e-2]
     cost_gamma: float = 0.99,
     cost_gae_lambda: float = 0.97,
     vf_lr: float = 1e-3,
     lag_mode: str = "openai",
     startup_log: bool = True,
 ) -> tuple[str, str]:
-
     rollout_steps = n_steps * n_envs
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
-    model_path = f"_models/ppo_lag_{name_time}_{env_name}_{seed}"
+    training_log_path = f"./_training_logs/{e_name}_tensorboard/"
+    model_path = f"_models/ppo_lag_{name_time}_{e_name}_{seed}"
     tb_log_name = (
-            f"PPO_Lag_t{name_time}"
-            f"_st{n_steps}"
-            f"_bs{batch_size}"
-            f"_tt{total_timesteps / 1_000_000:.1f}M"
-            f"_ec{ent_coef}"
-            f"_lr{learning_rate}"
-            f"_s{seed}"
-            f"_plr{penalty_lr}")
-    log_dir = f"{TRAINING_LOG_PATH}{tb_log_name}"
+        f"PPO_Lag_t{name_time}"
+        f"_st{n_steps}"
+        f"_bs{batch_size}"
+        f"_tt{total_timesteps / 1_000_000:.1f}M"
+        f"_ec{ent_coef}"
+        f"_lr{learning_rate}"
+        f"_s{seed}"
+        f"_plr{penalty_lr}"
+    )
+    log_dir = f"{training_log_path}{tb_log_name}"
 
     if startup_log:
         print("=" * 40)
         print(
-            f"train env={env_name} "
+            f"train env={e_name} "
             f"device={device} steps={total_timesteps} lag_mode={lag_mode}"
         )
         print(
@@ -97,10 +105,10 @@ def train(
             f"n_epochs={n_epochs} batch_size={batch_size} "
             f"cost_lim={cost_lim} penalty_lr={penalty_lr} penalty_init={penalty_init}"
         )
-        print(f"Logging to {TRAINING_LOG_PATH}...")
+        print(f"Logging to {training_log_path}...")
 
     env = make_vec(
-        env_name,
+        e_name,
         n_envs=n_envs,
         render_mode=None,
         sb3=True,
@@ -128,7 +136,7 @@ def train(
         normalize_advantage=False,
         device=device,
         seed=seed,
-        tensorboard_log=TRAINING_LOG_PATH,
+        tensorboard_log=training_log_path,
         policy_kwargs=dict(
             net_arch=dict(pi=[64, 64], vf=[64, 64]),
             activation_fn=nn.Tanh,
@@ -149,7 +157,7 @@ def train(
     model.learn(
         total_timesteps=total_timesteps,
         progress_bar=True,
-        tb_log_name=tb_log_name
+        tb_log_name=tb_log_name,
     )
 
     vec_norm_path = f"{model_path}_vecnormalize.pkl"
@@ -161,15 +169,12 @@ def train(
 
 
 if __name__ == "__main__":
-    for i in range(1):
-        # print(f'{i}/5')
+    for i, (e_name, total_timesteps) in enumerate(zip(env_names, envs_timesteps)):
+        print(total_timesteps)
         model_path, _ = train(
-            seed=int(i),
+            seed=0,  # i when training multiple of same run
             startup_log=True,
-            total_timesteps=5_000_000,
+            e_name=e_name,
+            total_timesteps=total_timesteps,
         )
-        eval_model(
-            env_name=env_name,
-            render_mode=None,
-            m_path=model_path,
-        )
+        eval_model(env_name=e_name, render_mode=None, m_path=model_path)

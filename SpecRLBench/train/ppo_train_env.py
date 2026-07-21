@@ -25,7 +25,7 @@ envs_timesteps = [
     4_000_000,
     5_000_000,
 ]
-env_name = "PointLTL6MASAR1-v0"
+env_name = "PointLTL5MASAR1WC-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 
 
