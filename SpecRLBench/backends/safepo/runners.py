@@ -26,6 +26,38 @@ _SAFEPO_MODULES = {
 }
 
 
+def _redirect_terminal_logs(log_dir: str, seed: int) -> None:
+    """Match SafePO ``if __name__ == '__main__'`` when write_terminal=False."""
+    os.makedirs(log_dir, exist_ok=True)
+    term = os.path.join(log_dir, f"seed{seed}_terminal.log")
+    err = os.path.join(log_dir, f"seed{seed}_error.log")
+    # Keep handles open for process lifetime (same pattern as upstream SafePO).
+    sys.stdout = open(term, "w", encoding="utf-8")  # noqa: SIM115
+    sys.stderr = open(err, "w", encoding="utf-8")  # noqa: SIM115
+
+
+def _patch_epoch_logger_tensorboard(use_tensorboard: bool, algo_mod: Any = None) -> None:
+    """SafePO mains hardcode EpochLogger(...); inject use_tensorboard.
+
+    Algo modules do ``from safepo.common.logger import EpochLogger``, so we must
+    rebind both ``safepo.common.logger.EpochLogger`` and ``algo_mod.EpochLogger``.
+    """
+    import safepo.common.logger as logger_mod
+
+    if not hasattr(logger_mod, "_EpochLoggerOrig"):
+        logger_mod._EpochLoggerOrig = logger_mod.EpochLogger
+    _Orig = logger_mod._EpochLoggerOrig
+
+    class EpochLogger(_Orig):  # type: ignore[valid-type, misc]
+        def __init__(self, *a, **kw):
+            kw["use_tensorboard"] = use_tensorboard
+            super().__init__(*a, **kw)
+
+    logger_mod.EpochLogger = EpochLogger
+    if algo_mod is not None and hasattr(algo_mod, "EpochLogger"):
+        algo_mod.EpochLogger = EpochLogger
+
+
 def _default_args(
     *,
     task: str,
@@ -40,6 +72,7 @@ def _default_args(
     experiment: str = "specrlbench",
     use_eval: bool = False,
     write_terminal: bool = True,
+    use_tensorboard: bool = True,
     **extra: Any,
 ) -> Namespace:
     """Build argparse-like Namespace matching SafePO ``single_agent_args`` fields."""
@@ -56,6 +89,7 @@ def _default_args(
         experiment=experiment,
         use_eval=use_eval,
         write_terminal=write_terminal,
+        use_tensorboard=use_tensorboard,
         # SafePO lag defaults
         lagrangian_multiplier_init=extra.pop("lagrangian_multiplier_init", 0.001),
         lagrangian_multiplier_lr=extra.pop("lagrangian_multiplier_lr", 0.035),
@@ -124,6 +158,13 @@ def train_with_safepo(
     relpath = "-".join([subfolder, relpath])
     args.log_dir = os.path.join(args.log_dir, args.experiment, args.task, algo, relpath)
     Path(args.log_dir).mkdir(parents=True, exist_ok=True)
+
+    _patch_epoch_logger_tensorboard(
+        bool(getattr(args, "use_tensorboard", True)),
+        algo_mod=mod,
+    )
+    if not getattr(args, "write_terminal", True):
+        _redirect_terminal_logs(args.log_dir, args.seed)
 
     # SafePO mains expect (args, cfg_env=None) for mujoco path
     mod.main(args, None)

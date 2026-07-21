@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from distutils.util import strtobool
 from pathlib import Path
 
 # SpecRLBench root on path
@@ -17,13 +18,19 @@ sys.path.insert(0, str(ROOT))
 from backends.safepo.runners import train_with_safepo
 
 
+def _str2bool(v: str) -> bool:
+    """SafePO-style bool: ``True``/``False``/``1``/``0``/``yes``/``no``."""
+    return bool(strtobool(v))
+
+
 def build_parser(default_algo: str) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=f"SpecRLBench + SafePO ({default_algo})",
         epilog=(
             "Example (one line): python train/ppo_train_env.py "
             "--task PointLTL4MASAR1WC-v0 --seed 0 --total-steps 40000 "
-            "--num-envs 1 --steps-per-epoch 2000 --device cpu"
+            "--num-envs 1 --steps-per-epoch 2000 --device cpu "
+            "--write-terminal False --use-tensorboard True"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -40,6 +47,18 @@ def build_parser(default_algo: str) -> argparse.ArgumentParser:
     p.add_argument("--experiment", type=str, default="specrlbench")
     p.add_argument("--lagrangian-multiplier-init", type=float, default=0.001)
     p.add_argument("--lagrangian-multiplier-lr", type=float, default=0.035)
+    p.add_argument(
+        "--write-terminal",
+        type=_str2bool,
+        default=True,
+        help="Toggles terminal logging (False → seed*_terminal.log / error.log)",
+    )
+    p.add_argument(
+        "--use-tensorboard",
+        type=_str2bool,
+        default=True,
+        help="Toggles TensorBoard SummaryWriter in EpochLogger",
+    )
     return p
 
 
@@ -59,6 +78,8 @@ def main(default_algo: str = "ppo") -> None:
         experiment=args.experiment,
         lagrangian_multiplier_init=args.lagrangian_multiplier_init,
         lagrangian_multiplier_lr=args.lagrangian_multiplier_lr,
+        write_terminal=args.write_terminal,
+        use_tensorboard=args.use_tensorboard,
     )
 
 
