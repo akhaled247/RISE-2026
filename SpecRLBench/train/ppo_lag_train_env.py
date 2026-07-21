@@ -63,8 +63,8 @@ def train(
     clip_range: float = 0.2,
     target_kl: float = 0.05,
     cost_lim: float = 0.0,
-    penalty_init: float = 1.0 ,
-    penalty_lr: float = 2.5e-2, # [1e-2, 5e-2]
+    penalty_init: float = 0.25,
+    penalty_lr: float = 1e-2, # [1e-2, 5e-2]
     cost_gamma: float = 0.99,
     cost_gae_lambda: float = 0.97,
     vf_lr: float = 1e-3,

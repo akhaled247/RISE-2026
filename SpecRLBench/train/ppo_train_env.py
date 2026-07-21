@@ -15,13 +15,30 @@ from utils.env_utils import ThroughputCallback, make_vec
 from ppo_load_env import eval_model
 
 # --- edit these before each run ---
-env_name = "PointLTL0MASAR1-v0"
+env_names = [
+    "PointLTL0MASAR1-v0",
+    "PointLTL4MASAR1-v0",
+    "PointLTL4MASAR1WC-v0",
+    "PointLTL5MASAR1-v0",
+    "PointLTL6MASAR1-v0",
+    "PointLTL6MASAR1WC-v0",
+]
+envs_timesteps = [
+    1_000_000,
+    2_500_000,
+    4_000_000,
+    3_000_000,
+    5_000_000,
+    5_000_000,
+]
+env_name = "PointLTL6MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 TRAINING_LOG_PATH = f"./_training_logs/{env_name}_tensorboard/"
 
 def train(
-        total_timesteps = 1_000_000,
+        total_timesteps = 5_000_000,
         seed = 0,
+        e_name=env_name,
         n_envs = 8,
         ent_coef = 0.02,
         learning_rate = 5e-5,
@@ -30,6 +47,8 @@ def train(
         n_epochs = 10,
         clip_range = 0.2,
         target_kl = 0.05, #0.08
+        gamma=0.995,
+        gae_lambda=0.98,
         startup_log = True
 ) -> tuple[str, str]:
     rollout_steps = n_steps * n_envs
@@ -44,8 +63,11 @@ def train(
             f"_ep{n_epochs}"
             f"_cr{clip_range}"
             f"_kl{target_kl}"
+            f"_γ{gamma}"
+            f"_λ{gae_lambda}"
             f"_s{seed}"
         )
+    TRAINING_LOG_PATH = f"./_training_logs/{e_name}_tensorboard/"
     log_dir = f"{TRAINING_LOG_PATH}{tb_log_name}"
     
 
@@ -54,14 +76,14 @@ def train(
         print(f"<<<{rollout_steps/batch_size}>>> minibatches per rollout"
             f"\n <<<{total_timesteps//rollout_steps}>>> policy updates total")
         print("=" * 40)
-        print(f"train env={env_name} device={device} steps={total_timesteps}")
+        print(f"train env={e_name} device={device} steps={total_timesteps}")
         print(
             f"PPO iter = {rollout_steps} env steps collect + {n_epochs} epochs x "
             f"{rollout_steps // batch_size} minibatches "
             f"- SB3 iters/s scales ~1/n_steps"
         )
 
-    env = make_vec(env_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
+    env = make_vec(e_name, n_envs=n_envs, render_mode=None, sb3=True, normalize=True)
     if startup_log: print("Warming up vector envs...")
     env.seed(seed=0) #Constants env seed to reduce variation between master seeds
     env.reset()
@@ -79,6 +101,8 @@ def train(
         device=device,
         tensorboard_log=TRAINING_LOG_PATH,
         seed=seed,
+        gamma=gamma,
+        gae_lambda=gae_lambda,
         clip_range=clip_range,
     )
     model.set_logger(configure(log_dir, ["csv", "tensorboard"]))
@@ -91,7 +115,7 @@ def train(
         tb_log_name=tb_log_name,
     )
 
-    model_path=f"_models/ppo_{name_time}_{env_name}_{seed}"
+    model_path=f"_models/ppo_{name_time}_{e_name}_{seed}"
     vec_norm_path=f"{model_path}_vecnormalize.pkl"
     model.save(model_path)
     env.save(vec_norm_path)
@@ -102,13 +126,16 @@ def train(
 
 
 if __name__ == "__main__":
-    for i in range(1):
-        model_path, vec_norm_path = train(
-            seed=int(i), #Tested up to and including env 3 at home
-            startup_log=True,
-            total_timesteps=1_000_000)
-        eval_model(
-            env_name=env_name,
-            render_mode=None,
-            m_path=model_path,
-        )
+
+    for i, _ in enumerate(env_names):
+            print(envs_timesteps[i])
+            model_path, vec_norm_path = train(
+                seed=int(i), #Tested up to and including env 3 at home
+                startup_log=True,
+                e_name=env_names[i],
+                total_timesteps=envs_timesteps[i])
+            eval_model(
+                env_name=env_names[i],
+                render_mode=None,
+                m_path=model_path,
+            )

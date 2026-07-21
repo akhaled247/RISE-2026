@@ -5,7 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from tqdm import trange
@@ -21,13 +20,13 @@ from utils.env_utils import make_env
 ENV_NAME = "PointLTL0MASAR1-v0"
 
 MODELS = [
-    "_models/trpo_20260720_1256_PointLTL0MASAR1-v0_0",
+    "_models/sac_20260720_1414_PointLTL0MASAR1-v0_0",
 ]
 
 EVAL_EPISODES = 50
 SEED = 0
 
-RENDER_MODE = 'human'
+RENDER_MODE = None
 DETERMINISTIC = True
 
 DEVICE = "cuda:1" if torch.cuda.is_available() else "cpu"
@@ -85,6 +84,7 @@ def eval_model(
 
         model = RND.load(model_path, env=vec_env, device=DEVICE)
     else:
+        from stable_baselines3 import PPO
         model = PPO.load(model_path, env=vec_env, device=DEVICE)
 
     episode_rewards = []
