@@ -11,6 +11,22 @@ from envs.cmdp.normalize import ObsNormalizeWrapper
 from envs.cmdp.safety_step import GymnasiumToSafetyStep
 
 
+def stack_infos_for_safepo(info_l: list[dict]) -> dict[str, Any]:
+    """Merge per-env infos into SafePO's dict-of-sequences layout.
+
+    SafePO ``ppo.main`` does ``info["final_observation"][idx]`` and expects
+    ``info`` to be a dict (Gymnasium / SafetyAsyncVectorEnv style), not a list
+    of dicts. Entries are ``None`` for envs that did not end this step.
+    """
+    stacked: dict[str, Any] = {}
+    fos = [info.get("final_observation") for info in info_l]
+    if any(fo is not None for fo in fos):
+        stacked["final_observation"] = [
+            None if fo is None else np.asarray(fo, dtype=np.float32) for fo in fos
+        ]
+    return stacked
+
+
 def make_cmdp_env(
     env_name: str,
     *,
@@ -113,7 +129,8 @@ class SyncVectorSafetyEnv:
             obs, info = env.reset(seed=s)
             obs_list.append(obs)
             info_list.append(info)
-        return np.stack(obs_list), info_list
+        # SafePO discards reset info; return empty dict (not list) for consistency.
+        return np.stack(obs_list), {}
 
     def step(self, actions: np.ndarray):
         actions = np.asarray(actions)
@@ -134,7 +151,7 @@ class SyncVectorSafetyEnv:
             np.asarray(cost_l, dtype=np.float32),
             np.asarray(term_l, dtype=np.bool_),
             np.asarray(trunc_l, dtype=np.bool_),
-            info_l,
+            stack_infos_for_safepo(info_l),
         )
 
     def close(self) -> None:
