@@ -1,4 +1,4 @@
-"""Train TRPO-Lagrangian via installed SafePO."""
+"""Train CPO via installed SafePO."""
 
 from __future__ import annotations
 
@@ -12,5 +12,5 @@ from backends.safepo.cli import main
 
 if __name__ == "__main__":
     if not any(a.startswith("--algo") for a in sys.argv[1:]):
-        sys.argv.extend(["--algo", "trpo_lag"])
-    main("trpo_lag")
+        sys.argv.extend(["--algo", "cpo"])
+    main("cpo")

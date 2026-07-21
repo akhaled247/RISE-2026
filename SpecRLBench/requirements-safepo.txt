@@ -1,0 +1,25 @@
+# SpecRLBench + SafePO
+#
+# IMPORTANT: PyPI ``safepo==1.0.1`` ships WITHOUT ``safepo.single_agent``
+# (no ppo / trpo / ppo_lag / cpo). Use source install (matches docs ``make``):
+#
+#   git clone https://github.com/PKU-Alignment/Safe-Policy-Optimization.git
+#   cd Safe-Policy-Optimization
+#   pip install -e .
+#
+# Or one-liner:
+#   pip install "safepo @ git+https://github.com/PKU-Alignment/Safe-Policy-Optimization.git"
+#
+# Official workflow (docs usage/make.html): ``make benchmark`` / ``make simple-benchmark``
+# = editable install + stock algo scripts. SpecRLBench only adapts envs.
+#
+# Put SpecRLBench root on PYTHONPATH so ``import safety_gymnasium`` hits this
+# repo's fork (SAR/WC tasks). Algorithms stay inside installed ``safepo``.
+
+safepo @ git+https://github.com/PKU-Alignment/Safe-Policy-Optimization.git
+torch>=2.0
+gymnasium>=0.29.1,<1.0
+numpy<2
+pyyaml>=6.0
+tensorboard>=2.14
+tqdm>=4.65
