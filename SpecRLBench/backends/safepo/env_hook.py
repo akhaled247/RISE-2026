@@ -19,8 +19,17 @@ def is_specrlbench_env(env_id: str) -> bool:
     return any(env_id.startswith(p) for p in SPECRL_PREFIXES)
 
 
-def make_specrlbench_sa_env(num_envs: int, env_id: str, seed: int | None = None):
-    """Return ``(env, obs_space, act_space)`` matching SafePO's SA contract."""
+def make_specrlbench_sa_env(
+    num_envs: int,
+    env_id: str,
+    seed: int | None = None,
+    *,
+    training: bool = True,
+):
+    """Return ``(env, obs_space, act_space)`` matching SafePO's SA contract.
+
+    ``training=False`` freezes obs RMS updates (eval / post-train load).
+    """
     from envs.cmdp.factory import make_cmdp_env, make_cmdp_vec
 
     if num_envs > 1:
@@ -28,14 +37,16 @@ def make_specrlbench_sa_env(num_envs: int, env_id: str, seed: int | None = None)
             env_id,
             n_envs=num_envs,
             normalize_obs=True,
-            training=True,
+            training=training,
             seed=seed,
         )
         obs_space = env.single_observation_space
         act_space = env.single_action_space
         return env, obs_space, act_space
 
-    env = make_cmdp_env(env_id, normalize_obs=True, autoreset=True, training=True)
+    env = make_cmdp_env(
+        env_id, normalize_obs=True, autoreset=True, training=training
+    )
     if seed is not None:
         env.reset(seed=seed)
     obs_space = env.observation_space
@@ -52,7 +63,21 @@ class _UnsqueezeSafetyEnv:
         self.env = env
         self.observation_space = env.observation_space
         self.action_space = env.action_space
-        self.obs_rms = getattr(env, "obs_rms", None)
+
+    @property
+    def obs_rms(self):
+        from envs.cmdp.normalize import find_obs_normalize_wrapper
+
+        wrap = find_obs_normalize_wrapper(self.env)
+        if wrap is not None:
+            return wrap.obs_rms
+        return getattr(self.env, "obs_rms", None)
+
+    @obs_rms.setter
+    def obs_rms(self, value) -> None:
+        from envs.cmdp.normalize import apply_rms_normalizer
+
+        apply_rms_normalizer(self.env, value, training=False)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.env, name)

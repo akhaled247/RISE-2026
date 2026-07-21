@@ -97,3 +97,54 @@ class ObsNormalizeWrapper(gymnasium.Wrapper):
         self.obs_rms.count = float(state["count"])
         self.clip_obs = float(state.get("clip_obs", self.clip_obs))
         self.epsilon = float(state.get("epsilon", self.epsilon))
+
+
+def find_obs_normalize_wrapper(env: Any) -> ObsNormalizeWrapper | None:
+    """Walk ``.env`` chain (and SyncVector first sub-env) for ObsNormalizeWrapper."""
+    cur = env
+    seen: set[int] = set()
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, ObsNormalizeWrapper):
+            return cur
+        # Use __dict__ to avoid Gymnasium Wrapper getattr deprecation warnings.
+        d = getattr(cur, "__dict__", {})
+        envs = d.get("envs")
+        if envs:
+            found = find_obs_normalize_wrapper(envs[0])
+            if found is not None:
+                return found
+        cur = d.get("env")
+    return None
+
+
+def apply_rms_normalizer(
+    env: Any,
+    normalizer: Any,
+    *,
+    training: bool = False,
+) -> None:
+    """Copy SafePO / SpecRL RunningMeanStd into nested ObsNormalizeWrapper.
+
+    Upstream eval does ``eval_env.obs_rms = norm``; our wrappers need the
+    nested ``ObsNormalizeWrapper`` updated, not only an outer attribute.
+    """
+    envs = getattr(env, "__dict__", {}).get("envs")
+    if envs:
+        for e in envs:
+            apply_rms_normalizer(e, normalizer, training=training)
+        return
+
+    wrap = find_obs_normalize_wrapper(env)
+    if wrap is None:
+        raise RuntimeError("No ObsNormalizeWrapper found to apply Normalizer")
+    # SafePO joblib blob is a RunningMeanStd-like object with mean/var/count.
+    if hasattr(normalizer, "mean") and hasattr(normalizer, "var"):
+        wrap.obs_rms.mean = np.asarray(normalizer.mean, dtype=np.float64).copy()
+        wrap.obs_rms.var = np.asarray(normalizer.var, dtype=np.float64).copy()
+        wrap.obs_rms.count = float(getattr(normalizer, "count", wrap.obs_rms.count))
+    elif isinstance(normalizer, dict):
+        wrap.set_rms_state(normalizer)
+    else:
+        raise TypeError(f"Unsupported Normalizer type: {type(normalizer)}")
+    wrap.training = training
