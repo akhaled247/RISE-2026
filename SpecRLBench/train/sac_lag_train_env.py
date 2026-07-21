@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 import safety_gymnasium  # noqa: F401
 from load_env import eval_model
 from sac_lagrangian import SACLag
-from utils.env_utils import make_vec
+from utils.env_utils_sb3 import make_vec
 
 # --- edit these before each run ---
 env_names = [

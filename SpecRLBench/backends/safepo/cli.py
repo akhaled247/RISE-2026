@@ -1,4 +1,8 @@
-"""Train scripts → installed SafePO algorithms + SpecRLBench env hook."""
+"""Train scripts → installed SafePO algorithms + SpecRLBench env hook.
+
+CLI tip: pass all flags on one line, or continue lines with ``\\``. A bare
+newline before ``--device`` makes the shell run ``--device`` as a command.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +18,15 @@ from backends.safepo.runners import train_with_safepo
 
 
 def build_parser(default_algo: str) -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=f"SpecRLBench + SafePO ({default_algo})")
+    p = argparse.ArgumentParser(
+        description=f"SpecRLBench + SafePO ({default_algo})",
+        epilog=(
+            "Example (one line): python train/ppo_train_env.py "
+            "--task PointLTL4MASAR1WC-v0 --seed 0 --total-steps 40000 "
+            "--num-envs 1 --steps-per-epoch 2000 --device cpu"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     p.add_argument("--algo", type=str, default=default_algo)
     p.add_argument("--task", "--env-id", dest="task", type=str, default="PointLTL4MASAR1WC-v0")
     p.add_argument("--seed", type=int, default=0)

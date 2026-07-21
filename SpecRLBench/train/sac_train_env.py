@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
-from utils.env_utils import ThroughputCallback, make_vec
+from utils.env_utils_sb3 import ThroughputCallback, make_vec
 from load_env import eval_model
 
 # --- edit these before each run ---

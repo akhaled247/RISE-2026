@@ -1,4 +1,9 @@
-"""Train PPO via installed SafePO (pip install safepo)."""
+"""Train PPO via installed SafePO (editable in-repo Safe-Policy-Optimization).
+
+Pass flags on one line (or with ``\\`` continuations):
+  python train/ppo_train_env.py --task PointLTL4MASAR1WC-v0 --seed 0 \\
+      --total-steps 40000 --num-envs 1 --steps-per-epoch 2000 --device cpu
+"""
 
 from __future__ import annotations
 

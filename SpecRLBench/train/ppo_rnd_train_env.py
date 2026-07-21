@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT))
 import safety_gymnasium  # noqa: F401
 from load_env import eval_model
 from rnd import RNDConfig, RND, resolve_rnd_obs_keys
-from utils.env_utils import make_vec
+from utils.env_utils_sb3 import make_vec
 
 # --- edit these before each run ---
 # Levels: PointLTL4MASAR1-v0 (walls only) | PointLTL5MASAR1-v0 (walls + buildings)

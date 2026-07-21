@@ -1,25 +1,42 @@
 # SpecRLBench + SafePO
 #
-# IMPORTANT: PyPI ``safepo==1.0.1`` ships WITHOUT ``safepo.single_agent``
-# (no ppo / trpo / ppo_lag / cpo). Use source install (matches docs ``make``):
+# SafePO train path does NOT need stable-baselines3.
+# ``utils.env_utils.make_env`` is SB3-free; SB3 helpers are in ``utils.env_utils_sb3``.
 #
-#   git clone https://github.com/PKU-Alignment/Safe-Policy-Optimization.git
-#   cd Safe-Policy-Optimization
-#   pip install -e .
+# Do NOT ``pip install -r`` this file blindly with git safepo — PyPI safety-gymnasium
+# pins gymnasium==0.28.1 and conflicts with the SpecRL fork (gymnasium>=0.29.1).
 #
-# Or one-liner:
-#   pip install "safepo @ git+https://github.com/PKU-Alignment/Safe-Policy-Optimization.git"
+# Recommended install (from RISE-2026, venv active):
 #
-# Official workflow (docs usage/make.html): ``make benchmark`` / ``make simple-benchmark``
-# = editable install + stock algo scripts. SpecRLBench only adapts envs.
+#   cd SpecRLBench
+#   pip install -e specbench/envs/zones/safety-gymnasium
+#   # clone SafePO into repo if missing:
+#   #   git clone https://github.com/PKU-Alignment/Safe-Policy-Optimization.git \
+#   #       ../Safe-Policy-Optimization
+#   #   touch ../Safe-Policy-Optimization/safepo/single_agent/__init__.py
+#   pip install -e ../Safe-Policy-Optimization --no-deps
+#   pip install "torch>=2.0" "numpy<2" "pyyaml>=6.0" "tensorboard>=2.14" \
+#       "tqdm>=4.65" seaborn pandas joblib "moviepy>=1.0.3" "rich>=13.3.0" \
+#       scipy "wandb>=0.13.0"
 #
-# Put SpecRLBench root on PYTHONPATH so ``import safety_gymnasium`` hits this
-# repo's fork (SAR/WC tasks). Algorithms stay inside installed ``safepo``.
+# Smoke train — pass ALL flags on ONE line (or end lines with \). Otherwise
+# the shell treats ``--device`` as a command → ``--device: command not found``.
+#
+#   python train/ppo_train_env.py --task PointLTL4MASAR1WC-v0 --seed 0 \
+#       --total-steps 40000 --num-envs 1 --steps-per-epoch 2000 --device cpu
+#
+# Official SafePO docs ``make benchmark`` = their stock SafetyGym suite, not SpecRL WC.
 
-safepo @ git+https://github.com/PKU-Alignment/Safe-Policy-Optimization.git
 torch>=2.0
 gymnasium>=0.29.1,<1.0
 numpy<2
 pyyaml>=6.0
 tensorboard>=2.14
 tqdm>=4.65
+joblib
+moviepy>=1.0.3
+rich>=13.3.0
+scipy
+wandb>=0.13.0
+seaborn
+pandas

@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium
 
 import safety_gymnasium  # noqa: F401
 from load_env import eval_model
-from utils.env_utils import make_vec
+from utils.env_utils_sb3 import make_vec
 
 # --- edit these before each run ---
 env_name = "PointLTL5MASAR1-v0"

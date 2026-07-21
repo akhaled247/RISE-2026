@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 def test_wc_tiny_smoke_or_skip():
     try:
         import safety_gymnasium  # noqa: F401
-        from utils.env_utils import make_vec
+        from utils.env_utils_sb3 import make_vec
     except Exception as e:
         print(f"SKIP WC smoke (import): {e}")
         return
