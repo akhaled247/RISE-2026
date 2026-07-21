@@ -5,7 +5,7 @@ import numpy as np
 from gymnasium import spaces
 from gymnasium.core import ActType, WrapperObsType
 from gymnasium.spaces import Box
-
+from specbench.envs.zones.safety_gym_wrapper_ma_sar import SafetyGymWrapperMASAR
 from specbench.utils.ltl.logic import Assignment
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
     agent_has_entrapped_at_building,
@@ -24,7 +24,7 @@ class SafetyGymWrapperMASARWC(SafetyGymWrapperMASAR):
                 else:
                     terminated[a] = True
         return obs, reward, terminated, truncated, info
-        
+
     def reset(self, *, seed=None, options=None):
         obs, info = super().reset(seed=seed, options=options)
         info["cost"] = 0
