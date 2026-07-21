@@ -63,6 +63,17 @@ def _rescued_from_info(info: dict[str, Any]) -> bool:
     )
 
 
+def _seed_everything(seed: int) -> None:
+    """Seed Python / NumPy / Torch for eval (see backends/safepo/SEEDING.md)."""
+    import random
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def eval_single_run(
     run_dir: str,
     eval_episodes: int = 50,
@@ -70,7 +81,13 @@ def eval_single_run(
     device: str = "cpu",
     seed: int | None = 0,
 ) -> dict[str, float]:
-    """Evaluate one SafePO seed folder. Returns metric dict."""
+    """Evaluate one SafePO seed folder. Returns metric dict.
+
+    When ``seed`` is not ``None``, seeds ``random``/``numpy``/``torch``, builds
+    the eval env with that seed, then each episode uses ``reset(seed=ep_seed)``
+    with ``ep_seed`` starting at ``seed`` (WC layout only honors ``reset(seed=)``;
+    see ``SEEDING.md``).
+    """
     from backends.safepo.env_hook import (
         is_specrlbench_env,
         make_specrlbench_sa_env,
@@ -82,6 +99,9 @@ def eval_single_run(
 
     ensure_specrlbench_paths()
     patch_safepo_env_factory()
+
+    if seed is not None:
+        _seed_everything(int(seed))
 
     config, model_path, norm_path = _load_run_artifacts(run_dir)
     env_id = config.get("task") or config.get("env_name")

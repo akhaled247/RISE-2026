@@ -1,3 +1,9 @@
+"""SB3 zip eval/load path (kept until Phase 10).
+
+SafePO checkpoints: use ``python eval_safepo_env.py --run-dir ...`` or
+``from eval.eval_model import eval_single_run``.
+"""
+
 import os
 import sys
 from datetime import datetime

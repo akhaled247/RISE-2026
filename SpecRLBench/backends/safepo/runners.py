@@ -1,7 +1,8 @@
 """Launch installed SafePO single-agent algorithms on SpecRLBench envs.
 
 Algorithms are imported from the ``safepo`` package (``pip install safepo``).
-This module only patches the env factory, then calls SafePO ``main()``.
+This module patches the env factory, merges SpecRL ``SafePOTrainConfig`` into
+SafePO ``default_cfg`` / ``args``, then calls SafePO ``main()``.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
+from backends.safepo.config import ALGO_DEFAULTS, SafePOTrainConfig
 from backends.safepo.env_hook import patch_safepo_env_factory
 from backends.safepo.registry import resolve_algo
 
@@ -24,6 +26,8 @@ _SAFEPO_MODULES = {
     "trpo_lag": "safepo.single_agent.trpo_lag",
     "cpo": "safepo.single_agent.cpo",
 }
+
+_CFG = SafePOTrainConfig()
 
 
 def _redirect_terminal_logs(log_dir: str, seed: int) -> None:
@@ -58,13 +62,25 @@ def _patch_epoch_logger_tensorboard(use_tensorboard: bool, algo_mod: Any = None)
         algo_mod.EpochLogger = EpochLogger
 
 
+def _merge_train_kwargs(algo: str, extra: dict[str, Any]) -> dict[str, Any]:
+    """Fill missing knobs from SafePOTrainConfig + ALGO_DEFAULTS."""
+    base = _CFG.to_dict()
+    # Drop non-arg fields
+    for k in ("env_id", "algo", "normalize_obs", "clip_obs", "use_eval", "eval_episodes", "save_freq_epochs", "rnd_coef"):
+        base.pop(k, None)
+    base.update(ALGO_DEFAULTS.get(algo, {}))
+    # Caller overrides win
+    base.update(extra)
+    return base
+
+
 def _default_args(
     *,
     task: str,
     seed: int = 0,
     total_steps: int = 1_000_000,
-    num_envs: int = 1,
-    steps_per_epoch: int = 20000,
+    num_envs: int = 8,
+    steps_per_epoch: int = 16_384,
     cost_limit: float = 0.0,
     device: str = "cpu",
     device_id: int = 0,
@@ -75,7 +91,7 @@ def _default_args(
     use_tensorboard: bool = True,
     **extra: Any,
 ) -> Namespace:
-    """Build argparse-like Namespace matching SafePO ``single_agent_args`` fields."""
+    """Build argparse-like Namespace matching SafePO ``single_agent_args`` + SpecRL knobs."""
     args = Namespace(
         task=task,
         seed=seed,
@@ -90,16 +106,48 @@ def _default_args(
         use_eval=use_eval,
         write_terminal=write_terminal,
         use_tensorboard=use_tensorboard,
-        # SafePO lag defaults
-        lagrangian_multiplier_init=extra.pop("lagrangian_multiplier_init", 0.001),
-        lagrangian_multiplier_lr=extra.pop("lagrangian_multiplier_lr", 0.035),
-        # misc SafePO flags often present
+        lagrangian_multiplier_init=extra.pop(
+            "lagrangian_multiplier_init", _CFG.lagrangian_multiplier_init
+        ),
+        lagrangian_multiplier_lr=extra.pop(
+            "lagrangian_multiplier_lr", _CFG.lagrangian_multiplier_lr
+        ),
         parallel=1,
         torch_threads=4,
+        # SpecRL → Linux-edited SafePO (getattr fallbacks in clone)
+        actor_lr=extra.pop("actor_lr", _CFG.actor_lr),
+        critic_lr=extra.pop("critic_lr", _CFG.critic_lr),
+        batch_size=extra.pop("batch_size", _CFG.batch_size),
+        learning_iters=extra.pop("learning_iters", _CFG.learning_iters),
+        target_kl=extra.pop("target_kl", _CFG.target_kl),
+        gamma=extra.pop("gamma", _CFG.gamma),
+        lam=extra.pop("lam", _CFG.lam),
+        lam_c=extra.pop("lam_c", _CFG.lam_c),
+        clip_ratio=extra.pop("clip_ratio", _CFG.clip_ratio),
+        max_grad_norm=extra.pop("max_grad_norm", _CFG.max_grad_norm),
+        hidden_sizes=extra.pop("hidden_sizes", list(_CFG.hidden_sizes)),
     )
     for k, v in extra.items():
         setattr(args, k, v)
     return args
+
+
+def _patch_safepo_default_cfg(mod: Any, args: Namespace) -> dict[str, Any]:
+    """Update SafePO module ``default_cfg`` from SpecRL args (Phase 8)."""
+    if not hasattr(mod, "default_cfg"):
+        return {}
+    cfg = dict(mod.default_cfg)
+    updates = {
+        "hidden_sizes": list(getattr(args, "hidden_sizes", _CFG.hidden_sizes)),
+        "gamma": float(getattr(args, "gamma", _CFG.gamma)),
+        "target_kl": float(getattr(args, "target_kl", _CFG.target_kl)),
+        "batch_size": int(getattr(args, "batch_size", _CFG.batch_size)),
+        "learning_iters": int(getattr(args, "learning_iters", _CFG.learning_iters)),
+        "max_grad_norm": float(getattr(args, "max_grad_norm", _CFG.max_grad_norm)),
+    }
+    cfg.update(updates)
+    mod.default_cfg = cfg
+    return updates
 
 
 def train_with_safepo(
@@ -107,17 +155,17 @@ def train_with_safepo(
     env_id: str,
     *,
     seed: int = 0,
-    total_steps: int = 1_000_000,
-    num_envs: int = 1,
-    steps_per_epoch: int = 20000,
-    cost_limit: float = 0.0,
-    device: str = "cpu",
+    total_steps: int | None = None,
+    num_envs: int | None = None,
+    steps_per_epoch: int | None = None,
+    cost_limit: float | None = None,
+    device: str | None = None,
     device_id: int = 0,
-    log_dir: str = "./_training_logs/safepo",
-    experiment: str = "specrlbench",
+    log_dir: str | None = None,
+    experiment: str | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
-    """Patch env factory, then run SafePO's ``main(args)`` for ``algo``."""
+    """Patch env factory, merge config into SafePO, then run ``main(args)``."""
     algo = resolve_algo(algo)
     if algo == "rnd_ppo":
         raise NotImplementedError(
@@ -126,6 +174,26 @@ def train_with_safepo(
         )
     if algo not in _SAFEPO_MODULES:
         raise ValueError(f"No SafePO module mapping for {algo!r}")
+
+    merged = _merge_train_kwargs(algo, dict(extra))
+    if total_steps is not None:
+        merged["total_steps"] = total_steps
+    if num_envs is not None:
+        merged["num_envs"] = num_envs
+    if steps_per_epoch is not None:
+        merged["steps_per_epoch"] = steps_per_epoch
+    if cost_limit is not None:
+        merged["cost_limit"] = cost_limit
+    if device is not None:
+        merged["device"] = device
+    if log_dir is not None:
+        merged["log_dir"] = log_dir
+    if experiment is not None:
+        merged["experiment"] = experiment
+
+    # Avoid duplicate kwargs: explicit seed/device_id win over config dict.
+    merged.pop("seed", None)
+    merged.pop("device_id", None)
 
     from backends.safepo.paths import ensure_specrlbench_paths
     from backends.safepo.torch_compat import patch_linear_lr_verbose
@@ -141,16 +209,11 @@ def train_with_safepo(
     args = _default_args(
         task=env_id,
         seed=seed,
-        total_steps=total_steps,
-        num_envs=num_envs,
-        steps_per_epoch=steps_per_epoch,
-        cost_limit=cost_limit,
-        device=device,
         device_id=device_id,
-        log_dir=log_dir,
-        experiment=experiment,
-        **extra,
+        **merged,
     )
+
+    cfg_patch = _patch_safepo_default_cfg(mod, args)
 
     # Match SafePO __main__ log path layout
     relpath = time.strftime("%Y-%m-%d-%H-%M-%S")
@@ -168,7 +231,12 @@ def train_with_safepo(
 
     # SafePO mains expect (args, cfg_env=None) for mujoco path
     mod.main(args, None)
-    return {"log_dir": args.log_dir, "algo": algo, "env_id": env_id}
+    return {
+        "log_dir": args.log_dir,
+        "algo": algo,
+        "env_id": env_id,
+        "default_cfg_patch": cfg_patch,
+    }
 
 
 def train_algo(algo: str, **overrides: Any) -> dict[str, Any]:
