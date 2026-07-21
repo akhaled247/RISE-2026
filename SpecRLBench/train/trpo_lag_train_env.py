@@ -31,8 +31,8 @@ env_names = [
     "PointLTL6MASAR1WC-v0",
 ]
 envs_timesteps = [
-    4_000_000,
     3_000_000,
+    4_000_000,
     5_000_000,
 ]
 env_name = "PointLTL5MASAR1WC-v0"
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     for i, (e_name, total_timesteps) in enumerate(zip(env_names, envs_timesteps)):
         print(total_timesteps)
         model_path, _ = train(
-            seed=i,
+            seed=0, # i when training multiple of same run
             startup_log=True,
             e_name=e_name,
             total_timesteps=total_timesteps,

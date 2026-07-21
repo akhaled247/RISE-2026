@@ -15,8 +15,16 @@ from utils.env_utils import ThroughputCallback, make_vec
 from ppo_load_env import eval_model
 
 # --- edit these before each run ---
-env_names = ["PointLTL6MASAR1WC-v0"]
-envs_timesteps = [5_000_000]
+env_names = [
+    "PointLTL4MASAR1WC-v0",
+    "PointLTL5MASAR1WC-v0",
+    "PointLTL6MASAR1WC-v0",
+]
+envs_timesteps = [
+    3_000_000,
+    4_000_000,
+    5_000_000,
+]
 env_name = "PointLTL6MASAR1WC-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
 TRAINING_LOG_PATH = f"./_training_logs/{env_name}_tensorboard/"

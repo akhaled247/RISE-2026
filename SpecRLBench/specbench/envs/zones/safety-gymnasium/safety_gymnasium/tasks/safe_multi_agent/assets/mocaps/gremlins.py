@@ -123,7 +123,7 @@ class Gremlins(Mocap):  # pylint: disable=too-many-instance-attributes
             self.min_theta = min(theta, self.min_theta)
             # Calculate shifted position (0 degrees = straight ahead)
             shifted_xy = (agent_xy 
-            + 0.02 * np.array([np.cos(theta), np.sin(theta)])
+            + 0.03 * np.array([np.cos(theta), np.sin(theta)])
             + 0.02 * np.array([np.cos(theta + np.pi/2), np.sin(theta + np.pi/2)]))       
             name = f'gremlin{i}'
             pos = np.r_[shifted_xy, [1e-3]]

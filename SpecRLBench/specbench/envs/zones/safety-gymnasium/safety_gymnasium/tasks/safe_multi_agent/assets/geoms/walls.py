@@ -96,11 +96,11 @@ class Walls(Geom):  # pylint: disable=too-many-instance-attributes
             name1 = self.engine.model.geom(g1).name
             name2 = self.engine.model.geom(g2).name
 
-            if "agent" in name1 and "wall" in name2:
+            if "gremlin" in name1 and "wall" in name2:
                 agent_id = int(name1.split("_")[-1])
                 current_contact[agent_id] = True
 
-            elif "wall" in name1 and "agent" in name2:
+            elif "wall" in name1 and "gremlin" in name2:
                 agent_id = int(name2.split("_")[-1])
                 current_contact[agent_id] = True
 

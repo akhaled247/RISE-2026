@@ -17,17 +17,9 @@ from ppo_load_env import eval_model
 # --- edit these before each run ---
 env_names = [
     "PointLTL4MASAR1-v0",
-    "PointLTL4MASAR1WC-v0",
-    "PointLTL5MASAR1-v0",
-    "PointLTL6MASAR1-v0",
-    "PointLTL6MASAR1WC-v0",
 ]
 envs_timesteps = [
     2_500_000,
-    4_000_000,
-    3_000_000,
-    5_000_000,
-    5_000_000,
 ]
 env_name = "PointLTL4MASAR1-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
@@ -38,13 +30,13 @@ def train(
         total_timesteps=2_500_000,
         e_name=env_name,
         seed=0,
-        n_envs=4,
+        n_envs=8,
         learning_rate=3e-4,
         buffer_size=1_000_000,
         learning_starts=10_000,
         batch_size=256,
-        train_freq=8,
-        gradient_steps=8,
+        train_freq=1,
+        gradient_steps=1,
         tau=0.005,
         gamma=0.995,
         ent_coef="auto",
