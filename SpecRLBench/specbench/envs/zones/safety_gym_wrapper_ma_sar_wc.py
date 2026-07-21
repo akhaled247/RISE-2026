@@ -110,7 +110,7 @@ class SafetyGymWrapperMASARWC(gymnasium.Wrapper):
                 obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(
                     obs[a][f'entrapped_casualtys_lidar_{i}'].size,
                 )
-            reward[a] += info[a].get('cost_buildings_terracotta', 0) * 1.0
+            # reward[a] += info[a].get('cost_buildings_terracotta', 0) * 1.0
 
             # velo = obs[a][f'velocimeter_{i}']
             # if (max(obs[a][f'walls_lidar_{i}']) > 0.85 or 

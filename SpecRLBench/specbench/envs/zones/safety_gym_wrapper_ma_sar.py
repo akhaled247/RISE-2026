@@ -110,7 +110,7 @@ class SafetyGymWrapperMASAR(gymnasium.Wrapper):
                 obs[a][f'entrapped_casualtys_lidar_{i}'] = np.zeros(
                     obs[a][f'entrapped_casualtys_lidar_{i}'].size,
                 )
-            reward[a] += info[a].get('cost_buildings_terracotta', 0) * 1.0
+            # reward[a] += info[a].get('cost_buildings_terracotta', 0) * 1.0
 
             # if info[a].get('cost_walls', 0) > 0:
             #     reward[a] -= 0.1

@@ -4,3 +4,4 @@
 *$py.class
 *.pyc
 debug_msg.txt
+.venv-safepo
