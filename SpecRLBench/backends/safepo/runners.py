@@ -104,11 +104,15 @@ def train_with_safepo(
 
     mod = importlib.import_module(_SAFEPO_MODULES[algo])
 
+    from backends.safepo.torch_compat import patch_linear_lr_verbose
+
+    _compat_info = patch_linear_lr_verbose(mod)
+
     # #region agent log
     def _agent_dbg(hypothesis_id: str, location: str, message: str, data: dict) -> None:
         payload = {
             "sessionId": "27d29d",
-            "runId": "pre-fix",
+            "runId": "post-fix",
             "hypothesisId": hypothesis_id,
             "location": location,
             "message": message,
@@ -140,10 +144,9 @@ def train_with_safepo(
             pass
 
     import torch
-    from torch.optim.lr_scheduler import LinearLR as _LinearLR
 
-    _sig = inspect.signature(_LinearLR.__init__)
-    _has_verbose = "verbose" in _sig.parameters
+    _mod_lr = getattr(mod, "LinearLR", None)
+    _mod_sig = inspect.signature(_mod_lr.__init__) if _mod_lr is not None else None
     _ppo_src = inspect.getsource(mod.main) if hasattr(mod, "main") else ""
     _safepo_file = getattr(mod, "__file__", None)
     _agent_dbg(
@@ -152,8 +155,11 @@ def train_with_safepo(
         "torch/LinearLR compat probe",
         {
             "torch_version": getattr(torch, "__version__", None),
-            "linearlr_accepts_verbose": _has_verbose,
-            "linearlr_sig": str(_sig),
+            "compat_info": _compat_info,
+            "mod_linearlr_sig": str(_mod_sig),
+            "mod_linearlr_accepts_verbose": (
+                _mod_sig is not None and "verbose" in _mod_sig.parameters
+            ),
             "safepo_module": _SAFEPO_MODULES[algo],
             "safepo_file": _safepo_file,
             "device_arg": device,
@@ -207,10 +213,16 @@ def train_with_safepo(
                 "error": str(exc),
                 "is_verbose_kwarg": "verbose" in str(exc),
                 "torch_version": getattr(torch, "__version__", None),
-                "linearlr_accepts_verbose": _has_verbose,
+                "compat_info": _compat_info,
             },
         )
         raise
+    _agent_dbg(
+        "C",
+        "runners.py:mod.main",
+        "safepo main returned without TypeError",
+        {"compat_info": _compat_info, "log_dir": args.log_dir},
+    )
     # #endregion
     return {"log_dir": args.log_dir, "algo": algo, "env_id": env_id}
 

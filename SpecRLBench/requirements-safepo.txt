@@ -27,6 +27,8 @@
 #
 # Official SafePO docs ``make benchmark`` = their stock SafetyGym suite, not SpecRL WC.
 
+# torch>=2.7 dropped LRScheduler verbose=; SpecRLBench patches LinearLR
+# via backends/safepo/torch_compat.py so SafePO stock algos still run.
 torch>=2.0
 gymnasium>=0.29.1,<1.0
 numpy<2
