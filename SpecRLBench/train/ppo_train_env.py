@@ -12,18 +12,14 @@ sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_vec
-from ppo_load_env import eval_model
+from load_env import eval_model
 
 # --- edit these before each run ---
 env_names = [
-    "PointLTL4MASAR1WC-v0",
     "PointLTL5MASAR1WC-v0",
-    "PointLTL6MASAR1WC-v0",
 ]
 envs_timesteps = [
-    3_000_000,
     4_000_000,
-    5_000_000,
 ]
 env_name = "PointLTL5MASAR1WC-v0"
 name_time = datetime.now().strftime("%Y%m%d_%H%M")
@@ -34,15 +30,15 @@ def train(
     seed=0,
     e_name=env_name,
     n_envs=8,
-    ent_coef=0.02,
-    learning_rate=5e-5,
-    n_steps=2048,
-    batch_size=256,
+    ent_coef=0.0, #0.02
+    learning_rate=5e-5, #5e-5
+    n_steps=2048, #2048
+    batch_size=256, #256
     n_epochs=10,
-    clip_range=0.2,
-    target_kl=0.05,  # 0.08
-    gamma=0.995,
-    gae_lambda=0.98,
+    clip_range=0.1,
+    target_kl=0.02,  # 0.05
+    gamma=0.995, #0.99
+    gae_lambda=0.98, #0.98
     startup_log=True,
 ) -> tuple[str, str]:
     rollout_steps = n_steps * n_envs

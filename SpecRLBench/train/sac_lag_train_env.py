@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
-from ppo_load_env import eval_model
+from load_env import eval_model
 from sac_lagrangian import SACLag
 from utils.env_utils import make_vec
 

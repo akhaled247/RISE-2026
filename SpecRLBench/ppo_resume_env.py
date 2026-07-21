@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"))
 
 import safety_gymnasium  # noqa: F401
-from ppo_load_env import eval_model
+from load_env import eval_model
 from utils.env_utils import make_vec
 
 # --- edit these before each run ---

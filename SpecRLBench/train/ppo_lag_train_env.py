@@ -39,7 +39,7 @@ sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
 from ppo_lagrangian import PPOLag
-from ppo_load_env import eval_model
+from load_env import eval_model
 from utils.env_utils import make_vec
 
 # --- edit these before each run ---

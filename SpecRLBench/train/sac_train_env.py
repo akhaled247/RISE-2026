@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import ThroughputCallback, make_vec
-from ppo_load_env import eval_model
+from load_env import eval_model
 
 # --- edit these before each run ---
 env_names = [

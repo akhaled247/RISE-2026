@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
-from ppo_load_env import eval_model
+from load_env import eval_model
 from trpo_lagrangian import TRPOLag
 from utils.env_utils import make_vec
 
@@ -68,8 +68,10 @@ def train(
         f"_tt{total_timesteps / 1_000_000:.1f}M"
         f"_lr{learning_rate}"
         f"_kl{target_kl}"
-        f"_s{seed}"
+        f"_γ{gamma}"
+        f"_λ{gae_lambda}"
         f"_plr{penalty_lr}"
+        f"_s{seed}"
     )
     log_dir = f"{training_log_path}{tb_log_name}"
 

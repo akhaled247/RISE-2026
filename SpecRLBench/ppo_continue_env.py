@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import make_vec
-from ppo_load_env import eval_model
+from load_env import eval_model
 
 # ------------------------------------------------------------------
 

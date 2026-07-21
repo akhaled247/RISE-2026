@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
-from ppo_load_env import eval_model
+from load_env import eval_model
 from rnd import RNDConfig, RND, resolve_rnd_obs_keys
 from utils.env_utils import make_vec
 

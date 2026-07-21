@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 import safety_gymnasium  # noqa: F401
 from utils.env_utils import ThroughputCallback, make_vec
-from ppo_load_env import eval_model
+from load_env import eval_model
 
 # --- edit these before each run ---
 env_names = [
@@ -52,6 +52,8 @@ def train(
             f"_tt{total_timesteps/1_000_000:.1f}M"
             f"_lr{learning_rate}"
             f"_kl{target_kl}"
+            f"_γ{gamma}"
+            f"_λ{gae_lambda}"
             f"_s{seed}"
         )
     log_dir = f"{TRAINING_LOG_PATH}{tb_log_name}"
