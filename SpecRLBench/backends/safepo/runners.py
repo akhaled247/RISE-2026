@@ -218,11 +218,11 @@ def train_with_safepo(
 
     cfg_patch = _patch_safepo_default_cfg(mod, args)
 
-    # Match SafePO __main__ log path layout
+    # Layout: {log_dir}/{task}/{algo}/seed-NNN-TIMESTAMP (experiment is config metadata only)
     relpath = time.strftime("%Y-%m-%d-%H-%M-%S")
     subfolder = "-".join(["seed", str(args.seed).zfill(3)])
     relpath = "-".join([subfolder, relpath])
-    args.log_dir = os.path.join(args.log_dir, args.experiment, args.task, algo, relpath)
+    args.log_dir = os.path.join(args.log_dir, args.task, algo, relpath)
     Path(args.log_dir).mkdir(parents=True, exist_ok=True)
 
     _patch_epoch_logger_tensorboard(

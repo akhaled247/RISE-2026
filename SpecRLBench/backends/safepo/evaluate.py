@@ -204,18 +204,18 @@ def eval_single_run(
 
 
 def _iter_run_dirs(benchmark_dir: str) -> list[tuple[str, str, str]]:
-    """Yield (env, algo, run_dir) under experiment/task/algo/seed-* layout.
+    """Yield (env, algo, run_dir) under task/algo/seed-* layout.
 
     Accepts either:
-    - ``.../experiment`` containing task folders, or
-    - ``.../experiment/task`` containing algo folders, or
+    - ``.../log_dir`` containing task folders, or
+    - ``.../task`` containing algo folders, or
     - a single seed run dir (has config.json) — caller should use --run-dir.
     """
     root = Path(benchmark_dir)
     if not root.is_dir():
         raise NotADirectoryError(benchmark_dir)
     out: list[tuple[str, str, str]] = []
-    # Layout from runners: log_dir/experiment/task/algo/seed-000-TIMESTAMP
+    # Layout from runners: log_dir/task/algo/seed-000-TIMESTAMP
     for task_dir in sorted(root.iterdir()):
         if not task_dir.is_dir():
             continue
@@ -275,7 +275,7 @@ def benchmark_eval(
         print(line.strip())
         results.append({"env": env, "algo": algo, "run_dir": run_dir, **metrics})
         if save_dir is None:
-            # .../experiment/task/algo/seed → .../experiment/results
+            # .../task/algo/seed → .../log_dir/results
             rd = Path(run_dir).resolve()
             save_dir = str(rd.parents[2] / "results") if len(rd.parts) > 3 else str(rd.parent / "results")
         os.makedirs(save_dir, exist_ok=True)
@@ -340,7 +340,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="SpecRLBench SafePO post-train evaluation (SA)",
         epilog=(
             "Example: python eval_safepo_env.py "
-            "--run-dir ./_training_logs/safepo/specrlbench/PointLTL4MASAR1WC-v0/ppo/seed-000-... "
+            "--run-dir ./_training_logs/safepo/PointLTL4MASAR1WC-v0/ppo/seed-000-... "
             "--eval-episodes 50"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

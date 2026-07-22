@@ -27,8 +27,8 @@ ENV_JOBS=(
 )
 
 latest_run_dir() {
-  local experiment="$1" task="$2" algo="$3"
-  local base="${LOG_ROOT}/${experiment}/${task}/${algo}"
+  local task="$1" algo="$2"
+  local base="${LOG_ROOT}/${task}/${algo}"
   ls -td "${base}"/seed-* 2>/dev/null | head -1
 }
 
@@ -101,9 +101,9 @@ run_one() {
   train_cmd "$algo" "$task" "$experiment" "$steps"
 
   local run_dir
-  run_dir="$(latest_run_dir "$experiment" "$task" "$algo")"
+  run_dir="$(latest_run_dir "$task" "$algo")"
   if [[ -z "${run_dir:-}" || ! -d "$run_dir" ]]; then
-    echo "ERROR: no run dir ${LOG_ROOT}/${experiment}/${task}/${algo}/" | tee -a "$RESULTS"
+    echo "ERROR: no run dir ${LOG_ROOT}/${task}/${algo}/" | tee -a "$RESULTS"
     return 1
   fi
 

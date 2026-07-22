@@ -9,6 +9,9 @@ SafePO also seeds `random` / `numpy` / `torch` at the start of `main()`.
 
 Log folder name includes `seed-NNN` (zero-padded).
 
+Layout: `{log_dir}/{task}/{algo}/seed-NNN-TIMESTAMP`. `--experiment` is config
+metadata only (not a path segment).
+
 ## Eval seed (`eval_safepo_env.py --seed`)
 
 `backends.safepo.evaluate.eval_single_run` seeds `random`, `numpy`, and `torch`

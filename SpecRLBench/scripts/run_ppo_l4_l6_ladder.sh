@@ -25,8 +25,8 @@ JOBS=(
 )
 
 latest_run_dir() {
-  local experiment="$1" task="$2"
-  local base="${LOG_ROOT}/${experiment}/${task}/ppo"
+  local task="$1"
+  local base="${LOG_ROOT}/${task}/ppo"
   ls -td "${base}"/seed-* 2>/dev/null | head -1
 }
 
@@ -56,9 +56,9 @@ run_one() {
     --parallel True --lr_end_factor 1.0
 
   local run_dir
-  run_dir="$(latest_run_dir "$experiment" "$task")"
+  run_dir="$(latest_run_dir "$task")"
   if [[ -z "${run_dir:-}" || ! -d "$run_dir" ]]; then
-    echo "ERROR: no run dir under ${LOG_ROOT}/${experiment}/${task}/ppo/" | tee -a "$RESULTS"
+    echo "ERROR: no run dir under ${LOG_ROOT}/${task}/ppo/" | tee -a "$RESULTS"
     return 1
   fi
 
