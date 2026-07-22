@@ -29,6 +29,7 @@ class SafePOTrainConfig:
     critic_lr: float = 1e-3
     clip_ratio: float = 0.2
     lr_end_factor: float = 1.0
+    ent_coef: float = 0.0
     # Constrained
     cost_limit: float = 0.0
     lagrangian_multiplier_init: float = 1.0

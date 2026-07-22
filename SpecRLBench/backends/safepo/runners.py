@@ -124,6 +124,7 @@ def _default_args(
         lam=extra.pop("lam", _CFG.lam),
         lam_c=extra.pop("lam_c", _CFG.lam_c),
         clip_ratio=extra.pop("clip_ratio", _CFG.clip_ratio),
+        ent_coef=extra.pop("ent_coef", _CFG.ent_coef),
         max_grad_norm=extra.pop("max_grad_norm", _CFG.max_grad_norm),
         hidden_sizes=extra.pop("hidden_sizes", list(_CFG.hidden_sizes)),
     )
@@ -194,6 +195,7 @@ def train_with_safepo(
     # Avoid duplicate kwargs: explicit seed/device_id win over config dict.
     merged.pop("seed", None)
     merged.pop("device_id", None)
+    
 
     from backends.safepo.paths import ensure_specrlbench_paths
     from backends.safepo.torch_compat import patch_linear_lr_verbose

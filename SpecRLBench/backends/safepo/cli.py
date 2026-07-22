@@ -68,6 +68,12 @@ def build_parser(default_algo: str) -> argparse.ArgumentParser:
     p.add_argument("--lam", type=float, default=_CFG.lam)
     p.add_argument("--lam-c", type=float, default=_CFG.lam_c)
     p.add_argument("--clip-ratio", type=float, default=_CFG.clip_ratio)
+    p.add_argument(
+        "--ent-coef",
+        type=float,
+        default=_CFG.ent_coef,
+        help="Entropy bonus coefficient (SB3-style; 0.0 = SafePO default)",
+    )
     p.add_argument("--max-grad-norm", type=float, default=_CFG.max_grad_norm)
     p.add_argument(
         "--hidden-sizes",
@@ -144,6 +150,7 @@ def main(default_algo: str = "ppo") -> None:
         lam=args.lam,
         lam_c=args.lam_c,
         clip_ratio=args.clip_ratio,
+        ent_coef=args.ent_coef,
         max_grad_norm=args.max_grad_norm,
         hidden_sizes=list(args.hidden_sizes),
         lr_end_factor=args.lr_end_factor,
