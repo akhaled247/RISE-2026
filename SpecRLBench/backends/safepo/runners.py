@@ -66,7 +66,7 @@ def _merge_train_kwargs(algo: str, extra: dict[str, Any]) -> dict[str, Any]:
     """Fill missing knobs from SafePOTrainConfig + ALGO_DEFAULTS."""
     base = _CFG.to_dict()
     # Drop non-arg fields
-    for k in ("env_id", "algo", "normalize_obs", "clip_obs", "use_eval", "eval_episodes", "save_freq_epochs", "rnd_coef"):
+    for k in ("env_id", "algo", "normalize_obs", "clip_obs", "use_eval", "eval_episodes", "rnd_coef"):
         base.pop(k, None)
     base.update(ALGO_DEFAULTS.get(algo, {}))
     # Caller overrides win

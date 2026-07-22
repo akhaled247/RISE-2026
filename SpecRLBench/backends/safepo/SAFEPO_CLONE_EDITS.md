@@ -99,3 +99,30 @@ the same via ``envs.cmdp.factory.make_cmdp_vec(..., parallel=True)`` →
 - No ``SpecRLBenchMods`` Python diffs required for this speed fix
 - Worker envs: ``autoreset=False`` (async worker already autoresets +
   ``final_observation``); Linux ``fork``, Windows ``spawn``
+
+## 6. Checkpoint cadence
+
+Stock / early SpecRLBenchMods only saved when ``(epoch+1) % 100 == 0 or epoch == 0``.
+Runs with ``epochs < 100`` (e.g. L5WC 5M / T65536 → **76** epochs) wrote **only**
+``model0.pt`` / ``state0.pkl``. Eval then loaded epoch-0 weights+RMS while
+``progress.csv`` showed live EpRet from **unsaved** later epochs → train↔eval gap.
+
+In ``ppo.py``, ``ppo_lag.py``, ``trpo.py``, ``trpo_lag.py``, ``cpo.py`` replace
+the ``% 100`` gate with:
+
+```python
+save_freq = int(getattr(args, "save_model_freq", 10))  # epochs
+if epoch == 0 or epoch == epochs - 1 or (epoch + 1) % save_freq == 0:
+    logger.torch_save(itr=epoch)
+    if args.task not in isaac_gym_map.keys():
+        logger.save_state({"Normalizer": env.obs_rms}, itr=epoch)
+```
+
+Also write a final ``torch_save`` / ``save_state`` for ``epochs - 1`` after the
+training loop (belt-and-suspenders).
+
+- Defaults: ``save_model_freq=10``, **always** save last epoch
+- SpecRL CLI: ``--save-model-freq`` → ``args.save_model_freq``
+- Smoke: ``--total-steps 196608 --steps-per-epoch 65536`` (3 epochs) → expect
+  ``model0`` + ``model2`` and last ``state*.pkl`` with RMS ``count`` ≫ one-epoch
+  worker steps (~8k for 8 envs × T65536)

@@ -31,6 +31,33 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
+def _itr_from_name(name: str) -> int | None:
+    """Trailing digits in ``model99.pt`` / ``state10.pkl`` → 99 / 10."""
+    import re
+
+    m = re.search(r"(\d+)(?:\.[^.]+)?$", name)
+    return int(m.group(1)) if m else None
+
+
+def _list_ckpt_itrs(run_dir: str) -> tuple[list[int], list[int]]:
+    """Return sorted model / state iteration lists from a run dir."""
+    model_dir = os.path.join(run_dir, "torch_save")
+    model_itrs: list[int] = []
+    if os.path.isdir(model_dir):
+        for m in os.listdir(model_dir):
+            if m.endswith(".pt"):
+                itr = _itr_from_name(m)
+                if itr is not None:
+                    model_itrs.append(itr)
+    state_itrs: list[int] = []
+    for p in os.listdir(run_dir):
+        if p.endswith(".pkl"):
+            itr = _itr_from_name(p)
+            if itr is not None:
+                state_itrs.append(itr)
+    return sorted(model_itrs), sorted(state_itrs)
+
+
 def _inspect_pkl(norm_path: str) -> dict[str, Any]:
     """Load joblib Normalizer blob; return RMS summary fields."""
     import joblib
@@ -234,7 +261,38 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  actor_lr={config.get('actor_lr')}  lr_end_factor={config.get('lr_end_factor')}")
     print(f"  target_kl={config.get('target_kl')}  clip_ratio={config.get('clip_ratio')}")
 
-    print("\n[2] Normalizer *.pkl")
+    total_steps = int(config.get("total_steps") or 0)
+    steps_per_epoch = int(config.get("steps_per_epoch") or 0)
+    num_envs = int(config.get("num_envs") or 1)
+    expected_epochs = (
+        total_steps // steps_per_epoch if steps_per_epoch > 0 else 0
+    )
+    expected_last = max(expected_epochs - 1, 0)
+    model_itrs, state_itrs = _list_ckpt_itrs(run_dir)
+    max_model = max(model_itrs) if model_itrs else -1
+    max_state = max(state_itrs) if state_itrs else -1
+    max_ckpt = max(max_model, max_state)
+    # One epoch of local worker steps ≈ steps_per_epoch / num_envs (async RMS)
+    min_rms_count = (
+        float(steps_per_epoch) / float(max(num_envs, 1)) if steps_per_epoch > 0 else 0.0
+    )
+
+    print("\n[2] Checkpoint cadence")
+    print(f"  expected_epochs={expected_epochs} (last itr={expected_last})")
+    print(f"  model*.pt itrs={model_itrs}")
+    print(f"  state*.pkl itrs={state_itrs}")
+    if expected_epochs > 1 and max_ckpt >= 0 and max_ckpt < expected_last * 0.5:
+        print(
+            f"  WARN: max ckpt itr={max_ckpt} << expected last={expected_last} — "
+            "likely %100-only save; final weights may be missing (retrain after cadence fix)."
+        )
+    elif expected_epochs > 1 and max_ckpt >= 0 and max_ckpt < expected_last:
+        print(
+            f"  WARN: max ckpt itr={max_ckpt} < expected last={expected_last} — "
+            "end-of-run save may be missing."
+        )
+
+    print("\n[3] Normalizer *.pkl")
     if norm_path is None or not os.path.isfile(norm_path):
         print("  FAIL: no *.pkl in run dir — eval without frozen RMS is invalid for this diag.")
         print("  Fix train save path / re-run with Normalizer export before trusting eval.")
@@ -251,11 +309,16 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  obs_dim={rms['obs_dim']}")
     if not np.isfinite(rms["count"]) or rms["count"] < 1.0:
         print("  WARN: RMS count looks empty/tiny — strong transfer-bug signal.")
+    elif min_rms_count > 0 and rms["count"] < min_rms_count * 0.9:
+        print(
+            f"  WARN: RMS count={rms['count']:.0f} << one-epoch local steps "
+            f"~{min_rms_count:.0f} (steps_per_epoch/num_envs) — stale epoch-0 normalizer?"
+        )
 
-    print("\n[3] Checkpoint")
+    print("\n[4] Checkpoint file")
     print(f"  model={model_path}")
 
-    print("\n[4] Eval side-by-side (same seed start, N episodes each)")
+    print("\n[5] Eval side-by-side (same seed start, N episodes each)")
     print(f"  episodes={args.eval_episodes}  device={args.device}  seed={args.seed}")
 
     m_det = _rollout_metrics(
@@ -276,9 +339,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     _print_metrics("deterministic=False", m_sto)
 
-    print("\n[5] How to read")
-    print("  Train last EpRet~0.65 / EpCost~0.35 / EpLen~267 on 07-52-51.")
-    print("  If both modes reward~0: train EpRet not transferring (norm/pipeline).")
+    print("\n[6] How to read")
+    print("  Root cause class: ckpt cadence (%100) → only model0/state0 on short runs.")
+    print("  Train last EpRet~0.65 on 07-52-51 was live+unsaved; cannot recover — retrain.")
+    print("  If both modes reward~0 + max ckpt<<epochs: weights never on disk.")
     print("  Det wall-death (ep~300,cost~0.9) vs stoch timeout (ep~975,cost~0): known.")
     print("  Tiny mean |a|: possible std collapse / dead actor.")
     print("=" * 60)

@@ -77,6 +77,12 @@ def build_parser(default_algo: str) -> argparse.ArgumentParser:
         help="MLP hidden sizes (default: 64 64)",
     )
     p.add_argument("--lr_end_factor", type=float, default=_CFG.lr_end_factor)
+    p.add_argument(
+        "--save-model-freq",
+        type=int,
+        default=_CFG.save_model_freq,
+        help="Checkpoint every N epochs (default 10); always also saves epoch 0 and last",
+    )
 
     # Lag
     p.add_argument(
@@ -141,6 +147,7 @@ def main(default_algo: str = "ppo") -> None:
         max_grad_norm=args.max_grad_norm,
         hidden_sizes=list(args.hidden_sizes),
         lr_end_factor=args.lr_end_factor,
+        save_model_freq=args.save_model_freq,
         lagrangian_multiplier_init=args.lagrangian_multiplier_init,
         lagrangian_multiplier_lr=args.lagrangian_multiplier_lr,
         write_terminal=args.write_terminal,

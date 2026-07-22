@@ -18,10 +18,24 @@ import numpy as np
 import torch
 
 
+def _itr_from_name(name: str) -> int | None:
+    """Trailing digits in ``model99.pt`` / ``state10.pkl`` → 99 / 10."""
+    import re
+
+    m = re.search(r"(\d+)(?:\.[^.]+)?$", name)
+    return int(m.group(1)) if m else None
+
+
 def _latest(paths: list[str]) -> str:
+    """Pick max numeric iteration (``model100`` > ``model99``), not string sort."""
     if not paths:
         raise FileNotFoundError("No matching checkpoint files")
-    return sorted(paths)[-1]
+
+    def _key(name: str) -> tuple[int, str]:
+        itr = _itr_from_name(name)
+        return (itr if itr is not None else -1, name)
+
+    return max(paths, key=_key)
 
 
 def _load_run_artifacts(run_dir: str) -> tuple[dict[str, Any], str, str | None]:

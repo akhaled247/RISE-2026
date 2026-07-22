@@ -41,7 +41,7 @@ class SafePOTrainConfig:
     experiment: str = "specrlbench"
     use_eval: bool = False
     eval_episodes: int = 10
-    save_freq_epochs: int = 50
+    save_model_freq: int = 10  # epochs; SafePO also always saves last epoch
     # RND
     rnd_coef: float = 0.5
 
