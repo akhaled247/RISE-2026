@@ -76,6 +76,7 @@ def build_parser(default_algo: str) -> argparse.ArgumentParser:
         default=list(_CFG.hidden_sizes),
         help="MLP hidden sizes (default: 64 64)",
     )
+    p.add_argument("--lr_end_factor", type=float, default=_CFG.lr_end_factor)
 
     # Lag
     p.add_argument(
@@ -139,6 +140,7 @@ def main(default_algo: str = "ppo") -> None:
         clip_ratio=args.clip_ratio,
         max_grad_norm=args.max_grad_norm,
         hidden_sizes=list(args.hidden_sizes),
+        lr_end_factor=args.lr_end_factor,
         lagrangian_multiplier_init=args.lagrangian_multiplier_init,
         lagrangian_multiplier_lr=args.lagrangian_multiplier_lr,
         write_terminal=args.write_terminal,

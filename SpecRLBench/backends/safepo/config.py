@@ -28,6 +28,7 @@ class SafePOTrainConfig:
     actor_lr: float = 5e-5
     critic_lr: float = 1e-3
     clip_ratio: float = 0.2
+    lr_end_factor: float = 1.0
     # Constrained
     cost_limit: float = 0.0
     lagrangian_multiplier_init: float = 1.0
