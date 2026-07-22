@@ -33,13 +33,20 @@ def make_specrlbench_sa_env(
     *,
     training: bool = True,
     parallel: bool = True,
+    render_mode: str | None = None,
 ):
     """Return ``(env, obs_space, act_space)`` matching SafePO's SA contract.
 
     ``training=False`` freezes obs RMS updates (eval / post-train load).
     ``parallel=True`` (default) uses SafetyAsyncVectorEnv when ``num_envs > 1``.
+    ``render_mode='human'`` requires ``num_envs=1`` (GUI cannot run in vec workers).
     """
     from envs.cmdp.factory import make_cmdp_env, make_cmdp_vec
+
+    if render_mode == "human" and num_envs > 1:
+        raise ValueError(
+            "render_mode='human' requires num_envs=1; use eval with a single env"
+        )
 
     if num_envs > 1:
         env = make_cmdp_vec(
@@ -49,13 +56,18 @@ def make_specrlbench_sa_env(
             training=training,
             seed=seed,
             parallel=parallel,
+            render_mode=render_mode,
         )
         obs_space = env.single_observation_space
         act_space = env.single_action_space
         return env, obs_space, act_space
 
     env = make_cmdp_env(
-        env_id, normalize_obs=True, autoreset=True, training=training
+        env_id,
+        normalize_obs=True,
+        autoreset=True,
+        training=training,
+        render_mode=render_mode,
     )
     if seed is not None:
         env.reset(seed=seed)

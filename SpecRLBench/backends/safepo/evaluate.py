@@ -80,6 +80,7 @@ def eval_single_run(
     *,
     device: str = "cpu",
     seed: int | None = 0,
+    render_mode: str | None = None,
 ) -> dict[str, float]:
     """Evaluate one SafePO seed folder. Returns metric dict.
 
@@ -87,6 +88,9 @@ def eval_single_run(
     the eval env with that seed, then each episode uses ``reset(seed=ep_seed)``
     with ``ep_seed`` starting at ``seed`` (WC layout only honors ``reset(seed=)``;
     see ``SEEDING.md``).
+
+    Pass ``render_mode='human'`` to open a live MuJoCo window during rollouts
+    (requires a local display; eval always uses ``num_envs=1``).
     """
     from backends.safepo.env_hook import (
         is_specrlbench_env,
@@ -123,7 +127,7 @@ def eval_single_run(
 
     # Always eval with 1 env, frozen RMS updates.
     eval_env, obs_space, act_space = make_specrlbench_sa_env(
-        1, str(env_id), seed=seed, training=False
+        1, str(env_id), seed=seed, training=False, render_mode=render_mode
     )
 
     if norm_path is not None and os.path.isfile(norm_path):
@@ -257,6 +261,7 @@ def benchmark_eval(
     save_dir: str | None = None,
     device: str = "cpu",
     seed: int = 0,
+    render_mode: str | None = None,
 ) -> list[dict[str, Any]]:
     if bool(benchmark_dir) == bool(run_dir):
         raise ValueError("Pass exactly one of --benchmark-dir or --run-dir")
@@ -265,7 +270,11 @@ def benchmark_eval(
 
     if run_dir is not None:
         metrics = eval_single_run(
-            run_dir, eval_episodes=eval_episodes, device=device, seed=seed
+            run_dir,
+            eval_episodes=eval_episodes,
+            device=device,
+            seed=seed,
+            render_mode=render_mode,
         )
         # Infer env/algo from path: .../task/algo/seed-...
         parts = Path(run_dir).resolve().parts
@@ -310,7 +319,11 @@ def benchmark_eval(
         last_metrics: dict[str, float] | None = None
         for path in paths:
             metrics = eval_single_run(
-                path, eval_episodes=eval_episodes, device=device, seed=seed
+                path,
+                eval_episodes=eval_episodes,
+                device=device,
+                seed=seed,
+                render_mode=render_mode,
             )
             last_metrics = metrics
             rewards.append(metrics["mean_reward"])
@@ -341,7 +354,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Example: python eval_safepo_env.py "
             "--run-dir ./_training_logs/safepo/PointLTL4MASAR1WC-v0/ppo/seed-000-... "
-            "--eval-episodes 50"
+            "--eval-episodes 50\n"
+            "Watch live: add --render-mode human (local display required)"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -361,6 +375,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--save-dir", type=str, default=None)
     p.add_argument("--device", type=str, default="cpu")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument(
+        "--render-mode",
+        type=str,
+        default=None,
+        help="Gymnasium render mode, e.g. human (live window) or rgb_array",
+    )
     return p
 
 
@@ -373,6 +393,7 @@ def main(argv: list[str] | None = None) -> None:
         save_dir=args.save_dir,
         device=args.device,
         seed=args.seed,
+        render_mode=args.render_mode,
     )
 
 
