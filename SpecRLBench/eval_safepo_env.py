@@ -1,15 +1,20 @@
 """Evaluate SafePO SpecRLBench checkpoints (post-train).
 
 Examples:
-  python SpecRLBench/eval_safepo_env.py --run-dir SpecRLBench/_training_logs/safepo/PointLTL4MASAR1WC-v0/ppo/seed-000-2026-07-21-19-59-19 --eval-episodes 50
-  python SpecRLBench/eval_safepo_env.py --run-dir ... --eval-episodes 5 --render-mode human
+  python SpecRLBench/eval_safepo_env.py --run-dir SpecRLBench/_training_logs/safepo/PointLTL5MASAR1WC-v0/ppo/seed-000-2026-07-22-07-59-09 --eval-episodes 50
   python SpecRLBench/eval_safepo_env.py --benchmark-dir SpecRLBench/_training_logs/safepo --eval-episodes 50
 """
-
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+
+"""
+    python ~/RISE-2026/SpecRLBench/eval_safepo_env.py --run-dir \
+    ~/RISE-2026/SpecRLBench/_training_logs/safepo/PointLTL4MASAR1-v0/ppo/seed-000-2026-07-22-09-49-51 \
+    --eval-episodes 50
+"""
+
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
