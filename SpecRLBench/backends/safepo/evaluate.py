@@ -267,6 +267,11 @@ def _format_line(env: str, algo: str, metrics: dict[str, float], n: int) -> str:
     )
 
 
+def _print_eval_path(run_dir: str) -> None:
+    """Stdout machine line so pasted evals carry the evaluated seed folder."""
+    print(f"EVAL_PATH={os.path.abspath(run_dir)}", flush=True)
+
+
 def benchmark_eval(
     *,
     benchmark_dir: str | None = None,
@@ -295,6 +300,7 @@ def benchmark_eval(
         algo = parts[-2] if len(parts) >= 2 else "unknown"
         env = parts[-3] if len(parts) >= 3 else "unknown"
         line = _format_line(env, algo, metrics, eval_episodes)
+        _print_eval_path(run_dir)
         print(line.strip())
         results.append({"env": env, "algo": algo, "run_dir": run_dir, **metrics})
         if save_dir is None:
@@ -339,6 +345,7 @@ def benchmark_eval(
                 seed=seed,
                 render_mode=render_mode,
             )
+            _print_eval_path(path)
             last_metrics = metrics
             rewards.append(metrics["mean_reward"])
             costs.append(metrics["mean_cost"])
@@ -354,6 +361,7 @@ def benchmark_eval(
             "std_ep_len": last_metrics["std_ep_len"],
             "rescue_rate": float(np.mean(rescues)),
         }
+        # Aggregate summary only — no fake EVAL_PATH for the group.
         line = _format_line(env, algo, agg, eval_episodes)
         print(line.strip() + f", saved in {save_dir}/eval_result.txt")
         with open(os.path.join(save_dir, "eval_result.txt"), "a", encoding="utf-8") as f:
@@ -369,6 +377,10 @@ def build_parser() -> argparse.ArgumentParser:
             "Example: python eval_safepo_env.py "
             "--run-dir ./_training_logs/safepo/PointLTL4MASAR1WC-v0/ppo/seed-000-... "
             "--eval-episodes 50\n"
+            "Stdout (pasteable):\n"
+            "  EVAL_PATH=/abs/.../seed-000-...\n"
+            "  After 50 episodes evaluation, the ppo in PointLTL… "
+            "reward: …, cost: …, ep_len: …, rescue: …%\n"
             "Watch live: add --render-mode human (local display required)"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
