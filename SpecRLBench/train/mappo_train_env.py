@@ -1,7 +1,7 @@
 """Train MAPPO via SafePO multi_agent on SpecRLBench MASAR tasks.
 
   python train/mappo_train_env.py --task PointLTL0MASAR2-v0 --seed 0 \\
-      --total-steps 400000 --num-envs 8 --device cuda
+      --total-steps 400000 --num-envs 8 --device cuda --device-id 1
 """
 
 from __future__ import annotations

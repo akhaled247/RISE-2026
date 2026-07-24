@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import multiprocessing as mp
 import os
 import sys
 import time
@@ -17,6 +18,19 @@ _SAFEPO_MA_MODULES = {
     "ippo": "safepo.multi_agent.ippo",
     "ippo_lag": "safepo.multi_agent.ippo_lag",
 }
+
+
+def _ensure_mp_spawn_before_cuda() -> None:
+    """Linux default fork + parent CUDA → 'Cannot re-initialize CUDA in forked subprocess'.
+
+    Set spawn while start method still unset. ShareSubprocVecEnv also uses spawn context.
+    """
+    if mp.get_start_method(allow_none=True) is not None:
+        return
+    try:
+        mp.set_start_method("spawn")
+    except RuntimeError:
+        pass
 
 
 def train_with_safepo_ma(
@@ -43,7 +57,9 @@ def train_with_safepo_ma(
     from backends.safepo.paths import ensure_specrlbench_paths
     from backends.safepo.registry import MA_ALGO_MODULE, resolve_ma_algo
 
+    # PYTHONPATH for spawn workers, then spawn before any CUDA init.
     ensure_specrlbench_paths()
+    _ensure_mp_spawn_before_cuda()
     patch_safepo_ma_env_factory()
 
     algo_key = resolve_ma_algo(algo)

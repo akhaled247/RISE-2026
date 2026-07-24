@@ -209,12 +209,28 @@ def unpatch_safepo_env_factory() -> None:
 
 def make_specrlbench_ma_multi_goal_env(task: str, seed: int, cfg_train: dict):
     """Share* vec over SpecRLMultiGoalEnv (SafePO MultiGoal throughput path)."""
-    from backends.safepo.ma_factory import SpecRLMultiGoalEnv
+    from pathlib import Path
+
+    from backends.safepo.paths import ensure_specrlbench_paths
     from safepo.common.wrappers import ShareDummyVecEnv, ShareSubprocVecEnv
+
+    # Bake absolute roots into closures so spawn workers can bootstrap sys.path
+    # before importing backends (parent sys.path is not inherited).
+    ensure_specrlbench_paths()
+    specrl_root = str(Path(__file__).resolve().parents[2])
+    sg_root = str(Path(specrl_root) / "specbench" / "envs" / "zones" / "safety-gymnasium")
+    safepo_root = str(Path(specrl_root).parent / "Safe-Policy-Optimization")
 
     def get_env_fn(rank: int):
         def init_env():
-            return SpecRLMultiGoalEnv(task=task, seed=int(seed) + rank * 1000)
+            import sys
+
+            for p in (specrl_root, sg_root, safepo_root):
+                if p not in sys.path:
+                    sys.path.insert(0, p)
+            from backends.safepo.ma_factory import SpecRLMultiGoalEnv as _Env
+
+            return _Env(task=task, seed=int(seed) + rank * 1000)
 
         return init_env
 
@@ -222,7 +238,8 @@ def make_specrlbench_ma_multi_goal_env(task: str, seed: int, cfg_train: dict):
     device = cfg_train.get("device", "cpu")
     if n_threads == 1:
         return ShareDummyVecEnv([get_env_fn(0)], device)
-    return ShareSubprocVecEnv([get_env_fn(i) for i in range(n_threads)])
+    # Pass device so parent stacks obs on CUDA; IPC stays CPU inside ShareSubprocVecEnv.
+    return ShareSubprocVecEnv([get_env_fn(i) for i in range(n_threads)], device)
 
 
 def patch_safepo_ma_env_factory() -> None:
