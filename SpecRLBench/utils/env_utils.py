@@ -14,14 +14,19 @@ def make_env(env_name, render_mode=None, sb3=False):
         from specbench.envs.zones.safety_gym_wrapper_ma import SafetyGymWrapperMA
         from specbench.envs.zones.safety_gym_wrapper_ma_sar import SafetyGymWrapperMASAR
         from specbench.envs.zones.safety_gym_wrapper_ma_sar_wc import SafetyGymWrapperMASARWC
+        from specbench.envs.zones.safety_gym_wrapper_ma_sar_ac import SafetyGymWrapperMASARAC
         from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
         import safety_gymnasium
         if 'WC' in env_name:
             env = safety_gymnasium.make(env_name.replace("WC", ""), disable_env_checker=True, render_mode=render_mode)
+        if 'AC' in env_name:
+                    env = safety_gymnasium.make(env_name.replace("AC", ""), disable_env_checker=True, render_mode=render_mode)
         else:
             env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
         if "SAR" in env_name:
-            if 'WC' in env_name:
+            if 'AC' in env_name:
+                env = SafetyGymWrapperMASARAC(env, sb3=sb3)
+            elif 'WC' in env_name:
                 env = SafetyGymWrapperMASARWC(env, sb3=sb3)
             else:
                 env = SafetyGymWrapperMASAR(env, sb3=sb3)

@@ -23,12 +23,6 @@ class SafetyGymWrapperMASARWC(SafetyGymWrapperMASAR):
                     terminated[a] = True
             except Exception as e:
                   pass
-            try:
-                if info[a].get("cost_collision") > 0:
-                    info["cost"] += 1
-                    terminated[a] = True
-            except Exception as e:
-                pass
         return obs, reward, terminated, truncated, info
 
     def reset(self, *, seed=None, options=None):
