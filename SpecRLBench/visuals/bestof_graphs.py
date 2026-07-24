@@ -38,7 +38,7 @@ data = {
     },
     "PointLTL6MASAR1WC": {
             "Vanilla PPO": 42.0,
-            "PPO Lagrangian": np.nan,
+            "PPO Lagrangian": 36.0,
             "Vanilla TRPO": np.nan,
             "TRPO Lagrangian": np.nan,
         },
