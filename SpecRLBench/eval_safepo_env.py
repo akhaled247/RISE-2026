@@ -16,7 +16,7 @@ from pathlib import Path
 
 """
     python ~/RISE-2026/SpecRLBench/eval_safepo_env.py --run-dir \
-    ~/RISE-2026/SpecRLBench/_training_logs/safepo/PointLTL5MASAR1WC-v0/trpo/seed-000-2026-07-24-07-44-15 \
+    ~/RISE-2026/SpecRLBench/_training_logs/safepo/PointLTL5MASAR1WC-v0/ppo_lag/seed-000-2026-07-24-09-32-50 \
     --eval-episodes 50
 """
 

@@ -2,10 +2,6 @@
 
 CLI tip: pass all flags on one line, or continue lines with ``\\``. A bare
 newline before ``--device`` makes the shell run ``--device`` as a command.
-
-Hyperparams default from ``SafePOTrainConfig`` (Phase 8). SafePO stock
-``default_cfg`` / Adam LRs are patched in ``runners``; Linux clone must read
-``args.actor_lr`` / ``args.critic_lr`` / ``args.lam`` (see AI Vault #31).
 """
 
 from __future__ import annotations

@@ -11,7 +11,6 @@ import sys
 _MSG = (
     "SAC-Lag is deferred post-SafePO migration (SafePO SA has no SAC). "
     "Use train/ppo_lag_train_env.py. "
-    "See AI Vault [[SpecRLBench SafePO Migration Plan]] Phase 8."
 )
 
 if __name__ == "__main__":
