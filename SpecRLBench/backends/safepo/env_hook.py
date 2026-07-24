@@ -11,6 +11,8 @@ from typing import Any
 
 _PATCHED = False
 _ORIGINAL_MAKE = None
+_MA_PATCHED = False
+_ORIGINAL_MA_MAKE = None
 _PARALLEL = True  # set by runners / set_parallel before SafePO main()
 _RND_STATE: tuple[Any, str, int, int] | None = None  # config, device, steps_per_epoch, num_envs
 
@@ -203,3 +205,55 @@ def unpatch_safepo_env_factory() -> None:
     safepo_env.make_sa_mujoco_env = _ORIGINAL_MAKE
     _PATCHED = False
     _ORIGINAL_MAKE = None
+
+
+def make_specrlbench_ma_multi_goal_env(task: str, seed: int, cfg_train: dict):
+    """Share* vec over SpecRLMultiGoalEnv (SafePO MultiGoal throughput path)."""
+    from backends.safepo.ma_factory import SpecRLMultiGoalEnv
+    from safepo.common.wrappers import ShareDummyVecEnv, ShareSubprocVecEnv
+
+    def get_env_fn(rank: int):
+        def init_env():
+            return SpecRLMultiGoalEnv(task=task, seed=int(seed) + rank * 1000)
+
+        return init_env
+
+    n_threads = int(cfg_train.get("n_rollout_threads", 1))
+    device = cfg_train.get("device", "cpu")
+    if n_threads == 1:
+        return ShareDummyVecEnv([get_env_fn(0)], device)
+    return ShareSubprocVecEnv([get_env_fn(i) for i in range(n_threads)])
+
+
+def patch_safepo_ma_env_factory() -> None:
+    """Idempotent monkey-patch of ``safepo.common.env.make_ma_multi_goal_env``."""
+    global _MA_PATCHED, _ORIGINAL_MA_MAKE
+    if _MA_PATCHED:
+        return
+
+    from backends.safepo.paths import ensure_specrlbench_paths
+
+    ensure_specrlbench_paths()
+    import safepo.common.env as safepo_env
+
+    _ORIGINAL_MA_MAKE = safepo_env.make_ma_multi_goal_env
+
+    @functools.wraps(_ORIGINAL_MA_MAKE)
+    def _patched(task: str, seed: int, cfg_train: dict):
+        if is_specrlbench_env(str(task)):
+            return make_specrlbench_ma_multi_goal_env(task, seed, cfg_train)
+        return _ORIGINAL_MA_MAKE(task, seed, cfg_train)
+
+    safepo_env.make_ma_multi_goal_env = _patched
+    _MA_PATCHED = True
+
+
+def unpatch_safepo_ma_env_factory() -> None:
+    global _MA_PATCHED, _ORIGINAL_MA_MAKE
+    if not _MA_PATCHED or _ORIGINAL_MA_MAKE is None:
+        return
+    import safepo.common.env as safepo_env
+
+    safepo_env.make_ma_multi_goal_env = _ORIGINAL_MA_MAKE
+    _MA_PATCHED = False
+    _ORIGINAL_MA_MAKE = None

@@ -7,4 +7,6 @@ debug_msg.txt
 .venv-safepo
 Safe-Policy-Optimization
 .cursor
-safepo*
+# Root-level SafePO run dumps (not SpecRLBench/backends/safepo/)
+/safepo_*
+/safepo/

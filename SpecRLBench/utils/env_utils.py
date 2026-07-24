@@ -17,16 +17,21 @@ def make_env(env_name, render_mode=None, sb3=False):
         from specbench.envs.zones.safety_gym_wrapper_ma_sar_ac import SafetyGymWrapperMASARAC
         from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
         import safety_gymnasium
-        if 'WC' in env_name:
-            env = safety_gymnasium.make(env_name.replace("WC", ""), disable_env_checker=True, render_mode=render_mode)
-        if 'AC' in env_name:
-                    env = safety_gymnasium.make(env_name.replace("AC", ""), disable_env_checker=True, render_mode=render_mode)
+
+        # AC takes precedence over WC when both substrings appear (AC IDs contain neither WC).
+        if "AC" in env_name:
+            base = env_name.replace("AC", "")
+        elif "WC" in env_name:
+            base = env_name.replace("WC", "")
         else:
-            env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
+            base = env_name
+        env = safety_gymnasium.make(
+            base, disable_env_checker=True, render_mode=render_mode
+        )
         if "SAR" in env_name:
-            if 'AC' in env_name:
+            if "AC" in env_name:
                 env = SafetyGymWrapperMASARAC(env, sb3=sb3)
-            elif 'WC' in env_name:
+            elif "WC" in env_name:
                 env = SafetyGymWrapperMASARWC(env, sb3=sb3)
             else:
                 env = SafetyGymWrapperMASAR(env, sb3=sb3)

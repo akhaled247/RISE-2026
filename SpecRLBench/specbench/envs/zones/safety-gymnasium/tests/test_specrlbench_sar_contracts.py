@@ -34,13 +34,12 @@ from utils.env_utils import make_env  # noqa: E402
 
 SAR_ENV_IDS = {
     'PointLTL0MASAR1-v0': 'MultiGoalSARLevel0',
-    'PointLTL1MASAR1-v0': 'MultiGoalSARLevel4',
-    'PointLTL2MASAR1-v0': 'MultiGoalSARLevel5',
+    'PointLTL1MASAR1-v0': 'MultiGoalSARLevel1',
+    'PointLTL2MASAR1-v0': 'MultiGoalSARLevel2',
     'PointLTL0MASAR2-v0': 'MultiGoalSARLevel0',
     'PointLTL1MASAR2-v0': 'MultiGoalSARLevel1',
     'PointLTL2MASAR2-v0': 'MultiGoalSARLevel2',
     'PointLTL3MASAR2-v0': 'MultiGoalSARLevel3',
-    'PointLTL3MASAR5-v0': 'MultiGoalSARLevel3',
 }
 
 

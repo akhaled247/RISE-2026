@@ -185,11 +185,49 @@ class MultiGoalSARLevel0(BaseTask):
 
     def specific_step(self):
         self._sync_entered_building_state()
+        self._sync_rescued_casualty_state()
+
+    def _casualty_geoms(self):
+        geoms = []
+        if hasattr(self, 'surface_casualtys'):
+            geoms.append(self.surface_casualtys)
+        if hasattr(self, 'entrapped_casualtys'):
+            geoms.append(self.entrapped_casualtys)
+        return geoms
+
+    def _sync_rescued_casualty_state(self) -> None:
+        """Hide rescued casualties: alpha=0 + lidar suppress (mirror buildings)."""
+        if not hasattr(self, 'model') or self.model is None:
+            return
+        suppressed = set(getattr(self, '_lidar_suppressed_geom_ids', set()))
+        for geom in self._casualty_geoms():
+            rescued = getattr(geom, 'rescued', None)
+            if rescued is None:
+                continue
+            for row, is_rescued in enumerate(rescued):
+                geom_id = self._obstacle_geom_id_for_instance(geom, row)
+                if geom_id is None:
+                    continue
+                if is_rescued:
+                    suppressed.add(geom_id)
+                    self.model.geom_rgba[geom_id][-1] = 0.0
+                else:
+                    suppressed.discard(geom_id)
+                    self.model.geom_rgba[geom_id][-1] = float(geom.alpha)
+        self._lidar_suppressed_geom_ids = suppressed
+
+    def _rescued_casualty_rows(self, obstacle) -> frozenset[int]:
+        rescued = getattr(obstacle, 'rescued', None)
+        if rescued is None:
+            return frozenset()
+        return frozenset(i for i, flag in enumerate(rescued) if flag)
 
     def _sync_entered_building_state(self) -> None:
         """Sticky-hide entered building shells for the rest of the episode."""
         buildings = building_geom(self)
         if buildings is None or not hasattr(self, 'model') or self.model is None:
+            # Still refresh casualty hide when no buildings
+            self._sync_rescued_casualty_state()
             return
 
         for agent_idx in range(self.agent_num):
@@ -213,6 +251,9 @@ class MultiGoalSARLevel0(BaseTask):
                 self.model.geom_rgba[geom_id][-1] = 0.0
             else:
                 self.model.geom_rgba[geom_id][-1] = buildings.alpha
+
+        # Merge rescued casualty suppression after buildings
+        self._sync_rescued_casualty_state()
 
     def update_world(self):
         pass
@@ -330,6 +371,10 @@ class MultiGoalSARLevel0(BaseTask):
                         )
                 elif obstacle.name.endswith('_buildings'):
                     skip_rows = frozenset(self._buildings_entered)
+                    for i in range(self.agent_num):
+                        self.try_lidar_ids(obstacle, obs, i, skip_instance_rows=skip_rows)
+                elif 'casualtys' in obstacle.name:
+                    skip_rows = self._rescued_casualty_rows(obstacle)
                     for i in range(self.agent_num):
                         self.try_lidar_ids(obstacle, obs, i, skip_instance_rows=skip_rows)
                 else:

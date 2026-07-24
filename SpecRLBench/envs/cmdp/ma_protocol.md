@@ -1,16 +1,18 @@
-# Future multi-agent SafePO adapter protocol (stub — no training in this migration).
+# SpecRLBench multi-agent SafePO adapter protocol
 #
 # SafePO MultiGoalEnv / ShareEnv expect:
 #   reset → (obs_n, share_obs_n, avail_actions)
 #   step(actions) → (obs, share_obs, rewards, costs, dones, infos, avail_actions)
 #
-# SpecRLBench native path: make_env(..., sb3=False) keeps per-agent Dict
-# obs/reward/cost from SafetyGymWrapperMASAR(WC).
+# SpecRLBench path: `backends.safepo.ma_factory.SpecRLMultiGoalEnv` wraps
+# `utils.env_utils.make_env(..., sb3=False)` → SafetyGymWrapperMASAR / WC / AC.
 #
-# When implementing MAPPO-Lag / MACPO:
-# 1. Build MultiGoalEnv-shaped wrapper over SafetyGymWrapperMASARWC(sb3=False).
-# 2. Map per-agent cost_walls (or info cost) into SafePO costs[agent].
-# 3. Do not flatten to a single SB3 agent.
+# Wiring:
+# 1. `env_hook.patch_safepo_ma_env_factory()` redirects
+#    `safepo.common.env.make_ma_multi_goal_env` for Point/Car/AntLTL* tasks to
+#    ShareDummyVecEnv / ShareSubprocVecEnv over SpecRLMultiGoalEnv.
+# 2. Per-agent costs from `cost_walls` / `cost_collision` (gremlins = agent stand-ins).
+# 3. Do not use `sb3=True` flatten for true MA training.
 #
 # See: safepo.common.wrappers.MultiGoalEnv
 # See: backends/safepo/ma_factory.py

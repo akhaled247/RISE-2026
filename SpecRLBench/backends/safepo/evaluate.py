@@ -77,6 +77,69 @@ def _rescued_from_info(info: dict[str, Any]) -> bool:
     )
 
 
+def _casualty_rescued_flags(env: Any) -> list[bool]:
+    """Per-casualty rescued flags from SAR task (empty if unavailable)."""
+    try:
+        task = env.unwrapped.task
+    except Exception:
+        return []
+    if hasattr(task, "_casualtys_rescued"):
+        return [bool(x) for x in task._casualtys_rescued()]
+    flags: list[bool] = []
+    for name in ("surface_casualtys", "entrapped_casualtys"):
+        geom = getattr(task, name, None)
+        if geom is not None and hasattr(geom, "rescued"):
+            flags.extend(bool(x) for x in geom.rescued)
+    return flags
+
+
+def _classify_fail(
+    *,
+    success: bool,
+    saw_walls: bool,
+    saw_collision: bool,
+    truncated: bool,
+) -> str | None:
+    """Return fail label for unsuccessful eps; wall beats timeout."""
+    if success:
+        return None
+    if saw_walls:
+        return "cost_walls"
+    if saw_collision:
+        return "cost_collision"
+    if truncated:
+        return "timeout"
+    return "other"
+
+
+def _format_rescue_rates(
+    *,
+    casualty_num: int,
+    full: int,
+    partial: int,
+    none: int,
+    total_rescues: int,
+    episodes: int,
+) -> str:
+    n = max(1, casualty_num)
+    denom = float(episodes)
+    x = 100.0 * full / denom
+    y = 100.0 * partial / denom
+    z = 100.0 * none / denom
+    a = 100.0 * total_rescues / float(max(1, episodes * n))
+    return (
+        f"rescue rates: {n}/{n} = {x:.1f}%  1/{n} = {y:.1f}%  0/{n} = {z:.1f}%\n"
+        f"average rescue rate: {a:.1f}%"
+    )
+
+
+def _write_eval_summary(run_dir: str, payload: dict[str, Any]) -> str:
+    path = os.path.join(os.path.abspath(run_dir), "eval_summary.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    return path
+
+
 def _seed_everything(seed: int) -> None:
     """Seed Python / NumPy / Torch for eval (see backends/safepo/SEEDING.md)."""
     import random
@@ -125,9 +188,18 @@ def eval_single_run(
     env_id = config.get("task") or config.get("env_name")
     if env_id is None:
         raise KeyError("config.json missing task/env_name")
-    if config.get("algorithm_name") in ("macpo", "mappo", "mappolag", "happo"):
+    algo_name = str(config.get("algorithm_name") or config.get("algo") or "")
+    if algo_name.lower().replace("-", "_") in (
+        "macpo",
+        "mappo",
+        "mappolag",
+        "mappo_lag",
+        "happo",
+        "ippo",
+        "ippo_lag",
+    ):
         raise NotImplementedError(
-            "Multi-agent SafePO eval is out of scope for this SpecRLBench path"
+            "Multi-agent run — use eval_safepo_ma_env.py / backends.safepo.evaluate_ma"
         )
     if not is_specrlbench_env(str(env_id)):
         raise ValueError(
@@ -171,6 +243,10 @@ def eval_single_run(
     cost_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
     len_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
     rescue_count = 0
+    full_count = partial_count = none_count = 0
+    total_casualty_rescues = 0
+    fail_walls = fail_collision = fail_timeout = fail_other = 0
+    casualty_num = 1
     ep_seed = seed if seed is not None else 0
 
     for _ in range(eval_episodes):
@@ -179,6 +255,11 @@ def eval_single_run(
         eval_obs = torch.as_tensor(eval_obs, dtype=torch.float32, device=device_t)
         eval_rew, eval_cost, eval_len = 0.0, 0.0, 0.0
         rescued = _rescued_from_info(_info_dict(info0))
+        saw_walls = saw_collision = False
+        last_trunc = False
+        flags0 = _casualty_rescued_flags(eval_env)
+        if flags0:
+            casualty_num = len(flags0)
         while not eval_done:
             with torch.no_grad():
                 act, _, _, _ = model.step(eval_obs, deterministic=True)
@@ -192,17 +273,65 @@ def eval_single_run(
             c = float(np.asarray(cost).reshape(-1)[0])
             term = bool(np.asarray(terminated).reshape(-1)[0])
             trunc = bool(np.asarray(truncated).reshape(-1)[0])
+            last_trunc = trunc
             eval_rew += r
             eval_cost += c
             eval_len += 1
             info_d = _info_dict(info)
             if _rescued_from_info(info_d):
                 rescued = True
+            agent_infos = []
+            if isinstance(info, dict):
+                for k, v in info.items():
+                    if isinstance(k, str) and k.startswith("agent_") and isinstance(v, dict):
+                        agent_infos.append(v)
+                if not agent_infos:
+                    agent_infos = [info_d]
+            for ai in agent_infos:
+                if float(ai.get("cost_walls", 0) or 0) > 0:
+                    saw_walls = True
+                if float(ai.get("cost_collision", 0) or 0) > 0:
+                    saw_collision = True
+            if float(info_d.get("cost", 0) or 0) > 0 and (
+                "WC" in str(env_id) or "AC" in str(env_id)
+            ):
+                # Aggregate WC/AC cost without distinguishing channel → walls bucket
+                if not saw_collision:
+                    saw_walls = True
             eval_done = term or trunc
+        flags = _casualty_rescued_flags(eval_env)
+        if flags:
+            casualty_num = len(flags)
+            n_rescued = sum(flags)
+        else:
+            n_rescued = int(rescued)
+            casualty_num = max(casualty_num, 1)
+        total_casualty_rescues += n_rescued
+        if n_rescued >= casualty_num:
+            full_count += 1
+            rescued = True
+        elif n_rescued > 0:
+            partial_count += 1
+        else:
+            none_count += 1
+        fail = _classify_fail(
+            success=n_rescued >= casualty_num,
+            saw_walls=saw_walls,
+            saw_collision=saw_collision,
+            truncated=last_trunc and not rescued,
+        )
+        if fail == "cost_walls":
+            fail_walls += 1
+        elif fail == "cost_collision":
+            fail_collision += 1
+        elif fail == "timeout":
+            fail_timeout += 1
+        elif fail == "other":
+            fail_other += 1
         rew_deque.append(eval_rew)
         cost_deque.append(eval_cost)
         len_deque.append(eval_len)
-        if rescued:
+        if rescued or n_rescued >= casualty_num:
             rescue_count += 1
         ep_seed += 1
 
@@ -217,6 +346,17 @@ def eval_single_run(
         "std_ep_len": float(np.std(len_deque)),
         "rescue_rate": float(rescue_count) / float(eval_episodes),
         "eval_episodes": float(eval_episodes),
+        "casualty_num": float(casualty_num),
+        "rescue_full": float(full_count),
+        "rescue_partial": float(partial_count),
+        "rescue_none": float(none_count),
+        "average_rescue_rate": float(total_casualty_rescues)
+        / float(max(1, eval_episodes * casualty_num)),
+        "total_casualty_rescues": float(total_casualty_rescues),
+        "fail_cost_walls": float(fail_walls),
+        "fail_cost_collision": float(fail_collision),
+        "fail_timeout": float(fail_timeout),
+        "fail_other": float(fail_other),
     }
     return metrics
 
@@ -258,13 +398,32 @@ def _iter_run_dirs(benchmark_dir: str) -> list[tuple[str, str, str]]:
 
 
 def _format_line(env: str, algo: str, metrics: dict[str, float], n: int) -> str:
-    return (
+    line = (
         f"After {n} episodes evaluation, the {algo} in {env} "
         f"reward: {metrics['mean_reward']:.2f}±{metrics['std_reward']:.2f}, "
         f"cost: {metrics['mean_cost']:.2f}±{metrics['std_cost']:.2f}, "
         f"ep_len: {metrics['mean_ep_len']:.2f}±{metrics['std_ep_len']:.2f}, "
         f"rescue: {100 * metrics['rescue_rate']:.1f}%\n"
     )
+    if "casualty_num" in metrics:
+        line += (
+            _format_rescue_rates(
+                casualty_num=int(metrics["casualty_num"]),
+                full=int(metrics.get("rescue_full", 0)),
+                partial=int(metrics.get("rescue_partial", 0)),
+                none=int(metrics.get("rescue_none", 0)),
+                total_rescues=int(metrics.get("total_casualty_rescues", 0)),
+                episodes=n,
+            )
+            + "\n"
+        )
+        line += (
+            f"fail modes: walls={int(metrics.get('fail_cost_walls', 0))} "
+            f"collision={int(metrics.get('fail_cost_collision', 0))} "
+            f"timeout={int(metrics.get('fail_timeout', 0))} "
+            f"other={int(metrics.get('fail_other', 0))}\n"
+        )
+    return line
 
 
 def _print_eval_path(run_dir: str) -> None:
@@ -302,6 +461,14 @@ def benchmark_eval(
         line = _format_line(env, algo, metrics, eval_episodes)
         _print_eval_path(run_dir)
         print(line.strip())
+        summary = {
+            "EVAL_PATH": os.path.abspath(run_dir),
+            "env": env,
+            "algo": algo,
+            "eval_episodes": eval_episodes,
+            **metrics,
+        }
+        _write_eval_summary(run_dir, summary)
         results.append({"env": env, "algo": algo, "run_dir": run_dir, **metrics})
         if save_dir is None:
             # .../task/algo/seed → .../log_dir/results
@@ -374,7 +541,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="SpecRLBench SafePO post-train evaluation (SA)",
         epilog=(
-            "Example: python eval_safepo_env.py "
+            "Example: python eval_safepo_sa_env.py "
             "--run-dir ./_training_logs/safepo/PointLTL1MASAR1WC-v0/ppo/seed-000-... "
             "--eval-episodes 50\n"
             "Stdout (pasteable):\n"
