@@ -12,6 +12,7 @@ from typing import Any
 _PATCHED = False
 _ORIGINAL_MAKE = None
 _PARALLEL = True  # set by runners / set_parallel before SafePO main()
+_RND_STATE: tuple[Any, str, int, int] | None = None  # config, device, steps_per_epoch, num_envs
 
 SPECRL_PREFIXES = ("PointLTL", "CarLTL", "AntLTL")
 
@@ -24,6 +25,39 @@ def set_parallel(parallel: bool) -> None:
     """Control SafetyAsync vs Sync for SpecRL CMDP vec (SafePO factory has no kw)."""
     global _PARALLEL
     _PARALLEL = bool(parallel)
+
+
+def enable_rnd_wrapper(
+    config: Any,
+    device: str,
+    steps_per_epoch: int,
+    num_envs: int,
+) -> None:
+    """Wrap SpecRL CMDP envs with RISE-RND reward shaping (``train/ppo_rnd_train_env.py``)."""
+    global _RND_STATE
+    _RND_STATE = (config, device, steps_per_epoch, num_envs)
+
+
+def disable_rnd_wrapper() -> None:
+    global _RND_STATE
+    _RND_STATE = None
+
+
+def _maybe_wrap_rnd(env: Any, num_envs: int) -> Any:
+    if _RND_STATE is None:
+        return env
+    from rise_rnd.wrapper import SafetyRNDWrapper
+
+    config, device, steps_per_epoch, n_envs_cfg = _RND_STATE
+    local_steps = max(1, steps_per_epoch // n_envs_cfg)
+    return SafetyRNDWrapper(
+        env,
+        config=config,
+        device=device,
+        local_steps_per_epoch=local_steps,
+        num_envs=num_envs,
+        training=True,
+    )
 
 
 def make_specrlbench_sa_env(
@@ -60,6 +94,7 @@ def make_specrlbench_sa_env(
         )
         obs_space = env.single_observation_space
         act_space = env.single_action_space
+        env = _maybe_wrap_rnd(env, num_envs)
         return env, obs_space, act_space
 
     env = make_cmdp_env(
@@ -75,6 +110,7 @@ def make_specrlbench_sa_env(
     act_space = env.action_space
     # SafePO single-env path uses SafeUnsqueeze — batch dim of 1
     env = _UnsqueezeSafetyEnv(env)
+    env = _maybe_wrap_rnd(env, 1)
     return env, obs_space, act_space
 
 

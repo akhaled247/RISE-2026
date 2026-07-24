@@ -43,8 +43,6 @@ class SafePOTrainConfig:
     use_eval: bool = False
     eval_episodes: int = 10
     save_model_freq: int = 10  # epochs; SafePO also always saves last epoch
-    # RND
-    rnd_coef: float = 0.5
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -56,5 +54,4 @@ ALGO_DEFAULTS: dict[str, dict[str, Any]] = {
     "ppo_lag": {},
     "trpo_lag": {"learning_iters": 1, "target_kl": 0.02},
     "cpo": {"learning_iters": 1, "target_kl": 0.01},
-    "rnd_ppo": {},
 }

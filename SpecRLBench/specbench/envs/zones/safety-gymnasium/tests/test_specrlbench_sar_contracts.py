@@ -2,7 +2,7 @@
 
 These tests pin public behavior before conservative refactors. They are not
 intended to prove policy quality; they guard registration, wrapper, reset, and
-SB3 integration surfaces that later cleanup must preserve.
+env integration surfaces that later cleanup must preserve.
 """
 
 from __future__ import annotations
@@ -30,7 +30,6 @@ from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (  # noqa: E
 )
 
 from utils.env_utils import make_env  # noqa: E402
-from utils.env_utils_sb3 import make_vec  # noqa: E402
 
 
 SAR_ENV_IDS = {
@@ -362,31 +361,3 @@ def test_wrapper_keeps_entrapped_lidar_when_building_sticky_entered():
             )
     finally:
         env.close()
-
-
-def test_sar_vecnormalize_stack_preserves_sb3_contract():
-    """Training helper must keep SAR compatible with SB3 VecNormalize."""
-    pytest.importorskip('stable_baselines3')
-
-    vec_env = make_vec(
-        'PointLTL0MASAR1-v0',
-        n_envs=1,
-        sb3=True,
-        normalize=True,
-        parallel=False,
-    )
-    try:
-        assert vec_env.norm_reward is False
-        obs = vec_env.reset()
-
-        assert isinstance(obs, dict)
-        assert all(value.shape[0] == 1 for value in obs.values())
-
-        obs, reward, done, info = vec_env.step([vec_env.action_space.sample()])
-
-        assert isinstance(obs, dict)
-        assert reward.shape == (1,)
-        assert done.shape == (1,)
-        assert isinstance(info[0]['propositions'], list)
-    finally:
-        vec_env.close()

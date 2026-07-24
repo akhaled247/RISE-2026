@@ -1,8 +1,4 @@
-"""Env constructors shared by SafePO and SB3 paths.
-
-``make_env`` has no ``stable_baselines3`` dependency so SafePO CMDP factory
-can import it in an SB3-free venv. SB3 helpers live in ``env_utils_sb3``.
-"""
+"""Env constructors shared by SafePO CMDP factory."""
 
 from __future__ import annotations
 
@@ -40,12 +36,3 @@ def make_env(env_name, render_mode=None, sb3=False):
         except Exception:
             raise ValueError(f"Unknown environment name: {env_name}")
     return env
-
-
-def __getattr__(name: str):
-    """Lazy re-export SB3 helpers so old ``from utils.env_utils import make_vec`` still works."""
-    if name in ("make_vec", "ThroughputCallback"):
-        from utils import env_utils_sb3 as _sb3
-
-        return getattr(_sb3, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

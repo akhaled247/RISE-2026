@@ -8,7 +8,6 @@ SUPPORTED_ALGOS = (
     "ppo_lag",
     "trpo_lag",
     "cpo",
-    "rnd_ppo",
 )
 
 DEFERRED_ALGOS = {

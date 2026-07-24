@@ -5,8 +5,6 @@ from __future__ import annotations
 import torch as th
 from torch import nn
 
-from stable_baselines3.common.torch_layers import create_mlp
-
 
 def _activation_from_name(name: str) -> type[nn.Module]:
     name = name.lower()
@@ -17,6 +15,22 @@ def _activation_from_name(name: str) -> type[nn.Module]:
     if name == "elu":
         return nn.ELU
     raise ValueError(f"Unsupported activation: {name}")
+
+
+def _mlp(
+    input_dim: int,
+    output_dim: int,
+    hidden_dims: list[int],
+    activation_fn: type[nn.Module],
+) -> nn.Sequential:
+    layers: list[nn.Module] = []
+    prev = input_dim
+    for h in hidden_dims:
+        layers.append(nn.Linear(prev, h))
+        layers.append(activation_fn())
+        prev = h
+    layers.append(nn.Linear(prev, output_dim))
+    return nn.Sequential(*layers)
 
 
 class RNDNetwork(nn.Module):
@@ -31,8 +45,7 @@ class RNDNetwork(nn.Module):
     ) -> None:
         super().__init__()
         act = _activation_from_name(activation)
-        layers = create_mlp(input_dim, feature_dim, net_arch, activation_fn=act)
-        self.net = nn.Sequential(*layers)
+        self.net = _mlp(input_dim, feature_dim, net_arch, act)
 
     def forward(self, x: th.Tensor) -> th.Tensor:
         return self.net(x)
@@ -62,16 +75,11 @@ class RNDModel(nn.Module):
         self.target.eval()
 
     def forward(self, x: th.Tensor) -> tuple[th.Tensor, th.Tensor]:
-        """Return (predictor_features, target_features)."""
         pred = self.predictor(x)
         with th.no_grad():
             tgt = self.target(x)
         return pred, tgt
 
     def prediction_error(self, x: th.Tensor) -> th.Tensor:
-        """Per-sample half squared L2 error, shape ``(batch,)``."""
         pred, tgt = self.forward(x)
         return 0.5 * ((pred - tgt) ** 2).sum(dim=-1)
-
-    def predictor_loss(self, x: th.Tensor) -> th.Tensor:
-        return self.prediction_error(x).mean()

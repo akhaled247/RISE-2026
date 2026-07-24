@@ -1,8 +1,7 @@
 """SAC training — deferred (not in SafePO single-agent set).
 
-SafePO migration (Phase 8): SAC / SAC-Lag are out of scope until a later
-off-policy vendor. Use PPO / PPO-Lag / TRPO / CPO via ``train/ppo_train_env.py``
-etc. Legacy SB3 SAC code lives in git history until Phase 10 cleanup.
+SafePO migration: SAC / SAC-Lag are out of scope until a later off-policy vendor.
+Use PPO / PPO-Lag / TRPO / CPO via ``train/ppo_train_env.py`` etc.
 """
 
 from __future__ import annotations

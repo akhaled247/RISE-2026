@@ -8,11 +8,7 @@ from typing import Any
 
 @dataclass
 class RNDConfig:
-    """Configuration for Random Network Distillation.
-
-    Sparse-navigation defaults (SAR L4/L5): beta=0.5 after intrinsic-return
-    normalization, feature_dim=256, building/wall-focused obs via ``obs_keys``.
-    """
+    """Configuration for Random Network Distillation (flat Box obs)."""
 
     use_rnd: bool = True
     intrinsic_reward_coef: float = 0.5
@@ -28,11 +24,11 @@ class RNDConfig:
     epsilon: float = 1e-8
     rms_epsilon: float = 1e-4
     max_grad_norm: float = 0.5
-    # None => flatten+concat all Box keys for Dict spaces; str => single key
-    obs_key: str | None = None
-    # Explicit multi-key list (takes precedence over obs_key when set)
-    obs_keys: list[str] | None = None
     activation: str = "relu"
+    # Predictor update after each SafePO epoch (fraction of buffered transitions)
+    keep_proportion: float = 1.0
+    predictor_batch_size: int = 256
+    predictor_epochs: int = 4
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

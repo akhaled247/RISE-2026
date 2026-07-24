@@ -66,7 +66,7 @@ def _merge_train_kwargs(algo: str, extra: dict[str, Any]) -> dict[str, Any]:
     """Fill missing knobs from SafePOTrainConfig + ALGO_DEFAULTS."""
     base = _CFG.to_dict()
     # Drop non-arg fields
-    for k in ("env_id", "algo", "normalize_obs", "clip_obs", "use_eval", "eval_episodes", "rnd_coef"):
+    for k in ("env_id", "algo", "normalize_obs", "clip_obs", "use_eval", "eval_episodes"):
         base.pop(k, None)
     base.update(ALGO_DEFAULTS.get(algo, {}))
     # Caller overrides win
@@ -168,11 +168,6 @@ def train_with_safepo(
 ) -> dict[str, Any]:
     """Patch env factory, merge config into SafePO, then run ``main(args)``."""
     algo = resolve_algo(algo)
-    if algo == "rnd_ppo":
-        raise NotImplementedError(
-            "RND-PPO is SpecRLBench-specific; use backends.safepo.rnd_runner "
-            "(wraps SafePO PPO buffer/model + local RND module), not a SafePO stock algo."
-        )
     if algo not in _SAFEPO_MODULES:
         raise ValueError(f"No SafePO module mapping for {algo!r}")
 

@@ -1,8 +1,7 @@
 """SAC-Lagrangian training — deferred (not in SafePO single-agent set).
 
-SafePO migration (Phase 8): SAC / SAC-Lag are out of scope until a later
-off-policy vendor. Use ``train/ppo_lag_train_env.py`` for constrained WC.
-Legacy SB3 SAC-Lag lives in git history / ``sac_lagrangian/`` until Phase 10.
+SafePO migration: SAC / SAC-Lag are out of scope until a later off-policy vendor.
+Use ``train/ppo_lag_train_env.py`` for constrained WC.
 """
 
 from __future__ import annotations
