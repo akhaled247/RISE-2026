@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rise-rnd"
+version = "0.1.0"
+description = "Random Network Distillation intrinsic rewards for SafePO-style Safety 6-tuple envs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "gymnasium>=0.29.1",
+    "numpy<2",
+    "torch>=2.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rise_rnd*"]
