@@ -375,7 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="SpecRLBench SafePO post-train evaluation (SA)",
         epilog=(
             "Example: python eval_safepo_env.py "
-            "--run-dir ./_training_logs/safepo/PointLTL4MASAR1WC-v0/ppo/seed-000-... "
+            "--run-dir ./_training_logs/safepo/PointLTL1MASAR1WC-v0/ppo/seed-000-... "
             "--eval-episodes 50\n"
             "Stdout (pasteable):\n"
             "  EVAL_PATH=/abs/.../seed-000-...\n"

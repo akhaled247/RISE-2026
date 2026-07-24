@@ -10,7 +10,7 @@ from typing import Any
 class SafePOTrainConfig:
     """Shared training knobs for SpecRLBench SafePO runners."""
 
-    env_id: str = "PointLTL4MASAR1WC-v0"
+    env_id: str = "PointLTL1MASAR1WC-v0"
     algo: str = "ppo"
     seed: int = 0
     total_steps: int = 1_000_000

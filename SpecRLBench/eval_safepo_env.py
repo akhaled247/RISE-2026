@@ -1,13 +1,13 @@
 """Evaluate SafePO SpecRLBench checkpoints (post-train).
 
 Examples:
-  python SpecRLBench/eval_safepo_env.py --run-dir SpecRLBench/_training_logs/safepo/PointLTL5MASAR1WC-v0/ppo/seed-000-2026-07-22-07-59-09 --eval-episodes 50
+  python SpecRLBench/eval_safepo_env.py --run-dir SpecRLBench/_training_logs/safepo/PointLTL2MASAR1WC-v0/ppo/seed-000-2026-07-22-07-59-09 --eval-episodes 50
   python SpecRLBench/eval_safepo_env.py --benchmark-dir SpecRLBench/_training_logs/safepo --eval-episodes 50
 
 Stdout (Q33.D — pasteable; no sidecar JSON):
 
   EVAL_PATH=/abs/.../seed-000-2026-07-22-11-47-36
-  After 50 episodes evaluation, the ppo in PointLTL5MASAR1WC-v0 reward: 0.68±0.47, cost: 0.32±0.47, ep_len: 227.84±87.76, rescue: 68.0%
+  After 50 episodes evaluation, the ppo in PointLTL2MASAR1WC-v0 reward: 0.68±0.47, cost: 0.32±0.47, ep_len: 227.84±87.76, rescue: 68.0%
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 """
     python ~/RISE-2026/SpecRLBench/eval_safepo_env.py --run-dir \
-    ~/RISE-2026/SpecRLBench/_training_logs/safepo/PointLTL6MASAR1WC-v0/ppo_lag/seed-000-2026-07-24-09-41-54 \
+    ~/RISE-2026/SpecRLBench/_training_logs/safepo/PointLTL3MASAR1WC-v0/ppo_lag/seed-000-2026-07-24-09-41-54 \
     --eval-episodes 50
 """
 

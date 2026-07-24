@@ -24,13 +24,13 @@
 # Smoke train — pass ALL flags on ONE line (or end lines with \). Otherwise
 # the shell treats ``--device`` as a command → ``--device: command not found``.
 #
-#   python train/ppo_train_env.py --task PointLTL4MASAR1WC-v0 --seed 0 \
+#   python train/ppo_train_env.py --task PointLTL1MASAR1WC-v0 --seed 0 \
 #       --total-steps 40000 --num-envs 8 --steps-per-epoch 16384 --device cpu \
 #       --parallel True
 #
 # RND-PPO (stock SafePO PPO + RISE-RND wrapper):
 #
-#   python train/ppo_rnd_train_env.py --task PointLTL4MASAR1-v0 --seed 0 \
+#   python train/ppo_rnd_train_env.py --task PointLTL1MASAR1-v0 --seed 0 \
 #       --total-steps 40000 --num-envs 8 --steps-per-epoch 16384 --device cpu \
 #       --sweep S2
 #

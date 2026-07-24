@@ -115,7 +115,13 @@ class MultiGoalSARLevel0(BaseTask):
             casualty_poses = (self.entrapped_casualtys.pos[i] for i in range(self.casualty_num))
             return [self.agent.dist_xy(agent_idx, pos) for pos in casualty_poses]
         return []
-            
+
+    def _casualtys_rescued(self) -> list[float]:
+            if hasattr(self, 'surface_casualtys'):
+                return self.surface_casualtys.rescued
+            elif hasattr(self, 'entrapped_casualtys'):
+                return self.entrapped_casualtys.rescued
+            return []            
 
     def build_observation_space(self) -> gymnasium.spaces.Dict:
         super().build_observation_space()
@@ -148,13 +154,15 @@ class MultiGoalSARLevel0(BaseTask):
 
         for i in range(self.agent_num):
             a = f'agent_{i}'
-            reward = self.time_alive_decay
+            reward = 0
 
             # Distance-based reward shaping
             dists = self._dist_to_casualtys(i)
             min_dist = min(dists) if dists else 0.0
-            if min_dist <= touch_threshold:
+            min_casualty_rescued = self._casualtys_rescued()[dists.index(min_dist)]
+            if min_dist <= touch_threshold and not min_casualty_rescued:
                 # print('casualty')
+                print(self._casualtys_rescued()[dists.index(min_dist)])
                 reward += self.reward_goal
             self.last_dist_casualty[i] = min_dist
 

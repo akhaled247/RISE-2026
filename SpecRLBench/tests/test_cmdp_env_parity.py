@@ -20,7 +20,7 @@ from envs.cmdp.flatten import DictFlattenWrapper
 from envs.cmdp.safety_step import GymnasiumToSafetyStep
 from utils.env_utils import make_env
 
-ENV_ID = "PointLTL4MASAR1WC-v0"
+ENV_ID = "PointLTL1MASAR1WC-v0"
 SEED = 0
 N_STEPS = 32
 

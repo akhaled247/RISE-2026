@@ -17,12 +17,18 @@ class SafetyGymWrapperMASARWC(SafetyGymWrapperMASAR):
         obs, reward, terminated, truncated, info = super().step(action)
         info["cost"] = 0
         for a in self.env.unwrapped.possible_agents:
-            if info[a].get("cost_walls", 0) > 0:
-                info["cost"] += 1
-                if self.sb3:
-                    terminated = True  # parent already collapsed to bool
-                else:
+            try:
+                if info[a].get("cost_walls", 0) > 0:
+                    info["cost"] += 1
                     terminated[a] = True
+            except Exception as e:
+                  pass
+            try:
+                if info[a].get("cost_collision") > 0:
+                    info["cost"] += 1
+                    terminated[a] = True
+            except Exception as e:
+                pass
         return obs, reward, terminated, truncated, info
 
     def reset(self, *, seed=None, options=None):

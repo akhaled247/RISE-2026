@@ -240,5 +240,5 @@ def train_with_safepo(
 
 
 def train_algo(algo: str, **overrides: Any) -> dict[str, Any]:
-    env_id = overrides.pop("env_id", overrides.pop("task", "PointLTL4MASAR1WC-v0"))
+    env_id = overrides.pop("env_id", overrides.pop("task", "PointLTL1MASAR1WC-v0"))
     return train_with_safepo(algo, env_id, **overrides)

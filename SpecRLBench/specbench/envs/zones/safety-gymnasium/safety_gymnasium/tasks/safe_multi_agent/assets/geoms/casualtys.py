@@ -98,13 +98,14 @@ class Casualtys(Geom):  # pylint: disable=too-many-instance-attributes
             for agent_idx in range(self.agent.agent_num):
                 agent_h_dist = self.agent.dist_xy(agent_idx, h_pos)
 
-                if agent_h_dist <= self.size + 0.15:
+                if agent_h_dist <= self.size + 0.15 and not self.rescued[body_idx]:
                     self.rescued[body_idx] = True
+                    print(self.rescued[body_idx])
                     cost[f'agent_{agent_idx}'][f'cost_casualtys_{self.color_name}'] = 1.0
                     break
 
         return cost
-
+    
     @property
     def pos(self):
         """Helper to get the hazards positions from layout."""

@@ -3,7 +3,7 @@
 Intrinsic reward is added inside ``rise_rnd.SafetyRNDWrapper``; SafePO ``ppo.main``
 is unchanged. Pass flags on one line (or with ``\\`` continuations):
 
-  python train/ppo_rnd_train_env.py --task PointLTL4MASAR1-v0 --seed 0 \\
+  python train/ppo_rnd_train_env.py --task PointLTL1MASAR1-v0 --seed 0 \\
       --total-steps 40000 --num-envs 8 --steps-per-epoch 16384 --device cpu \\
       --rnd-coef 0.5 --ent-coef 0.005 --sweep S2
 """

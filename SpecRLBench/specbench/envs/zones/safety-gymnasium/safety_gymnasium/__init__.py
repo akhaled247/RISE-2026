@@ -393,8 +393,8 @@ multi_goal_tasks = {
     'LTL0MA3': {'agent_num': 3},
     'LTL0MA5': {'agent_num': 5},
     'LTL0MASAR1': {'agent_num': 1},
-    'LTL4MASAR1': {'agent_num': 1},
-    'LTL5MASAR1': {'agent_num': 1},
+    'LTL1MASAR1': {'agent_num': 1},
+    'LTL2MASAR1': {'agent_num': 1},
 }
 robots = ['Point']
 __combine_multi(multi_goal_tasks, robots, max_episode_steps=1000)
@@ -405,11 +405,10 @@ __combine_multi(multi_goal_tasks, robots, max_episode_steps=1000)
 multi_goal_sar_tasks = {
     # 'LTLMASAR5': {'agent_num': 5}
     'LTL0MASAR2': {'agent_num': 2},
+    'LTL3MASAR1': {'agent_num': 1},
     'LTL1MASAR2': {'agent_num': 2},
     'LTL2MASAR2': {'agent_num': 2},
     'LTL3MASAR2': {'agent_num': 2},
-    'LTL3MASAR5': {'agent_num': 5}, # == 'LTLMASAR5'
-    'LTL6MASAR1': {'agent_num': 1},
 }
 sar_robots = ['Point']
 __combine_multi(multi_goal_sar_tasks, sar_robots, max_episode_steps=2500)

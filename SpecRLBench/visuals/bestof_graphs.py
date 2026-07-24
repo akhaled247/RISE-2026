@@ -6,37 +6,37 @@ import matplotlib.pyplot as plt
 # Rows: tasks
 # Columns: algorithm types
 data = {
-    "PointLTL4MASAR1": {
+    "PointLTL1MASAR1": {
         "Vanilla PPO": 96.0,
         "PPO Lagrangian": np.nan,
         "Vanilla TRPO": 94.0,
         "TRPO Lagrangian": np.nan,
     },
-    "PointLTL4MASAR1WC": {
+    "PointLTL1MASAR1WC": {
         "Vanilla PPO": 86.0,
         "PPO Lagrangian": 80.0,
         "Vanilla TRPO": 82.0,
         "TRPO Lagrangian": 88.0,
     },
-    "PointLTL5MASAR1": {
+    "PointLTL2MASAR1": {
         "Vanilla PPO": 94.0,
         "PPO Lagrangian": np.nan,
         "Vanilla TRPO": 90.0,
         "TRPO Lagrangian": np.nan,
     },
-    "PointLTL5MASAR1WC": {
+    "PointLTL2MASAR1WC": {
         "Vanilla PPO": 68.0,
         "PPO Lagrangian": 72.0,
         "Vanilla TRPO": 66.0,
         "TRPO Lagrangian": 72.0,
     },
-    "PointLTL6MASAR1": {
+    "PointLTL3MASAR1": {
         "Vanilla PPO": 90.0,
         "PPO Lagrangian": np.nan,
         "Vanilla TRPO": 84.0,
         "TRPO Lagrangian": np.nan,
     },
-    "PointLTL6MASAR1WC": {
+    "PointLTL3MASAR1WC": {
             "Vanilla PPO": 42.0,
             "PPO Lagrangian": 36.0,
             "Vanilla TRPO": np.nan,

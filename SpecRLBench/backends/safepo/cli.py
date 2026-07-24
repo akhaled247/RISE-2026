@@ -36,7 +36,7 @@ def build_parser(default_algo: str) -> argparse.ArgumentParser:
         description=f"SpecRLBench + SafePO ({default_algo})",
         epilog=(
             "Example (one line): python train/ppo_train_env.py "
-            "--task PointLTL4MASAR1WC-v0 --seed 0 --total-steps 40000 "
+            "--task PointLTL1MASAR1WC-v0 --seed 0 --total-steps 40000 "
             "--num-envs 8 --steps-per-epoch 16384 --device cpu "
             "--write-terminal False --use-tensorboard True"
         ),

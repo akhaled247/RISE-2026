@@ -34,8 +34,8 @@ from utils.env_utils import make_env  # noqa: E402
 
 SAR_ENV_IDS = {
     'PointLTL0MASAR1-v0': 'MultiGoalSARLevel0',
-    'PointLTL4MASAR1-v0': 'MultiGoalSARLevel4',
-    'PointLTL5MASAR1-v0': 'MultiGoalSARLevel5',
+    'PointLTL1MASAR1-v0': 'MultiGoalSARLevel4',
+    'PointLTL2MASAR1-v0': 'MultiGoalSARLevel5',
     'PointLTL0MASAR2-v0': 'MultiGoalSARLevel0',
     'PointLTL1MASAR2-v0': 'MultiGoalSARLevel1',
     'PointLTL2MASAR2-v0': 'MultiGoalSARLevel2',
@@ -173,7 +173,7 @@ def _building_layout_snapshot(task) -> tuple[tuple[str, tuple[float, ...]], ...]
 
 def test_building_entrapped_layout_pinned():
     """Entrapped casualties must spawn at building centers (runtime positions)."""
-    env = make_env('PointLTL5MASAR1-v0', sb3=True)
+    env = make_env('PointLTL2MASAR1-v0', sb3=True)
     try:
         env.reset(seed=11)
         task = env.unwrapped.task
@@ -192,7 +192,7 @@ def test_building_entrapped_layout_pinned():
 
 def test_building_layout_seed_reproducible():
     """Building layout sync must reproduce on repeated fast-path resets."""
-    env = make_env('PointLTL5MASAR1-v0', sb3=True)
+    env = make_env('PointLTL2MASAR1-v0', sb3=True)
     try:
         # First reset builds MuJoCo and draws wall sizes; later resets use fast layout resample.
         env.reset(seed=0)
@@ -225,7 +225,7 @@ def test_building_perimeter_wall_keys_exist():
 
 def test_obs_lidar_pseudo_new_empty_positions_is_zeros():
     """Empty building-lidar skip list must not crash (L5 single-building enter)."""
-    env = make_env('PointLTL5MASAR1-v0', sb3=True)
+    env = make_env('PointLTL2MASAR1-v0', sb3=True)
     try:
         env.reset(seed=11)
         task = env.unwrapped.task
@@ -242,7 +242,7 @@ def test_entered_building_suppresses_shell_lidar_and_render():
 
     from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar import multi_sar_level0
 
-    env = make_env('PointLTL5MASAR1-v0', sb3=True)
+    env = make_env('PointLTL2MASAR1-v0', sb3=True)
     try:
         env.reset(seed=11)
         task = env.unwrapped.task
@@ -305,7 +305,7 @@ def test_wrapper_keeps_entrapped_lidar_when_building_sticky_entered():
 
     from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar import multi_sar_level0
 
-    env = make_env('PointLTL5MASAR1-v0', sb3=False)
+    env = make_env('PointLTL2MASAR1-v0', sb3=False)
     try:
         env.reset(seed=11)
         task = env.unwrapped.task

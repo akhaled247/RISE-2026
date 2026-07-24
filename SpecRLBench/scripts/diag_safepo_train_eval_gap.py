@@ -8,7 +8,7 @@ Does **not** modify production eval. Imports helpers from
 Example (Linux, from SpecRLBench root)::
 
   python scripts/diag_safepo_train_eval_gap.py \\
-    --run-dir ./_training_logs/safepo/PointLTL5MASAR1WC-v0/ppo/seed-000-2026-07-22-07-52-51 \\
+    --run-dir ./_training_logs/safepo/PointLTL2MASAR1WC-v0/ppo/seed-000-2026-07-22-07-52-51 \\
     --eval-episodes 20 --device cuda --seed 0
 
 Exit code 2 if no Normalizer ``*.pkl`` in the run dir (hard fail for this diag).
