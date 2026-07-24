@@ -110,7 +110,8 @@ class Gremlins(Mocap):  # pylint: disable=too-many-instance-attributes
             self.prev_contact[i] = is_in_contact
                 # print(f"COST TRIGGERED for {self.color_name} zone {i}!")
         return cost
-
+    max_theta = 0
+    min_theta = 0
     def move(self):
         """Set mocap object positions before a physics step is executed."""
         # Read from world engine (bound in World.bind_engine), not preview agent engine.
@@ -118,10 +119,12 @@ class Gremlins(Mocap):  # pylint: disable=too-many-instance-attributes
             # Extract current position and heading angle
             agent_xy = self.engine.data.body(f'agent_{i}').xpos[:2]
             theta = quat2rot(self.engine.data.body(f'agent_{i}').xquat.copy())
+            self.max_theta = max(theta, self.max_theta)
+            self.min_theta = min(theta, self.min_theta)
             # Calculate shifted position (0 degrees = straight ahead)
             shifted_xy = (agent_xy 
             + 0.03 * np.array([np.cos(theta), np.sin(theta)])
-            + 0.02 * np.array([np.cos(theta+np.radians(90)), np.sin(theta+np.radians(90))]))
+            + 0.02 * np.array([np.cos(theta + np.pi/2), np.sin(theta + np.pi/2)]))       
             name = f'gremlin{i}'
             pos = np.r_[shifted_xy, [1e-3]]
             self.set_mocap_pos(name + 'mocap', pos)

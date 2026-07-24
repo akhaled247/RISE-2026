@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: rise-rnd
+Version: 0.1.0
+Summary: Random Network Distillation intrinsic rewards for SafePO-style Safety 6-tuple envs
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: gymnasium>=0.29.1
+Requires-Dist: numpy<2
+Requires-Dist: torch>=2.0
+
+# RISE-RND
+
+Random Network Distillation (RND) intrinsic rewards as a Safety 6-tuple env wrapper.
+
+Install (from SpecRLBench venv):
+
+```bash
+pip install -e ../RISE-RND
+```
+
+Use via `python train/ppo_rnd_train_env.py` in SpecRLBench (wraps CMDP env, runs stock SafePO PPO).
