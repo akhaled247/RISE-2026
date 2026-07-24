@@ -46,6 +46,7 @@ def train_with_safepo_ma(
     log_dir: str = "./_training_logs/safepo",
     experiment: str = "specrlbench",
     write_terminal: bool = True,
+    use_tensorboard: bool = True,
     use_eval: bool = False,
     entropy_coef: float | None = None,
     share_policy: bool | None = None,
@@ -56,6 +57,7 @@ def train_with_safepo_ma(
     from backends.safepo.env_hook import patch_safepo_ma_env_factory
     from backends.safepo.paths import ensure_specrlbench_paths
     from backends.safepo.registry import MA_ALGO_MODULE, resolve_ma_algo
+    from backends.safepo.runners import _patch_epoch_logger_tensorboard
 
     # PYTHONPATH for spawn workers, then spawn before any CUDA init.
     ensure_specrlbench_paths()
@@ -118,6 +120,9 @@ def train_with_safepo_ma(
 
     if hasattr(mod, "make_ma_multi_goal_env"):
         mod.make_ma_multi_goal_env = safepo_env.make_ma_multi_goal_env
+
+    # MA algos hardcode EpochLogger(...); inject use_tensorboard like SA path.
+    _patch_epoch_logger_tensorboard(bool(use_tensorboard), algo_mod=mod)
 
     if not write_terminal:
         os.makedirs(cfg_train["log_dir"], exist_ok=True)

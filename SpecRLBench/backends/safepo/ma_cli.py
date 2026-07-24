@@ -30,6 +30,12 @@ def build_ma_parser(default_algo: str) -> argparse.ArgumentParser:
     p.add_argument("--log-dir", type=str, default="./_training_logs/safepo")
     p.add_argument("--experiment", type=str, default="specrlbench")
     p.add_argument("--write-terminal", type=_str2bool, default=True)
+    p.add_argument(
+        "--use-tensorboard",
+        type=_str2bool,
+        default=True,
+        help="Toggles TensorBoard SummaryWriter in EpochLogger (writes log_dir/tb)",
+    )
     p.add_argument("--use-eval", type=_str2bool, default=False)
     p.add_argument(
         "--entropy-coef",
@@ -61,6 +67,7 @@ def main(default_algo: str = "mappo") -> None:
         log_dir=args.log_dir,
         experiment=args.experiment,
         write_terminal=args.write_terminal,
+        use_tensorboard=args.use_tensorboard,
         use_eval=args.use_eval,
         entropy_coef=args.entropy_coef,
         share_policy=args.share_policy,
