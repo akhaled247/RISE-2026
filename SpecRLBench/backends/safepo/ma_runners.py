@@ -62,6 +62,10 @@ def train_with_safepo_ma(
     # PYTHONPATH for spawn workers, then spawn before any CUDA init.
     ensure_specrlbench_paths()
     _ensure_mp_spawn_before_cuda()
+    # Parent may import safety_gymnasium before wrappers; filter early.
+    from safepo.common.farama_filter import silence_farama_adroit_spam
+
+    silence_farama_adroit_spam()
     patch_safepo_ma_env_factory()
 
     algo_key = resolve_ma_algo(algo)
