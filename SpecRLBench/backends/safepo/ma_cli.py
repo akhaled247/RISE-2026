@@ -10,7 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from backends.safepo.config import SafePOTrainConfig
 from backends.safepo.ma_runners import train_with_safepo_ma
+
+_CFG = SafePOTrainConfig()
 
 
 def _str2bool(v: str) -> bool:
@@ -50,6 +53,12 @@ def build_ma_parser(default_algo: str) -> argparse.ArgumentParser:
         help="IPPO shared policy (default True for ippo*)",
     )
     p.add_argument("--model-dir", type=str, default="")
+    p.add_argument(
+        "--save-model-freq",
+        type=int,
+        default=_CFG.save_model_freq,
+        help="Checkpoint every N training epochs (default 10); always also saves epoch 0 and last",
+    )
     return p
 
 
@@ -72,6 +81,7 @@ def main(default_algo: str = "mappo") -> None:
         entropy_coef=args.entropy_coef,
         share_policy=args.share_policy,
         model_dir=args.model_dir,
+        save_model_freq=args.save_model_freq,
     )
 
 

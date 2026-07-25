@@ -30,6 +30,7 @@ CLI_TO_CONFIG: dict[str, str] = {
     "num-envs": "n_rollout_threads",
     "cost-limit": "cost_limit",
     "entropy-coef": "entropy_coef",
+    "save-model-freq": "save_interval",
     "seed": "seed",
 }
 

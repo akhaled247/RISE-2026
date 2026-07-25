@@ -10,6 +10,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from backends.safepo.config import SafePOTrainConfig
+
+_CFG = SafePOTrainConfig()
 
 _SAFEPO_MA_MODULES = {
     "mappo": "safepo.multi_agent.mappo",
@@ -84,6 +87,7 @@ def train_with_safepo_ma(
     entropy_coef: float | None = None,
     share_policy: bool | None = None,
     model_dir: str = "",
+    save_model_freq: int | None = None,
     **_extra: Any,
 ) -> dict[str, Any]:
     """Patch MA env factory, parse SafePO multi_agent_args, run algo ``train()``."""
@@ -151,6 +155,9 @@ def train_with_safepo_ma(
 
     if entropy_coef is not None:
         cfg_train["entropy_coef"] = float(entropy_coef)
+    cfg_train["save_interval"] = int(
+        save_model_freq if save_model_freq is not None else _CFG.save_model_freq
+    )
     if share_policy is not None:
         cfg_train["share_policy"] = bool(share_policy)
     elif "share_policy" not in cfg_train and safepo_algo.startswith("ippo"):
