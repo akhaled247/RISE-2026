@@ -26,11 +26,11 @@ class SpecRLMultiGoalEnv:
     step(actions) → (obs, share_obs, rewards, costs, dones, infos, avail_actions)
     """
 
-    def __init__(self, task: str, seed: int):
+    def __init__(self, task: str, seed: int, render_mode = None):
         from utils.env_utils import make_env
 
         self.task_id = task
-        self.env = make_env(task, sb3=False)
+        self.env = make_env(task, sb3=False, render_mode=render_mode)
         self._seed = int(seed)
         obs0, info0 = self.env.reset(seed=self._seed)
         self._last_info = info0

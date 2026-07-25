@@ -54,6 +54,7 @@ def eval_ma_run(
     *,
     device: str = "cuda",
     seed: int | None = 0,
+    render_mode: str = None
 ) -> dict[str, float]:
     from backends.safepo.env_hook import is_specrlbench_env, patch_safepo_ma_env_factory
     from backends.safepo.ma_factory import SpecRLMultiGoalEnv
@@ -76,7 +77,7 @@ def eval_ma_run(
     algo = str(config.get("algorithm_name", "mappo")).lower().replace("-", "_")
     device_t = torch.device(device if torch.cuda.is_available() or device == "cpu" else "cpu")
 
-    env = SpecRLMultiGoalEnv(task=str(env_id), seed=int(seed or 0))
+    env = SpecRLMultiGoalEnv(task=str(env_id), seed=int(seed or 0), render_mode=render_mode)
     use_walls, use_collision = cmdp_cost_channels(str(env_id))
     num_agents = env.num_agents
     models_dir = _find_models_dir(run_dir, int(config.get("seed", seed or 0)))
@@ -209,6 +210,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--eval-episodes", type=int, default=50)
     p.add_argument("--device", type=str, default="cuda")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument(
+            "--render-mode",
+            type=str,
+            default=None,
+            help="Gymnasium render mode, e.g. human (live window) or rgb_array",
+        )
     args = p.parse_args(argv)
 
     metrics = eval_ma_run(
@@ -216,6 +223,7 @@ def main(argv: list[str] | None = None) -> None:
         eval_episodes=args.eval_episodes,
         device=args.device,
         seed=args.seed,
+        render_mode=args.render_mode
     )
     parts = Path(args.run_dir).resolve().parts
     algo = parts[-2] if len(parts) >= 2 else "unknown"
