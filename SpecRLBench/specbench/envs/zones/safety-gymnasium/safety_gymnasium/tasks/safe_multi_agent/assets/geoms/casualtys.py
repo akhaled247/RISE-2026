@@ -100,7 +100,6 @@ class Casualtys(Geom):  # pylint: disable=too-many-instance-attributes
 
                 if agent_h_dist <= self.size + 0.15 and not self.rescued[body_idx]:
                     self.rescued[body_idx] = True
-                    print(self.rescued[body_idx])
                     cost[f'agent_{agent_idx}'][f'cost_casualtys_{self.color_name}'] = 1.0
                     break
 

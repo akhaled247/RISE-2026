@@ -8,6 +8,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+"""
+  python ~/RISE-2026/SpecRLBench/eval_safepo_ma_env.py --run-dir \
+  ~/RISE-2026/SpecRLBench/_training_logs/safepo/PointLTL0MASAR2-v0/mappo/seed-000-... \
+  --eval-episodes 50 --device cuda
+"""
+
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
