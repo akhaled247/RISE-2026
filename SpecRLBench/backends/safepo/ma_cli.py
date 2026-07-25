@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backends.safepo.config import SafePOTrainConfig
+from backends.safepo.config import MA_SPECRL_RECIPE_B, SafePOTrainConfig
 from backends.safepo.ma_runners import train_with_safepo_ma
 
 _CFG = SafePOTrainConfig()
@@ -25,7 +25,7 @@ def build_ma_parser(default_algo: str) -> argparse.ArgumentParser:
     p.add_argument("--algo", type=str, default=default_algo)
     p.add_argument("--task", "--env-id", dest="task", type=str, default="PointLTL0MASAR2-v0")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--total-steps", type=int, default=400_000)
+    p.add_argument("--total-steps", type=int, default=4_000_000)
     p.add_argument("--num-envs", type=int, default=8)
     p.add_argument("--cost-limit", type=float, default=0.0)
     p.add_argument("--device", type=str, default="cuda")
@@ -43,8 +43,20 @@ def build_ma_parser(default_algo: str) -> argparse.ArgumentParser:
     p.add_argument(
         "--entropy-coef",
         type=float,
+        default=MA_SPECRL_RECIPE_B["entropy_coef"],
+        help="Entropy bonus (default 0.02, recipe-B)",
+    )
+    p.add_argument(
+        "--episode-length",
+        type=int,
         default=None,
-        help="Override YAML entropy_coef (e.g. 0.02 for explore)",
+        help="Rollout horizon per PPO epoch (default 2500 for SpecRL MASAR)",
+    )
+    p.add_argument(
+        "--learning-iters",
+        type=int,
+        default=None,
+        help="PPO epochs per rollout (default 10 for SpecRL MASAR)",
     )
     p.add_argument(
         "--share-policy",
@@ -79,6 +91,8 @@ def main(default_algo: str = "mappo") -> None:
         use_tensorboard=args.use_tensorboard,
         use_eval=args.use_eval,
         entropy_coef=args.entropy_coef,
+        episode_length=args.episode_length,
+        learning_iters=args.learning_iters,
         share_policy=args.share_policy,
         model_dir=args.model_dir,
         save_model_freq=args.save_model_freq,

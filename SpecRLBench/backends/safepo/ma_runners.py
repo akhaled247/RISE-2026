@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from backends.safepo.config import SafePOTrainConfig
+from backends.safepo.config import MA_SPECRL_RECIPE_B, SafePOTrainConfig
 
 _CFG = SafePOTrainConfig()
 
@@ -32,11 +32,24 @@ def _resolve_torch_device(device: str, device_id: int) -> str:
     return f"cuda:{int(device_id)}"
 
 
+def _apply_specrl_ma_recipe_b(cfg_train: dict, env_id: str, overrides: dict[str, Any] | None = None) -> None:
+    """Force recipe-B spine for SpecRL MASAR tasks (overrides stale mamujoco YAML)."""
+    from backends.safepo.env_hook import is_specrlbench_env
+
+    if not is_specrlbench_env(env_id):
+        return
+    cfg_train.update(MA_SPECRL_RECIPE_B)
+    if overrides:
+        for key, value in overrides.items():
+            if value is not None:
+                cfg_train[key] = value
+
+
 def _ensure_ma_training_epochs(cfg_train: dict, env_id: str) -> None:
     """Shrink ``episode_length`` when ``num_env_steps`` cannot fit one MAPPO epoch.
 
-    SafePO mamujoco defaults use ``episode_length=1000``; with ``--total-steps 2000``
-    and ``--num-envs 8`` that yields ``episodes = 2000//1000//8 = 0`` and immediate exit.
+    With ``episode_length=2500``, ``--total-steps 2000`` and ``--num-envs 8`` yields
+    ``episodes = 2000//2500//8 = 0`` and immediate exit.
     """
     from backends.safepo.env_hook import is_specrlbench_env
 
@@ -88,6 +101,8 @@ def train_with_safepo_ma(
     share_policy: bool | None = None,
     model_dir: str = "",
     save_model_freq: int | None = None,
+    episode_length: int | None = None,
+    learning_iters: int | None = None,
     **_extra: Any,
 ) -> dict[str, Any]:
     """Patch MA env factory, parse SafePO multi_agent_args, run algo ``train()``."""
@@ -144,6 +159,15 @@ def train_with_safepo_ma(
     set_seed(cfg_train.get("seed", seed), cfg_train.get("torch_deterministic", False))
 
     cfg_train["device"] = device
+    _apply_specrl_ma_recipe_b(
+        cfg_train,
+        env_id,
+        overrides={
+            "entropy_coef": entropy_coef if entropy_coef is not None else MA_SPECRL_RECIPE_B["entropy_coef"],
+            "episode_length": episode_length,
+            "learning_iters": learning_iters,
+        },
+    )
     _ensure_ma_training_epochs(cfg_train, env_id)
 
     # SpecRL log layout: {log_dir}/{task}/{algo}/seed-NNN-TIMESTAMP
@@ -153,8 +177,6 @@ def train_with_safepo_ma(
     cfg_train["log_dir"] = os.path.join(log_dir, args.task, algo_key, relpath)
     Path(cfg_train["log_dir"]).mkdir(parents=True, exist_ok=True)
 
-    if entropy_coef is not None:
-        cfg_train["entropy_coef"] = float(entropy_coef)
     cfg_train["save_interval"] = int(
         save_model_freq if save_model_freq is not None else _CFG.save_model_freq
     )

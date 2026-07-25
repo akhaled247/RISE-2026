@@ -55,3 +55,24 @@ ALGO_DEFAULTS: dict[str, dict[str, Any]] = {
     "trpo_lag": {"learning_iters": 1, "target_kl": 0.02},
     "cpo": {"learning_iters": 1, "target_kl": 0.01},
 }
+
+# SafePO MA YAML ``mamujoco`` block + runner override for PointLTL*MASAR2* (recipe-B spine).
+# episode_length must match SAR registration max_episode_steps (2500).
+MA_SPECRL_RECIPE_B: dict[str, Any] = {
+    "episode_length": 2500,
+    "learning_iters": 10,
+    "actor_lr": 5e-5,
+    "critic_lr": 1e-3,
+    "target_kl": 0.05,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip_param": 0.2,
+    "hidden_size": 64,
+    "entropy_coef": 0.02,
+    "max_grad_norm": 10.0,
+    "use_value_active_masks": True,
+    "use_policy_active_masks": True,
+    "data_chunk_length": 10,
+    "use_valuenorm": False,
+    "eval_episodes": 50,
+}
