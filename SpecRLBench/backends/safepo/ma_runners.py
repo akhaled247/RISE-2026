@@ -20,6 +20,15 @@ _SAFEPO_MA_MODULES = {
 }
 
 
+def _resolve_torch_device(device: str, device_id: int) -> str:
+    """Normalize to ``cuda:{device_id}`` (e.g. cuda:1) for SafePO cfg_train."""
+    if str(device).startswith("cpu"):
+        return "cpu"
+    if ":" in str(device):
+        return str(device)
+    return f"cuda:{int(device_id)}"
+
+
 def _ensure_mp_spawn_before_cuda() -> None:
     """Linux default fork + parent CUDA → 'Cannot re-initialize CUDA in forked subprocess'.
 
@@ -74,12 +83,15 @@ def train_with_safepo_ma(
 
     import torch
 
+    device = _resolve_torch_device(device, device_id)
     if str(device).startswith("cuda") and not torch.cuda.is_available():
         device = "cpu"
+    elif str(device).startswith("cuda"):
+        torch.cuda.set_device(int(str(device).split(":")[1]))
 
     # multi_agent_args reads sys.argv
     argv = ["ma_train", "--task", env_id, "--seed", str(seed), "--experiment", experiment]
-    argv += ["--device", device, "--device-id", str(device_id)]
+    argv += ["--device", "cuda" if str(device).startswith("cuda") else device, "--device-id", str(device_id)]
     argv += ["--write-terminal", "True" if write_terminal else "False"]
     argv += ["--use-eval", "True" if use_eval else "False"]
     if total_steps is not None:
@@ -102,6 +114,8 @@ def train_with_safepo_ma(
         sys.argv = old_argv
 
     set_seed(cfg_train.get("seed", seed), cfg_train.get("torch_deterministic", False))
+
+    cfg_train["device"] = device
 
     # SpecRL log layout: {log_dir}/{task}/{algo}/seed-NNN-TIMESTAMP
     relpath = time.strftime("%Y-%m-%d-%H-%M-%S")
