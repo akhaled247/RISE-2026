@@ -19,6 +19,7 @@ from backends.safepo.evaluate import (
     _seed_everything,
     _write_eval_summary,
 )
+from backends.safepo.ma_factory import cmdp_cost_channels
 
 
 MA_ALGOS = {"mappo", "happo", "mappolag", "mappo_lag", "macpo", "ippo", "ippo_lag"}
@@ -75,6 +76,7 @@ def eval_ma_run(
     device_t = torch.device(device if torch.cuda.is_available() or device == "cpu" else "cpu")
 
     env = SpecRLMultiGoalEnv(task=str(env_id), seed=int(seed or 0))
+    use_walls, use_collision = cmdp_cost_channels(str(env_id))
     num_agents = env.num_agents
     models_dir = _find_models_dir(run_dir, int(config.get("seed", seed or 0)))
 
@@ -130,9 +132,9 @@ def eval_ma_run(
             ep_cost += float(np.mean([c[0] for c in costs_l]))
             ep_len += 1
             for info in infos:
-                if float(info.get("cost_walls", 0) or 0) > 0:
+                if use_walls and float(info.get("cost_walls", 0) or 0) > 0:
                     saw_walls = True
-                if float(info.get("cost_collision", 0) or 0) > 0:
+                if use_collision and float(info.get("cost_collision", 0) or 0) > 0:
                     saw_collision = True
             done = all(bool(d) for d in dones)
             # Approximate trunc: no wall/collision and hit length budget

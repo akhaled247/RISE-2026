@@ -56,3 +56,55 @@ def test_ma_factory_reset_step_shapes():
         assert len(dones) == 2
     finally:
         env.close()
+
+
+def test_ma_factory_cmdp_cost_gated_by_env_suffix():
+    from backends.safepo.ma_factory import SpecRLMultiGoalEnv, cmdp_cost_channels
+
+    assert cmdp_cost_channels("PointLTL0MASAR2-v0") == (False, False)
+    assert cmdp_cost_channels("PointLTL0MASAR2WC-v0") == (True, False)
+    assert cmdp_cost_channels("PointLTL0MASAR2AC-v0") == (False, True)
+
+    env = SpecRLMultiGoalEnv("PointLTL0MASAR2-v0", seed=0)
+    try:
+        zero_act = np.zeros(env.n_actions, dtype=np.float32)
+        actions = [zero_act, zero_act]
+        for _ in range(200):
+            _, _, _, costs, _, infos, _ = env.step(actions)
+            assert all(c[0] == 0.0 for c in costs), (
+                "unconstrained SAR must not promote gremlin proximity to CMDP cost"
+            )
+            if any(
+                float(info.get("cost_collision", 0) or 0) > 0
+                for info in infos
+                if isinstance(info, dict)
+            ):
+                break
+    finally:
+        env.close()
+
+
+def test_ma_factory_cmdp_cost_gated_by_env_suffix():
+    from backends.safepo.ma_factory import SpecRLMultiGoalEnv, cmdp_cost_channels
+
+    assert cmdp_cost_channels("PointLTL0MASAR2-v0") == (False, False)
+    assert cmdp_cost_channels("PointLTL0MASAR2WC-v0") == (True, False)
+    assert cmdp_cost_channels("PointLTL0MASAR2AC-v0") == (False, True)
+
+    env = SpecRLMultiGoalEnv("PointLTL0MASAR2-v0", seed=0)
+    try:
+        zero_act = np.zeros(env.n_actions, dtype=np.float32)
+        actions = [zero_act, zero_act]
+        for _ in range(200):
+            _, _, _, costs, _, infos, _ = env.step(actions)
+            assert all(c[0] == 0.0 for c in costs), (
+                "unconstrained SAR must not promote gremlin proximity to CMDP cost"
+            )
+            if any(
+                float(info.get("cost_collision", 0) or 0) > 0
+                for info in infos
+                if isinstance(info, dict)
+            ):
+                break
+    finally:
+        env.close()

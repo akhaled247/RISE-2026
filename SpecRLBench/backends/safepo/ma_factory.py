@@ -8,6 +8,11 @@ import numpy as np
 from gymnasium.spaces import Box
 
 
+def cmdp_cost_channels(task_id: str) -> tuple[bool, bool]:
+    """Return (count_walls, count_collision) per SAR env ID suffix (WC / AC)."""
+    return ("WC" in task_id, "AC" in task_id)
+
+
 def make_ma_cmdp_env(task: str, seed: int, cfg_train: dict | None = None):
     """Build one SpecRL MultiGoal-compatible env (used inside Share* vec workers)."""
     del cfg_train  # SafePO passes cfg; unused for construction parity with MultiGoalEnv
@@ -117,14 +122,14 @@ class SpecRLMultiGoalEnv:
         agent_info = info.get(agent, {}) if isinstance(info, dict) else {}
         if not isinstance(agent_info, dict):
             agent_info = {}
-        walls = float(agent_info.get("cost_walls", 0) or 0)
-        coll = float(agent_info.get("cost_collision", 0) or 0)
+        use_walls, use_collision = cmdp_cost_channels(self.task_id)
+        walls = float(agent_info.get("cost_walls", 0) or 0) if use_walls else 0.0
+        coll = float(agent_info.get("cost_collision", 0) or 0) if use_collision else 0.0
         if walls or coll:
             return walls + coll
-        # WC/AC aggregate fallback
-        if "cost" in info and self.num_agents > 0:
+        if (use_walls or use_collision) and isinstance(info, dict) and "cost" in info:
             return float(info.get("cost", 0) or 0) / float(self.num_agents)
-        return float(agent_info.get("cost_sum", 0) or 0)
+        return 0.0
 
     def reset(self, seed: int | None = None):
         if seed is not None:
