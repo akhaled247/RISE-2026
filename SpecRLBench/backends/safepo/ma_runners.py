@@ -59,7 +59,7 @@ def train_with_safepo_ma(
     from backends.safepo.registry import MA_ALGO_MODULE, resolve_ma_algo
     from backends.safepo.runners import _patch_epoch_logger_tensorboard
 
-    # PYTHONPATH for spawn workers, spawn before CUDA, then SafePO MA vec patches.
+    # PYTHONPATH for spawn workers, spawn before CUDA, farama filter.
     ensure_specrlbench_paths()
     _ensure_mp_spawn_before_cuda()
     from backends.safepo.ma_safepo_patches import apply_ma_safepo_patches
