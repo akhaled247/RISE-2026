@@ -10,6 +10,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from tqdm import trange
 
 from backends.safepo.evaluate import (
     _classify_fail,
@@ -105,7 +106,7 @@ def eval_ma_run(
     casualty_num = 1
     ep_seed = int(seed or 0)
 
-    for _ in range(eval_episodes):
+    for _ in trange(eval_episodes):
         obs_n, _, _ = env.reset(seed=ep_seed)
         ep_rew = ep_cost = ep_len = 0.0
         saw_walls = saw_collision = False

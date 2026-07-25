@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from tqdm import trange
 
 
 def _itr_from_name(name: str) -> int | None:
@@ -249,7 +250,7 @@ def eval_single_run(
     casualty_num = 1
     ep_seed = seed if seed is not None else 0
 
-    for _ in range(eval_episodes):
+    for _ in trange(eval_episodes):
         eval_done = False
         eval_obs, info0 = eval_env.reset(seed=ep_seed)
         eval_obs = torch.as_tensor(eval_obs, dtype=torch.float32, device=device_t)
