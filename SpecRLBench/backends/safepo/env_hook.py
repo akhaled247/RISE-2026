@@ -223,55 +223,22 @@ def make_specrlbench_ma_multi_goal_env(task: str, seed: int, cfg_train: dict):
 
     def get_env_fn(rank: int):
         def init_env():
-            import os
             import sys
 
-            from backends.safepo.debug_log import agent_dbg
+            for p in (specrl_root, sg_root, safepo_root):
+                if p not in sys.path:
+                    sys.path.insert(0, p)
+            from backends.safepo.farama_filter import silence_farama_adroit_spam
 
-            agent_dbg(
-                "A",
-                "env_hook.init_env:start",
-                "worker init_env starting",
-                {"rank": rank, "pid": os.getpid(), "task": task, "seed": int(seed) + rank * 1000},
-            )
-            try:
-                for p in (specrl_root, sg_root, safepo_root):
-                    if p not in sys.path:
-                        sys.path.insert(0, p)
-                from backends.safepo.farama_filter import silence_farama_adroit_spam
+            silence_farama_adroit_spam()
+            from backends.safepo.ma_factory import SpecRLMultiGoalEnv as _Env
 
-                silence_farama_adroit_spam()
-                from backends.safepo.ma_factory import SpecRLMultiGoalEnv as _Env
-
-                env = _Env(task=task, seed=int(seed) + rank * 1000)
-                agent_dbg(
-                    "A",
-                    "env_hook.init_env:ok",
-                    "worker init_env succeeded",
-                    {"rank": rank, "pid": os.getpid(), "num_agents": getattr(env, "num_agents", None)},
-                )
-                return env
-            except BaseException as exc:
-                agent_dbg(
-                    "A",
-                    "env_hook.init_env:fail",
-                    "worker init_env failed",
-                    {"rank": rank, "pid": os.getpid(), "error": repr(exc)},
-                )
-                raise
+            return _Env(task=task, seed=int(seed) + rank * 1000)
 
         return init_env
 
     n_threads = int(cfg_train.get("n_rollout_threads", 1))
     device = cfg_train.get("device", "cpu")
-    from backends.safepo.debug_log import agent_dbg
-
-    agent_dbg(
-        "D",
-        "env_hook.make_specrlbench_ma_multi_goal_env",
-        "creating vec env",
-        {"n_threads": n_threads, "device": str(device), "task": task},
-    )
     if n_threads == 1:
         return ShareDummyVecEnv([get_env_fn(0)], device)
     # Pass device so parent stacks obs on CUDA; IPC stays CPU inside ShareSubprocVecEnv.

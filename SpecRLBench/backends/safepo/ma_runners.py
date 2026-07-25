@@ -29,6 +29,30 @@ def _resolve_torch_device(device: str, device_id: int) -> str:
     return f"cuda:{int(device_id)}"
 
 
+def _ensure_ma_training_epochs(cfg_train: dict, env_id: str) -> None:
+    """Shrink ``episode_length`` when ``num_env_steps`` cannot fit one MAPPO epoch.
+
+    SafePO mamujoco defaults use ``episode_length=1000``; with ``--total-steps 2000``
+    and ``--num-envs 8`` that yields ``episodes = 2000//1000//8 = 0`` and immediate exit.
+    """
+    from backends.safepo.env_hook import is_specrlbench_env
+
+    if not is_specrlbench_env(env_id):
+        return
+
+    n_env = int(cfg_train.get("n_rollout_threads", 1))
+    ep_len = int(cfg_train.get("episode_length", 1000))
+    n_steps = int(cfg_train.get("num_env_steps", 0))
+    if n_steps <= 0 or n_env <= 0:
+        return
+
+    episodes = n_steps // ep_len // n_env
+    if episodes > 0:
+        return
+
+    cfg_train["episode_length"] = max(1, n_steps // n_env)
+
+
 def _ensure_mp_spawn_before_cuda() -> None:
     """Linux default fork + parent CUDA → 'Cannot re-initialize CUDA in forked subprocess'.
 
@@ -116,6 +140,7 @@ def train_with_safepo_ma(
     set_seed(cfg_train.get("seed", seed), cfg_train.get("torch_deterministic", False))
 
     cfg_train["device"] = device
+    _ensure_ma_training_epochs(cfg_train, env_id)
 
     # SpecRL log layout: {log_dir}/{task}/{algo}/seed-NNN-TIMESTAMP
     relpath = time.strftime("%Y-%m-%d-%H-%M-%S")
