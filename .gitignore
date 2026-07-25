@@ -5,7 +5,6 @@
 *.pyc
 debug_msg.txt
 .venv-safepo
-Safe-Policy-Optimization
 .cursor
 # Root-level SafePO run dumps (not SpecRLBench/backends/safepo/)
 /safepo_*
