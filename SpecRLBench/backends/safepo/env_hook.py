@@ -228,6 +228,9 @@ def make_specrlbench_ma_multi_goal_env(task: str, seed: int, cfg_train: dict):
             for p in (specrl_root, sg_root, safepo_root):
                 if p not in sys.path:
                     sys.path.insert(0, p)
+            from backends.safepo.farama_filter import silence_farama_adroit_spam
+
+            silence_farama_adroit_spam()
             from backends.safepo.ma_factory import SpecRLMultiGoalEnv as _Env
 
             return _Env(task=task, seed=int(seed) + rank * 1000)
