@@ -32,7 +32,7 @@ def build_ma_parser(default_algo: str) -> argparse.ArgumentParser:
     p.add_argument("--device-id", type=int, default=0)
     p.add_argument("--log-dir", type=str, default="./_training_logs/safepo")
     p.add_argument("--experiment", type=str, default="specrlbench")
-    p.add_argument("--write-terminal", type=_str2bool, default=True)
+    p.add_argument("--write-terminal", type=_str2bool, default=False)
     p.add_argument(
         "--use-tensorboard",
         type=_str2bool,

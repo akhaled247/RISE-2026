@@ -404,10 +404,10 @@ def _format_line(env: str, algo: str, metrics: dict[str, float], n: int) -> str:
         f"reward: {metrics['mean_reward']:.2f}±{metrics['std_reward']:.2f}, "
         f"cost: {metrics['mean_cost']:.2f}±{metrics['std_cost']:.2f}, "
         f"ep_len: {metrics['mean_ep_len']:.2f}±{metrics['std_ep_len']:.2f}, "
-        f"rescue: {100 * metrics['rescue_rate']:.1f}%\n"
     )
     if "casualty_num" in metrics:
         line += (
+            "\n" + 
             _format_rescue_rates(
                 casualty_num=int(metrics["casualty_num"]),
                 full=int(metrics.get("rescue_full", 0)),
@@ -424,6 +424,8 @@ def _format_line(env: str, algo: str, metrics: dict[str, float], n: int) -> str:
             f"timeout={int(metrics.get('fail_timeout', 0))} "
             f"other={int(metrics.get('fail_other', 0))}\n"
         )
+    else:
+        line += (f"rescue: {100 * metrics['rescue_rate']:.1f}%\n")
     return line
 
 
