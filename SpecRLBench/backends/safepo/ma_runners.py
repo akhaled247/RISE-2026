@@ -159,15 +159,19 @@ def train_with_safepo_ma(
     set_seed(cfg_train.get("seed", seed), cfg_train.get("torch_deterministic", False))
 
     cfg_train["device"] = device
+    ent = entropy_coef if entropy_coef is not None else MA_SPECRL_RECIPE_B["entropy_coef"]
     _apply_specrl_ma_recipe_b(
         cfg_train,
         env_id,
         overrides={
-            "entropy_coef": entropy_coef if entropy_coef is not None else MA_SPECRL_RECIPE_B["entropy_coef"],
+            "entropy_coef": ent,
+            "ent_coef": ent,
             "episode_length": episode_length,
             "learning_iters": learning_iters,
         },
     )
+    if safepo_algo.startswith("ippo") and "batch_size" not in cfg_train:
+        cfg_train["batch_size"] = MA_SPECRL_RECIPE_B.get("batch_size", 256)
     _ensure_ma_training_epochs(cfg_train, env_id)
 
     # SpecRL log layout: {log_dir}/{task}/{algo}/seed-NNN-TIMESTAMP

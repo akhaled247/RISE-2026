@@ -42,6 +42,8 @@ def build_ma_parser(default_algo: str) -> argparse.ArgumentParser:
     p.add_argument("--use-eval", type=_str2bool, default=False)
     p.add_argument(
         "--entropy-coef",
+        "--ent-coef",
+        dest="entropy_coef",
         type=float,
         default=MA_SPECRL_RECIPE_B["entropy_coef"],
         help="Entropy bonus (default 0.02, recipe-B)",

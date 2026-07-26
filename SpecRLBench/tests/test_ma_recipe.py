@@ -30,3 +30,31 @@ def test_apply_specrl_ma_recipe_b_cli_override():
     assert cfg["episode_length"] == 2000
     assert cfg["learning_iters"] == 8
     assert cfg["gamma"] == MA_SPECRL_RECIPE_B["gamma"]
+
+
+def test_ippo_cfg_train_to_ppo_config():
+    from safepo.multi_agent.ippo import _cfg_train_to_ppo_config
+
+    cfg = {
+        "n_rollout_threads": 8,
+        "episode_length": 2500,
+        "num_env_steps": 4_000_000,
+        "entropy_coef": 0.02,
+        "clip_param": 0.2,
+        "hidden_size": 64,
+        "batch_size": 256,
+    }
+    ppo = _cfg_train_to_ppo_config(cfg)
+    assert ppo["steps_per_epoch"] == 20000
+    assert ppo["local_steps_per_epoch"] == 2500
+    assert ppo["ent_coef"] == 0.02
+    assert ppo["clip_ratio"] == 0.2
+    assert ppo["batch_size"] == 256
+    assert ppo["hidden_sizes"] == [64, 64]
+
+
+def test_ippo_ent_coef_alias():
+    from safepo.multi_agent.ippo import _cfg_train_to_ppo_config
+
+    ppo = _cfg_train_to_ppo_config({"ent_coef": 0.05, "n_rollout_threads": 1, "episode_length": 100})
+    assert ppo["ent_coef"] == 0.05
