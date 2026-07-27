@@ -52,6 +52,21 @@ def _apply_specrl_ma_recipe_b(
                 cfg_train[key] = value
 
 
+def _annotate_ma_minibatch_config(cfg_train: dict) -> None:
+    """Ensure ``num_mini_batch`` (+ alias) and resolved sizes land in config.json."""
+    nmb = max(1, int(cfg_train.get("num_mini_batch", 1)))
+    cfg_train["num_mini_batch"] = nmb
+    cfg_train["num_mini_batches"] = nmb  # alias for config.json greps
+    ep_len = int(cfg_train.get("episode_length", 1))
+    n_env = int(cfg_train.get("n_rollout_threads", 1))
+    per_agent = max(1, ep_len * n_env)
+    cfg_train["mini_batch_size_per_agent"] = per_agent // nmb
+    # IPPO share_policy merges agent buffers before the DataLoader split.
+    n_agents = int(cfg_train.get("num_agents", 2))
+    if bool(cfg_train.get("share_policy", False)):
+        cfg_train["mini_batch_size_shared_merge"] = (per_agent * n_agents) // nmb
+
+
 def _ensure_ma_training_epochs(cfg_train: dict, env_id: str) -> None:
     """Shrink ``episode_length`` when ``num_env_steps`` cannot fit one MAPPO epoch.
 
@@ -110,6 +125,7 @@ def train_with_safepo_ma(
     save_model_freq: int | None = None,
     episode_length: int | None = None,
     learning_iters: int | None = None,
+    num_mini_batch: int | None = None,
     eval_interval: int | None = None,
     **_extra: Any,
 ) -> dict[str, Any]:
@@ -182,13 +198,10 @@ def train_with_safepo_ma(
             "episode_length": episode_length,
             "learning_iters": learning_iters,
             "eval_interval": eval_interval,
+            "num_mini_batch": num_mini_batch,
         },
         algo=safepo_algo,
     )
-    if safepo_algo.startswith("ippo") and "num_mini_batch" not in cfg_train:
-        cfg_train["num_mini_batch"] = int(
-            MA_SPECRL_RECIPE_B.get("num_mini_batch", 1)
-        )
     _ensure_ma_training_epochs(cfg_train, env_id)
 
     # SpecRL log layout: {log_dir}/{task}/{algo}/seed-NNN-TIMESTAMP
@@ -209,6 +222,7 @@ def train_with_safepo_ma(
     cfg_train["env_name"] = args.task
     cfg_train["algorithm_name"] = algo_key
     cfg_train["task"] = args.task
+    _annotate_ma_minibatch_config(cfg_train)
 
     mod = importlib.import_module(_SAFEPO_MA_MODULES[safepo_algo])
     # Ensure patched factory is visible on already-bound names

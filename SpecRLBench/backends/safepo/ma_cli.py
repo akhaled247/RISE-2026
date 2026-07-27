@@ -66,6 +66,18 @@ def build_ma_parser(default_algo: str) -> argparse.ArgumentParser:
         help="PPO epochs per rollout (default 10 for SpecRL MASAR)",
     )
     p.add_argument(
+        "--num-mini-batch",
+        "--num-mini-batches",
+        dest="num_mini_batch",
+        type=int,
+        default=None,
+        help=(
+            "MAPPO-style PPO buffer splits (default 1). "
+            "chunk_size ≈ (episode_length * num_envs) // N; "
+            "IPPO share_policy merge ≈ 2× rows so MiniBatchSize may be 2× that hint"
+        ),
+    )
+    p.add_argument(
         "--share-policy",
         type=_str2bool,
         default=None,
@@ -106,6 +118,7 @@ def main(default_algo: str = "mappo") -> None:
         entropy_coef=args.entropy_coef,
         episode_length=args.episode_length,
         learning_iters=args.learning_iters,
+        num_mini_batch=args.num_mini_batch,
         share_policy=args.share_policy,
         model_dir=args.model_dir,
         save_model_freq=args.save_model_freq,

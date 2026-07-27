@@ -47,6 +47,33 @@ def test_apply_specrl_ma_recipe_b_cli_override():
     assert cfg["gamma"] == MA_SPECRL_RECIPE_B["gamma"]
 
 
+def test_num_mini_batch_cli_override_survives_recipe():
+    cfg = {"num_mini_batch": 1}
+    _apply_specrl_ma_recipe_b(
+        cfg,
+        "PointLTL0MASAR2-v0",
+        overrides={"num_mini_batch": 128},
+        algo="ippo",
+    )
+    assert cfg["num_mini_batch"] == 128
+
+
+def test_annotate_ma_minibatch_config():
+    from backends.safepo.ma_runners import _annotate_ma_minibatch_config
+
+    cfg = {
+        "episode_length": 4096,
+        "n_rollout_threads": 8,
+        "num_mini_batch": 128,
+        "share_policy": True,
+        "num_agents": 2,
+    }
+    _annotate_ma_minibatch_config(cfg)
+    assert cfg["num_mini_batches"] == 128
+    assert cfg["mini_batch_size_per_agent"] == 32768 // 128
+    assert cfg["mini_batch_size_shared_merge"] == (32768 * 2) // 128
+
+
 def test_ippo_cfg_train_to_ppo_config():
     from safepo.multi_agent.ippo import _cfg_train_to_ppo_config
 
@@ -200,3 +227,82 @@ def test_ippo_ppo_update_changes_actor_weights():
     assert iters >= 1
     assert delta > 0.0
     assert logger.epoch_dict.get("Train/ActorParamDelta", [0.0])[-1] > 0.0
+
+
+def test_ippo_num_mini_batch_scales_grad_steps():
+    """MAPPO-style splits: nmb=2 on len=4 buffer → 2 grad steps vs 1 for nmb=1."""
+    from gymnasium.spaces import Box
+
+    from safepo.common.buffer import VectorizedOnPolicyBuffer
+    from safepo.common.logger import EpochLogger
+    from safepo.common.model import ActorVCritic
+    from safepo.multi_agent.ippo import AgentPPOBundle, _ppo_update_agent
+
+    device = torch.device("cpu")
+    obs_dim, act_dim = 8, 2
+    obs_space = Box(low=-1, high=1, shape=(obs_dim,))
+    act_space = Box(low=-1, high=1, shape=(act_dim,))
+    policy = ActorVCritic(obs_dim, act_dim, hidden_sizes=[16, 16]).to(device)
+    buffer = VectorizedOnPolicyBuffer(
+        obs_space=obs_space,
+        act_space=act_space,
+        size=4,
+        device=device,
+        num_envs=1,
+    )
+    bundle = AgentPPOBundle(
+        policy=policy,
+        buffer=buffer,
+        actor_optimizer=torch.optim.Adam(policy.actor.parameters(), lr=1e-3),
+        reward_critic_optimizer=torch.optim.Adam(
+            policy.reward_critic.parameters(), lr=1e-3
+        ),
+        cost_critic_optimizer=torch.optim.Adam(
+            policy.cost_critic.parameters(), lr=1e-3
+        ),
+    )
+    for _ in range(4):
+        obs = torch.randn(1, obs_dim, device=device)
+        act = torch.randn(1, act_dim, device=device)
+        with torch.no_grad():
+            _, log_prob, value_r, value_c = policy.step(obs)
+        buffer.store(
+            obs=obs,
+            act=act,
+            reward=torch.tensor([1.0], device=device),
+            cost=torch.zeros(1, device=device),
+            value_r=value_r,
+            value_c=value_c,
+            log_prob=log_prob,
+        )
+    buffer.finish_path(
+        last_value_r=torch.zeros(1, device=device),
+        last_value_c=torch.zeros(1, device=device),
+        idx=0,
+    )
+    data = {k: v.detach().clone() for k, v in buffer.get().items()}
+
+    def _grad_steps(nmb: int) -> float:
+        logger = EpochLogger(log_dir=os.devnull, seed="0")
+        ppo_cfg = {
+            "num_mini_batch": nmb,
+            "learning_iters": 1,
+            "clip_ratio": 0.2,
+            "ent_coef": 0.0,
+            "target_kl": 1.0,
+            "max_grad_norm": 40.0,
+            "use_critic_norm": False,
+            "use_value_coefficient": False,
+        }
+        _ppo_update_agent(
+            bundle,
+            ppo_cfg,
+            logger,
+            use_lagrange=False,
+            data={k: v.clone() for k, v in data.items()},
+        )
+        return float(logger.epoch_dict["Train/PPOGradSteps"][-1])
+
+    assert _grad_steps(1) == 1.0
+    assert _grad_steps(2) == 2.0
+    assert _grad_steps(4) == 4.0
