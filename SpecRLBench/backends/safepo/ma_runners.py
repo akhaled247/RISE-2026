@@ -55,8 +55,8 @@ def _apply_specrl_ma_recipe_b(
 def _ensure_ma_training_epochs(cfg_train: dict, env_id: str) -> None:
     """Shrink ``episode_length`` when ``num_env_steps`` cannot fit one MAPPO epoch.
 
-    With ``episode_length=2500``, ``--total-steps 2000`` and ``--num-envs 8`` yields
-    ``episodes = 2000//2500//8 = 0`` and immediate exit.
+    With ``episode_length=4096``, ``--total-steps 2000`` and ``--num-envs 8`` yields
+    ``episodes = 2000//4096//8 = 0`` and immediate exit.
     """
     from backends.safepo.env_hook import is_specrlbench_env
 

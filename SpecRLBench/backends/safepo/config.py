@@ -57,9 +57,9 @@ ALGO_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 # SafePO MA YAML ``mamujoco`` block + runner override for PointLTL*MASAR2* (recipe-B spine).
-# episode_length must match SAR registration max_episode_steps (2500).
+# episode_length = PPO rollout/buffer horizon (independent of env max_episode_steps=2500).
 MA_SPECRL_RECIPE_B: dict[str, Any] = {
-    "episode_length": 2500,
+    "episode_length": 4096,
     "learning_iters": 10,
     "actor_lr": 5e-5,
     "critic_lr": 1e-3,

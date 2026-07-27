@@ -52,7 +52,7 @@ def test_ippo_cfg_train_to_ppo_config():
 
     cfg = {
         "n_rollout_threads": 8,
-        "episode_length": 2500,
+        "episode_length": 4096,
         "num_env_steps": 4_000_000,
         "entropy_coef": 0.02,
         "clip_param": 0.2,
@@ -60,8 +60,8 @@ def test_ippo_cfg_train_to_ppo_config():
         "batch_size": 256,
     }
     ppo = _cfg_train_to_ppo_config(cfg)
-    assert ppo["steps_per_epoch"] == 20000
-    assert ppo["local_steps_per_epoch"] == 2500
+    assert ppo["steps_per_epoch"] == 32768
+    assert ppo["local_steps_per_epoch"] == 4096
     assert ppo["ent_coef"] == 0.02
     assert ppo["clip_ratio"] == 0.2
     assert ppo["batch_size"] == 256
@@ -78,22 +78,42 @@ def test_ippo_ent_coef_alias():
 def test_ippo_should_record_episode():
     from safepo.multi_agent.ippo import _should_record_episode
 
-    horizon = 2500
+    horizon = 4096
     assert _should_record_episode(
         done=True, epoch_end=False, episode_steps=600, rollout_horizon=horizon
     )
     assert _should_record_episode(
-        done=True, epoch_end=True, episode_steps=2500, rollout_horizon=horizon
+        done=True, epoch_end=True, episode_steps=4096, rollout_horizon=horizon
     )
     assert _should_record_episode(
-        done=False, epoch_end=True, episode_steps=2500, rollout_horizon=horizon
+        done=False, epoch_end=True, episode_steps=4096, rollout_horizon=horizon
     )
     assert not _should_record_episode(
         done=False, epoch_end=True, episode_steps=1900, rollout_horizon=horizon
     )
     assert not _should_record_episode(
-        done=False, epoch_end=False, episode_steps=2500, rollout_horizon=horizon
+        done=False, epoch_end=False, episode_steps=4096, rollout_horizon=horizon
     )
+
+
+def test_sa_style_eplen_deque_includes_timeout():
+    """Rolling EpLen mean includes terminal/timeout completions (SA parity)."""
+    import os
+
+    from safepo.common.logger import EpochLogger
+    from safepo.multi_agent.ma_episode_metrics import (
+        make_metric_deques,
+        record_sa_style_episode_metrics,
+    )
+
+    logger = EpochLogger(log_dir=os.devnull, seed="0")
+    rew_deque, cost_deque, len_deque = make_metric_deques()
+    # Short success then env-max timeout (2500)
+    record_sa_style_episode_metrics(logger, rew_deque, cost_deque, len_deque, 1.0, 0.0, 800.0)
+    record_sa_style_episode_metrics(logger, rew_deque, cost_deque, len_deque, 0.5, 0.0, 2500.0)
+    assert list(len_deque) == [800.0, 2500.0]
+    assert logger.epoch_dict["Metrics/EpLen"][-1] == (800.0 + 2500.0) / 2.0
+    assert MA_SPECRL_RECIPE_B["episode_length"] == 4096
 
 
 def test_ippo_ppo_update_changes_actor_weights():

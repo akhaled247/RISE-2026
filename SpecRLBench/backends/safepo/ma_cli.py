@@ -57,7 +57,7 @@ def build_ma_parser(default_algo: str) -> argparse.ArgumentParser:
         "--episode-length",
         type=int,
         default=None,
-        help="Rollout horizon per PPO epoch (default 2500 for SpecRL MASAR)",
+        help="Rollout horizon per PPO epoch (default 4096 for SpecRL MASAR; env max still 2500)",
     )
     p.add_argument(
         "--learning-iters",
