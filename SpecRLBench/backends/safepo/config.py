@@ -70,7 +70,8 @@ MA_SPECRL_RECIPE_B: dict[str, Any] = {
     "hidden_size": 64,
     "entropy_coef": 0.02,
     "ent_coef": 0.02,
-    "batch_size": 256,
+    # MAPPO-style PPO splits (IPPO uses this; MAPPO YAML already defaults to 1).
+    "num_mini_batch": 1,
     "max_grad_norm": 10.0,
     "use_value_active_masks": True,
     "use_policy_active_masks": True,

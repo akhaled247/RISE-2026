@@ -57,15 +57,27 @@ def test_ippo_cfg_train_to_ppo_config():
         "entropy_coef": 0.02,
         "clip_param": 0.2,
         "hidden_size": 64,
-        "batch_size": 256,
+        "num_mini_batch": 1,
+        "batch_size": 256,  # ignored (MAPPO-style num_mini_batch wins)
     }
     ppo = _cfg_train_to_ppo_config(cfg)
     assert ppo["steps_per_epoch"] == 32768
     assert ppo["local_steps_per_epoch"] == 4096
     assert ppo["ent_coef"] == 0.02
     assert ppo["clip_ratio"] == 0.2
-    assert ppo["batch_size"] == 256
+    assert ppo["num_mini_batch"] == 1
+    assert "batch_size" not in ppo
     assert ppo["hidden_sizes"] == [64, 64]
+
+
+def test_ippo_num_mini_batch_default():
+    from safepo.multi_agent.ippo import _cfg_train_to_ppo_config
+
+    ppo = _cfg_train_to_ppo_config(
+        {"n_rollout_threads": 8, "episode_length": 4096}
+    )
+    assert ppo["num_mini_batch"] == 1
+    assert MA_SPECRL_RECIPE_B["num_mini_batch"] == 1
 
 
 def test_ippo_ent_coef_alias():
@@ -170,7 +182,7 @@ def test_ippo_ppo_update_changes_actor_weights():
     before = [p.detach().clone() for p in policy.actor.parameters()]
     logger = EpochLogger(log_dir=os.devnull, seed="0")
     ppo_cfg = {
-        "batch_size": 4,
+        "num_mini_batch": 1,
         "learning_iters": 1,
         "clip_ratio": 0.2,
         "ent_coef": 0.0,

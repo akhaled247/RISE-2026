@@ -185,8 +185,10 @@ def train_with_safepo_ma(
         },
         algo=safepo_algo,
     )
-    if safepo_algo.startswith("ippo") and "batch_size" not in cfg_train:
-        cfg_train["batch_size"] = MA_SPECRL_RECIPE_B.get("batch_size", 256)
+    if safepo_algo.startswith("ippo") and "num_mini_batch" not in cfg_train:
+        cfg_train["num_mini_batch"] = int(
+            MA_SPECRL_RECIPE_B.get("num_mini_batch", 1)
+        )
     _ensure_ma_training_epochs(cfg_train, env_id)
 
     # SpecRL log layout: {log_dir}/{task}/{algo}/seed-NNN-TIMESTAMP
