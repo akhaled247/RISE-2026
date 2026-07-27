@@ -11,11 +11,13 @@ def make_env(env_name, render_mode=None, sb3=False):
     elif env_name.startswith("Panda"):
         env = gym.make(env_name, disable_env_checker=True, render_mode=render_mode)
     elif env_name.startswith("Point") or env_name.startswith("Car") or env_name.startswith("Ant"):
-        from specbench.envs.zones.safety_gym_wrapper_ma import SafetyGymWrapperMA
-        from specbench.envs.zones.safety_gym_wrapper_ma_sar import SafetyGymWrapperMASAR
-        from specbench.envs.zones.safety_gym_wrapper_ma_sar_wc import SafetyGymWrapperMASARWC
-        from specbench.envs.zones.safety_gym_wrapper_ma_sar_ac import SafetyGymWrapperMASARAC
-        from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
+        from specbench.envs.zones.wrappers import (
+            SafetyGymWrapper,
+            SafetyGymWrapperMA,
+            SafetyGymWrapperMASAR,
+            SafetyGymWrapperMASARWC,
+            SafetyGymWrapperMASARAC,
+        )
         import safety_gymnasium
 
         # AC takes precedence over WC when both substrings appear (AC IDs contain neither WC).

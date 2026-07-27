@@ -21,26 +21,26 @@ from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import Walls
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Buildings
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import border_placements, ring_placements, size_randomization
-from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_level0 import MultiGoalSARLevel0
+from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_level1 import MultiGoalSARLevel1
 
 
-class MultiGoalSARLevel2(MultiGoalSARLevel0):
+class MultiGoalSARLevel2(MultiGoalSARLevel1):
     """Multi-agent zone navigation with optional ring-placed interior walls."""
 
     wall_count = 10
     building_keepout = 0.4
     building_border_side_length = 4.5
     building_margin = 0.8
-    building_num=1
-    surface_casualtys_frac = 0.0
-    entrapped_casualtys_frac = 1.0
+    building_num = 0
+    surface_casualties_enabled = False
+    entrapped_casualties_enabled = True
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
+        self.building_num=self.agent_num
         for i in range(self.building_num):
             self._add_geoms(LtlWalls(name=f'building{i}_ltl_walls'))
         self._add_geoms(
-            Walls(num=self.wall_count),
             Buildings(
                 color=list(Buildings.COLORS)[0],
                 size=self.building_keepout * 0.75,
@@ -52,8 +52,8 @@ class MultiGoalSARLevel2(MultiGoalSARLevel0):
                 ),
             ),
             Casualtys(
-                num=int(self.agent_num * self.entrapped_casualtys_frac),
-                category=list(Casualtys.CATEGORIES)[-1],
+                num=int(self.agent_num * self.entrapped_casualties_enabled),
+                category="entrapped",
                 size=0.05,
                 keepout=0.0,
             ),
@@ -72,25 +72,11 @@ class MultiGoalSARLevel2(MultiGoalSARLevel0):
         pass
 
     def _build(self):
-        self._cached_wall_half_sizes = size_randomization(
-            self.wall_base_half_sizes,
-            self.wall_count,
-            margins=(np.array(self.wall_base_half_sizes) / 2).tolist(),
-            random_generator=self.random_generator,
-        ) if self._cached_wall_half_sizes is None else self._cached_wall_half_sizes
-        self._replace_geom(Walls(
-            num=self.wall_count,
-            placements=ring_placements(
-                self.wall_ring_radius, self.wall_count, margin=self.wall_margin,
-            ),
-            half_sizes=self._cached_wall_half_sizes,
-            keepout=0.4,
-        ))
         self._replace_border_buildings(num=self.building_num)
         self._replace_geom(Casualtys(
-            category=list(Casualtys.CATEGORIES)[-1],
+            category="entrapped",
             size=0.05,
-            num=int(self.agent_num * self.entrapped_casualtys_frac),
+            num=int(self.agent_num * self.entrapped_casualties_enabled),
             keepout=0.0,
         ))
         self._replace_building_perimeter_walls()

@@ -55,8 +55,8 @@ class MultiGoalSARLevel0(BaseTask):
     reward_distance = 1.0
     reward_goal = 1.0
     time_alive_decay = 0.0
-    surface_casualtys_frac: float = 1.0
-    entrapped_casualtys_frac: float = 0.0
+    surface_casualties_enabled: bool = True
+    entrapped_casualties_enabled: bool = False
     building_num: int = 0
 
     def __init__(self, config) -> None:
@@ -80,7 +80,7 @@ class MultiGoalSARLevel0(BaseTask):
 
         # Spawn agents in a specified area
         self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
-        surface_casualtys_int = int(self.agent_num * self.surface_casualtys_frac)
+        surface_casualtys_int = int(self.agent_num * self.surface_casualties_enabled)
         # One surface casualty for solo training; otherwise one per agent.
         self.casualty_num = self.agent_num
         self._add_geoms(
@@ -90,7 +90,7 @@ class MultiGoalSARLevel0(BaseTask):
         if surface_casualtys_int>0: 
             self._add_geoms(
                 Casualtys(
-                    category=list(Casualtys.CATEGORIES)[-2],
+                    category="surface",
                     size=0.05,
                     num=surface_casualtys_int,
                     keepout=self.casualty_keepout,

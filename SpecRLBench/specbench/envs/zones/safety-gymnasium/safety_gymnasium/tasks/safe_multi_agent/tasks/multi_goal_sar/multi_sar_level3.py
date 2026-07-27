@@ -21,3 +21,6 @@ from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_leve
 
 class MultiGoalSARLevel3(MultiGoalSARLevel2):
     """L5 setup with two buildings."""
+    wall_count = 10
+    surface_casualties_enabled = True
+    entrapped_casualties_enabled = True
