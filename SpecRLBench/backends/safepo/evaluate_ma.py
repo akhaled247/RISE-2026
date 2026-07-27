@@ -59,7 +59,7 @@ def eval_ma_run(
     from backends.safepo.env_hook import is_specrlbench_env, patch_safepo_ma_env_factory
     from backends.safepo.ma_factory import SpecRLMultiGoalEnv
     from backends.safepo.paths import ensure_specrlbench_paths
-    from safepo.common.model import MultiAgentActor as Actor
+    from safepo.common.model import ActorVCritic, MultiAgentActor
 
     ensure_specrlbench_paths()
     patch_safepo_ma_env_factory()
@@ -76,6 +76,7 @@ def eval_ma_run(
 
     algo = str(config.get("algorithm_name", "mappo")).lower().replace("-", "_")
     device_t = torch.device(device if torch.cuda.is_available() or device == "cpu" else "cpu")
+    use_ippo_spine = algo in ("ippo", "ippo_lag")
 
     env = SpecRLMultiGoalEnv(task=str(env_id), seed=int(seed or 0), render_mode=render_mode)
     use_walls, use_collision = cmdp_cost_channels(str(env_id))
@@ -84,21 +85,36 @@ def eval_ma_run(
 
     actors = []
     share_policy = bool(config.get("share_policy", algo.startswith("ippo")))
+    hidden = int(config.get("hidden_size", 64))
+    hidden_sizes = config.get("hidden_sizes", [hidden, hidden])
     for agent_id in range(num_agents):
         aid = 0 if share_policy else agent_id
         actor_path = os.path.join(models_dir, f"actor_agent{aid}.pt")
         if not os.path.isfile(actor_path):
             actor_path = os.path.join(models_dir, f"actor_agent{agent_id}.pt")
-        actor = Actor(
-            config,
-            env.observation_spaces[f"agent_{agent_id}"],
-            env.action_spaces[env.possible_agents[agent_id]],
-            device_t,
-        )
-        state = torch.load(actor_path, map_location=device_t, weights_only=False)
-        actor.load_state_dict(state)
-        actor.eval()
-        actors.append(actor)
+        if use_ippo_spine:
+            obs_dim = int(env.observation_spaces[f"agent_{agent_id}"].shape[0])
+            act_dim = int(env.action_spaces[env.possible_agents[agent_id]].shape[0])
+            policy = ActorVCritic(
+                obs_dim=obs_dim,
+                act_dim=act_dim,
+                hidden_sizes=list(hidden_sizes),
+            ).to(device_t)
+            state = torch.load(actor_path, map_location=device_t, weights_only=False)
+            policy.actor.load_state_dict(state)
+            policy.eval()
+            actors.append(policy)
+        else:
+            actor = MultiAgentActor(
+                config,
+                env.observation_spaces[f"agent_{agent_id}"],
+                env.action_spaces[env.possible_agents[agent_id]],
+                device_t,
+            )
+            state = torch.load(actor_path, map_location=device_t, weights_only=False)
+            actor.load_state_dict(state)
+            actor.eval()
+            actors.append(actor)
 
     rews, costs, lens = [], [], []
     full_count = partial_count = none_count = 0
@@ -124,9 +140,12 @@ def eval_ma_run(
             for agent_id in range(num_agents):
                 obs_t = torch.as_tensor(obs_n[agent_id], dtype=torch.float32, device=device_t).unsqueeze(0)
                 with torch.no_grad():
-                    act, _, rnn[agent_id] = actors[agent_id](
-                        obs_t, rnn[agent_id], masks[agent_id], deterministic=True
-                    )
+                    if use_ippo_spine:
+                        act, _, _, _ = actors[agent_id].step(obs_t, deterministic=True)
+                    else:
+                        act, _, rnn[agent_id] = actors[agent_id](
+                            obs_t, rnn[agent_id], masks[agent_id], deterministic=True
+                        )
                 actions.append(act.squeeze(0))
             obs_n, share_n, rewards, costs_l, dones, infos, _ = env.step(actions)
             del share_n
