@@ -132,9 +132,18 @@ class SpecRLMultiGoalEnv:
         return 0.0
 
     def reset(self, seed: int | None = None):
+        """Reset env; only pin layout seed when ``seed`` is explicit.
+
+        Vec-env autoreset calls ``reset()`` with no seed. Passing a fixed
+        ``self._seed`` every time blocked :class:`SafetyGymWrapperMASAR`
+        ``_layout_seed`` cycling (SA parity) and locked each worker to one layout.
+        """
         if seed is not None:
             self._seed = int(seed)
-        obs, info = self.env.reset(seed=self._seed)
+            obs, info = self.env.reset(seed=self._seed)
+        else:
+            # Let SAR wrapper advance ``_layout_seed`` (same as SA path).
+            obs, info = self.env.reset()
         self._last_info = info
         obs_n, share_n = self._pack_obs(obs)
         return obs_n, share_n, self._get_avail_actions()
