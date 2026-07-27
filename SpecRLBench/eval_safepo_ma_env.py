@@ -10,7 +10,7 @@ from pathlib import Path
 
 """
   python ~/RISE-2026/SpecRLBench/eval_safepo_ma_env.py --run-dir \
-  ~/RISE-2026/SpecRLBench/_training_logs/safepo/PointLTL0MASAR2-v0/mappo/seed-000-2026-07-25-21-53-22 \
+  ~/RISE-2026/SpecRLBench/_training_logs/safepo/PointLTL0MASAR2-v0/ippo/seed-000-2026-07-26-19-25-26 \
   --eval-episodes 50 --device cuda
 """
 
