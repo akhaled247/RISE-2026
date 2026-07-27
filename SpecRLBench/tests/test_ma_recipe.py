@@ -16,6 +16,17 @@ def test_apply_specrl_ma_recipe_b_masar2():
     assert cfg["episode_length"] == MA_SPECRL_RECIPE_B["episode_length"]
     assert cfg["actor_lr"] == MA_SPECRL_RECIPE_B["actor_lr"]
     assert cfg["target_kl"] == MA_SPECRL_RECIPE_B["target_kl"]
+    assert cfg["entropy_coef"] == MA_SPECRL_RECIPE_B["entropy_coef"]
+
+
+def test_apply_specrl_ippo_recipe_ec0():
+    from backends.safepo.config import MA_IPPO_RECIPE_B
+
+    cfg = {"entropy_coef": 0.02, "ent_coef": 0.02}
+    _apply_specrl_ma_recipe_b(cfg, "PointLTL0MASAR2-v0", algo="ippo")
+    assert cfg["entropy_coef"] == 0.0
+    assert cfg["ent_coef"] == 0.0
+    assert cfg["eval_interval"] == MA_IPPO_RECIPE_B["eval_interval"]
 
 
 def test_apply_specrl_ma_recipe_b_skips_non_specrl():

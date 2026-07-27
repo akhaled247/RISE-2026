@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from distutils.util import strtobool
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +55,8 @@ def eval_ma_run(
     *,
     device: str = "cuda",
     seed: int | None = 0,
-    render_mode: str = None
+    render_mode: str = None,
+    deterministic: bool = True,
 ) -> dict[str, float]:
     from backends.safepo.env_hook import is_specrlbench_env, patch_safepo_ma_env_factory
     from backends.safepo.ma_factory import SpecRLMultiGoalEnv
@@ -141,7 +143,9 @@ def eval_ma_run(
                 obs_t = torch.as_tensor(obs_n[agent_id], dtype=torch.float32, device=device_t).unsqueeze(0)
                 with torch.no_grad():
                     if use_ippo_spine:
-                        act, _, _, _ = actors[agent_id].step(obs_t, deterministic=True)
+                        act, _, _, _ = actors[agent_id].step(
+                            obs_t, deterministic=deterministic
+                        )
                     else:
                         act, _, rnn[agent_id] = actors[agent_id](
                             obs_t, rnn[agent_id], masks[agent_id], deterministic=True
@@ -230,6 +234,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--device", type=str, default="cuda")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
+        "--deterministic",
+        type=lambda v: bool(strtobool(str(v))),
+        default=True,
+        help="Use mean actions (default True). Pass False for stochastic eval.",
+    )
+    p.add_argument(
             "--render-mode",
             type=str,
             default=None,
@@ -242,7 +252,8 @@ def main(argv: list[str] | None = None) -> None:
         eval_episodes=args.eval_episodes,
         device=args.device,
         seed=args.seed,
-        render_mode=args.render_mode
+        render_mode=args.render_mode,
+        deterministic=args.deterministic,
     )
     parts = Path(args.run_dir).resolve().parts
     algo = parts[-2] if len(parts) >= 2 else "unknown"

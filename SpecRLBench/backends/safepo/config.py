@@ -78,3 +78,12 @@ MA_SPECRL_RECIPE_B: dict[str, Any] = {
     "use_valuenorm": False,
     "eval_episodes": 50,
 }
+
+# IPPO on sparse L0 SAR: match MAPPO L0 bar (ec=0) — high entropy keeps mean policy weak at eval.
+MA_IPPO_RECIPE_B: dict[str, Any] = {
+    **MA_SPECRL_RECIPE_B,
+    "entropy_coef": 0.0,
+    "ent_coef": 0.0,
+    "eval_interval": 25,
+    "eval_episodes": 25,
+}

@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from backends.safepo.config import MA_SPECRL_RECIPE_B, SafePOTrainConfig
+from backends.safepo.config import MA_IPPO_RECIPE_B, MA_SPECRL_RECIPE_B, SafePOTrainConfig
 
 _CFG = SafePOTrainConfig()
 
@@ -32,13 +32,20 @@ def _resolve_torch_device(device: str, device_id: int) -> str:
     return f"cuda:{int(device_id)}"
 
 
-def _apply_specrl_ma_recipe_b(cfg_train: dict, env_id: str, overrides: dict[str, Any] | None = None) -> None:
+def _apply_specrl_ma_recipe_b(
+    cfg_train: dict,
+    env_id: str,
+    overrides: dict[str, Any] | None = None,
+    *,
+    algo: str = "mappo",
+) -> None:
     """Force recipe-B spine for SpecRL MASAR tasks (overrides stale mamujoco YAML)."""
     from backends.safepo.env_hook import is_specrlbench_env
 
     if not is_specrlbench_env(env_id):
         return
-    cfg_train.update(MA_SPECRL_RECIPE_B)
+    recipe = MA_IPPO_RECIPE_B if str(algo).startswith("ippo") else MA_SPECRL_RECIPE_B
+    cfg_train.update(recipe)
     if overrides:
         for key, value in overrides.items():
             if value is not None:
@@ -103,6 +110,7 @@ def train_with_safepo_ma(
     save_model_freq: int | None = None,
     episode_length: int | None = None,
     learning_iters: int | None = None,
+    eval_interval: int | None = None,
     **_extra: Any,
 ) -> dict[str, Any]:
     """Patch MA env factory, parse SafePO multi_agent_args, run algo ``train()``."""
@@ -159,7 +167,12 @@ def train_with_safepo_ma(
     set_seed(cfg_train.get("seed", seed), cfg_train.get("torch_deterministic", False))
 
     cfg_train["device"] = device
-    ent = entropy_coef if entropy_coef is not None else MA_SPECRL_RECIPE_B["entropy_coef"]
+    if entropy_coef is not None:
+        ent = entropy_coef
+    elif safepo_algo.startswith("ippo"):
+        ent = MA_IPPO_RECIPE_B["entropy_coef"]
+    else:
+        ent = MA_SPECRL_RECIPE_B["entropy_coef"]
     _apply_specrl_ma_recipe_b(
         cfg_train,
         env_id,
@@ -168,7 +181,9 @@ def train_with_safepo_ma(
             "ent_coef": ent,
             "episode_length": episode_length,
             "learning_iters": learning_iters,
+            "eval_interval": eval_interval,
         },
+        algo=safepo_algo,
     )
     if safepo_algo.startswith("ippo") and "batch_size" not in cfg_train:
         cfg_train["batch_size"] = MA_SPECRL_RECIPE_B.get("batch_size", 256)
@@ -188,6 +203,10 @@ def train_with_safepo_ma(
         cfg_train["share_policy"] = bool(share_policy)
     elif "share_policy" not in cfg_train and safepo_algo.startswith("ippo"):
         cfg_train["share_policy"] = True
+
+    cfg_train["env_name"] = args.task
+    cfg_train["algorithm_name"] = algo_key
+    cfg_train["task"] = args.task
 
     mod = importlib.import_module(_SAFEPO_MA_MODULES[safepo_algo])
     # Ensure patched factory is visible on already-bound names
