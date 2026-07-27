@@ -132,9 +132,18 @@ class SpecRLMultiGoalEnv:
         return 0.0
 
     def reset(self, seed: int | None = None):
+        """Reset env; only pin layout seed when ``seed`` is explicit.
+
+        Vec-env autoreset calls ``reset()`` with no seed. Passing a fixed
+        ``self._seed`` every time blocked :class:`SafetyGymWrapperMASAR`
+        ``_layout_seed`` cycling (SA parity) and locked each worker to one layout.
+        """
         if seed is not None:
             self._seed = int(seed)
-        obs, info = self.env.reset(seed=self._seed)
+            obs, info = self.env.reset(seed=self._seed)
+        else:
+            # Let SAR wrapper advance ``_layout_seed`` (same as SA path).
+            obs, info = self.env.reset()
         self._last_info = info
         obs_n, share_n = self._pack_obs(obs)
         return obs_n, share_n, self._get_avail_actions()
@@ -165,13 +174,17 @@ class SpecRLMultiGoalEnv:
             cost_list.append([float(self._agent_cost(agent, info))])
             info_list.append(info.get(agent, {}) if isinstance(info, dict) else {})
 
-        # Attach team-level fields for eval
+        # Attach team-level fields for eval + term/trunc for MA logging
         for i, agent in enumerate(self.possible_agents):
             merged = dict(info_list[i]) if isinstance(info_list[i], dict) else {}
             if isinstance(info, dict):
                 for k in ("propositions", "cost", "casualty_visible"):
                     if k in info:
                         merged[k] = info[k]
+            term = terminated[agent] if isinstance(terminated, dict) else bool(terminated)
+            trunc = truncated[agent] if isinstance(truncated, dict) else bool(truncated)
+            merged["terminated"] = bool(term)
+            merged["truncated"] = bool(trunc)
             info_list[i] = merged
 
         obs_n, share_n = self._pack_obs(obs)

@@ -33,6 +33,26 @@ def test_make_env_wc_and_ac_exclusive_branching():
         ac.close()
 
 
+def test_ma_factory_reset_cycles_layout_seed_like_sa():
+    """Autoreset (no seed) must advance SAR ``_layout_seed``; explicit seed pins it."""
+    from backends.safepo.ma_factory import SpecRLMultiGoalEnv
+
+    env = SpecRLMultiGoalEnv("PointLTL0MASAR2-v0", seed=7)
+    try:
+        wrapper = env.env
+        assert getattr(wrapper, "_layout_seed", None) == 7
+        env.reset()  # vec-env autoreset style
+        assert wrapper._layout_seed == 8
+        env.reset()
+        assert wrapper._layout_seed == 9
+        env.reset(seed=42)
+        assert wrapper._layout_seed == 42
+        env.reset()
+        assert wrapper._layout_seed == 43
+    finally:
+        env.close()
+
+
 def test_ma_factory_reset_step_shapes():
     from backends.safepo.ma_factory import SpecRLMultiGoalEnv
 

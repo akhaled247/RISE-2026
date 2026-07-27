@@ -57,9 +57,9 @@ ALGO_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 # SafePO MA YAML ``mamujoco`` block + runner override for PointLTL*MASAR2* (recipe-B spine).
-# episode_length must match SAR registration max_episode_steps (2500).
+# episode_length = PPO rollout/buffer horizon (independent of env max_episode_steps=2500).
 MA_SPECRL_RECIPE_B: dict[str, Any] = {
-    "episode_length": 2500,
+    "episode_length": 4096,
     "learning_iters": 10,
     "actor_lr": 5e-5,
     "critic_lr": 1e-3,
@@ -69,10 +69,21 @@ MA_SPECRL_RECIPE_B: dict[str, Any] = {
     "clip_param": 0.2,
     "hidden_size": 64,
     "entropy_coef": 0.02,
+    "ent_coef": 0.02,
+    "batch_size": 256,
     "max_grad_norm": 10.0,
     "use_value_active_masks": True,
     "use_policy_active_masks": True,
     "data_chunk_length": 10,
     "use_valuenorm": False,
     "eval_episodes": 50,
+}
+
+# IPPO on sparse L0 SAR: match MAPPO L0 bar (ec=0) — high entropy keeps mean policy weak at eval.
+MA_IPPO_RECIPE_B: dict[str, Any] = {
+    **MA_SPECRL_RECIPE_B,
+    "entropy_coef": 0.0,
+    "ent_coef": 0.0,
+    "eval_interval": 25,
+    "eval_episodes": 25,
 }
