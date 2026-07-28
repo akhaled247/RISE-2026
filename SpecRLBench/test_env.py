@@ -1,9 +1,23 @@
 import gymnasium as gym
-from numpy import uint8
 import specbench
-import safety_gymnasium
-from gymnasium.wrappers import FlattenObservation
-from utils.env_utils import *
+
+
+def make_env(env_name, render_mode=None):
+    if env_name.startswith("Letter"):
+        env = gym.make(env_name, disable_env_checker=True, render_mode=render_mode)
+    elif env_name.startswith("Panda"):
+        env = gym.make(env_name, disable_env_checker=True, render_mode=render_mode)
+    elif env_name.startswith("Point") or env_name.startswith("Car") or env_name.startswith("Ant"):
+        from specbench.envs.zones.safety_gym_wrapper_ma import SafetyGymWrapperMA
+        from specbench.envs.zones.safety_gym_wrapper import SafetyGymWrapper
+        import safety_gymnasium
+
+        env = safety_gymnasium.make(env_name, disable_env_checker=True, render_mode=render_mode)
+        env = SafetyGymWrapperMA(env) if "MA" in env_name else SafetyGymWrapper(env)
+    else:
+        raise ValueError(f"Unknown environment name: {env_name}")
+    return env
+
 
 seed = 0
 env_names = [
@@ -54,8 +68,8 @@ env_names = [
     'AntLTL2-v0',
     'AntLTL2-v0.partial',
     'AntLTL2-v0.overlap',
-    'AntLTL2-v0.partial_overlap',    
-    
+    'AntLTL2-v0.partial_overlap',
+
     'PointLTL0Vision-v0',
     'PointLTL0Vision-v0.overlap',
 
@@ -90,12 +104,9 @@ env_names = [
     'PandaLTLReach1Joints-v0',
     'PandaLTLReach1Joints-v0.partial',
 
-    # safety-gymnasium defaults that could be useful for real-world applications"
-    "SafetyPointBuildingGoal0-v0",
+    # SAR smoke (RISE fork)
+    'PointLTL0MASAR2-v0',
 ]
-
-env_name = 'PointLTLMASAR2Debug-v0'
-steps = 750
 
 for env_name in env_names:
     print(f"="*40)
@@ -104,7 +115,7 @@ for env_name in env_names:
     for i in range(2):
         try:
             action = env.action_space.sample()
-        except:
-            action = {a: env.action_space(a).sample() for a in env.unwrapped.possible_agents}
+        except Exception:
+            action = {a: env.action_space(a).sample() for a in env.possible_agents}
         obs, reward, terminated, truncated, info = env.step(action)
     print(f"checked env: {env_name}")

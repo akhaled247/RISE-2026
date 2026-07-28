@@ -7,18 +7,13 @@ env integration surfaces that later cleanup must preserve.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 from gymnasium import spaces
 
-
-ROOT = Path(__file__).resolve().parents[5]
 SAFETY_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(SAFETY_ROOT))
 
 pytest.importorskip('mujoco')
 
@@ -29,7 +24,7 @@ from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (  # noqa: E
     building_geom,
 )
 
-from utils.env_utils import make_env  # noqa: E402
+from specbench.envs.zones.make_env import make_zone_env as make_env  # noqa: E402
 
 
 SAR_ENV_IDS = {
