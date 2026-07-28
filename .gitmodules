@@ -1,7 +1,12 @@
 [submodule "SpecRLBench"]
 	path = SpecRLBench
 	url = https://github.com/akhaled247/SpecRLBench
-	branch = SAR-features
+	branch = feat/sar-envs
 [submodule "GenZ-LTL"]
 	path = GenZ-LTL
 	url = https://github.com/akhaled247/GenZ-LTL.git
+	branch = feat/sar-props
+[submodule "Safe-Policy-Optimization"]
+	path = Safe-Policy-Optimization
+	url = https://github.com/akhaled247/Safe-Policy-Optimization
+	branch = feat/specrlbench-additions
