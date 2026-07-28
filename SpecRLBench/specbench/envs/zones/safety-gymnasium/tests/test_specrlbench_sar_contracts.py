@@ -210,7 +210,7 @@ def test_building_layout_seed_reproducible():
 
 def test_building_perimeter_wall_keys_exist():
     """Each building must expose four perimeter wall segment layout keys."""
-    env = make_env('PointLTL1MASAR2-v0', sb3=True)
+    env = make_env('PointLTL2MASAR2-v0', sb3=True)
     try:
         env.reset(seed=3)
         layout = env.unwrapped.task.world_info.layout
