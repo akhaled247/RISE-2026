@@ -1,0 +1,37 @@
+# RISE-Training + SafePO + RISE-RND
+#
+# Run train/eval from RISE-Training/ (``python train/...``).
+# ``rise_training.env_utils.make_env`` delegates to SpecRLBench ``make_zone_env``.
+#
+# Recommended install (from RISE-2026, venv active):
+#
+#   cd SpecRLBench && pip install -e . && pip install -e specbench/envs/zones/safety-gymnasium
+#   cd ../Safe-Policy-Optimization && pip install -e . --no-deps
+#   cd ../RISE-Training && pip install -e .
+#   pip install -e ../RISE-RND   # optional, for ppo_rnd_train_env.py
+#
+# Smoke train (from RISE-Training/):
+#
+#   python train/ppo_train_env.py --task PointLTL1MASAR1WC-v0 --seed 0 \
+#       --total-steps 40000 --num-envs 8 --steps-per-epoch 16384 --device cpu
+#
+# --parallel True (default): SafetyAsyncVectorEnv when num-envs>1.
+# --parallel False: SyncVectorSafetyEnv (serial; debug only).
+#
+# Legacy SB3 .zip checkpoints are unsupported; use eval_safepo_env.py for SafePO runs.
+
+# torch>=2.7 dropped LRScheduler verbose=; SpecRLBench patches LinearLR
+# via rise_training/safepo/torch_compat.py so SafePO stock algos still run.
+torch>=2.0
+gymnasium>=0.29.1,<1.0
+numpy<2
+pyyaml>=6.0
+tensorboard>=2.14
+tqdm>=4.65
+joblib
+moviepy>=1.0.3
+rich>=13.3.0
+scipy
+wandb>=0.13.0
+seaborn
+pandas
