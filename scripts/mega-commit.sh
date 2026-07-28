@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Commit and push the RISE-2026 repository and its sibling repositories
+# Commit and push the main RISE-2026 repository and its sibling repositories
 
 # using one commit message.
 
@@ -18,21 +18,11 @@
 
 #
 
-# Only commits repositories with uncommitted changes.
-
-# Only pushes repositories that are ahead of their configured upstream.
-
-# Fails if a repository is not on its expected branch.
-
-# Uses Git only; no sudo is required.
-
-#
-
 # Usage:
 
-# ./scripts/mega-commit.sh "072828 sync SpecRLBench and RISE"
+# bash scripts/mega-commit.sh "commit message"
 
-# ./scripts/mega-commit.sh --dry-run "072828 sync repositories"
+# bash scripts/mega-commit.sh --dry-run "commit message"
 
 set -euo pipefail
 
@@ -41,24 +31,24 @@ DRY_RUN=0
 
 RISE_ROOT="$HOME/RISE-2026"
 
-# Format:
+REPO_NAMES=(
+"SpecRLBench"
+"GenZ-LTL"
+"Safe-Policy-Optimization"
+)
 
-# repository label | relative path | expected branch
-
-REPOSITORIES=(
-"SpecRLBench|SpecRLBench|feat/sar-envs"
-"GenZ-LTL|GenZ-LTL|feat/sar-props"
-"Safe-Policy-Optimization|Safe-Policy-Optimization|feat/specrlbench-additions"
+REPO_BRANCHES=(
+"feat/sar-envs"
+"feat/sar-props"
+"feat/specrlbench-additions"
 )
 
 usage() {
 cat <<'EOF'
 Usage:
-./scripts/mega-commit.sh "commit message"
-./scripts/mega-commit.sh --dry-run "commit message"
-./scripts/mega-commit.sh -n "commit message"
-
-On Windows, use scripts/mega-commit.ps1 instead.
+bash scripts/mega-commit.sh "commit message"
+bash scripts/mega-commit.sh --dry-run "commit message"
+bash scripts/mega-commit.sh -n "commit message"
 EOF
 exit 1
 }
@@ -94,57 +84,42 @@ write_step() {
 printf '\n=== %s ===\n' "$1"
 }
 
-is_git_repository() {
-git -C "$1" rev-parse --is-inside-work-tree >/dev/null 2>&1
-}
-
-is_dirty() {
-git status --porcelain | grep -q .
+is_git_repo() {
+local path="$1"
+git -C "$path" rev-parse --is-inside-work-tree >/dev/null 2>&1
 }
 
 current_branch() {
-git symbolic-ref --quiet --short HEAD 2>/dev/null || true
-}
-
-upstream_ref() {
-git rev-parse --abbrev-ref '@{u}' 2>/dev/null || true
-}
-
-ahead_count() {
-local upstream="$1"
-
-```
-git rev-list --count "$upstream..HEAD"
-```
-
-}
-
-verify_repository() {
 local path="$1"
-local label="$2"
+git -C "$path" branch --show-current
+}
+
+verify_repo() {
+local path="$1"
+local name="$2"
 local expected_branch="$3"
 local branch
 
 ```
 if [[ ! -d "$path" ]]; then
-    echo "[$label] Repository path does not exist: $path" >&2
+    echo "[$name] Directory does not exist: $path" >&2
     return 1
 fi
 
-if ! is_git_repository "$path"; then
-    echo "[$label] Not a Git repository: $path" >&2
+if ! is_git_repo "$path"; then
+    echo "[$name] Not a Git repository: $path" >&2
     return 1
 fi
 
-branch="$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+branch="$(current_branch "$path")"
 
 if [[ -z "$branch" ]]; then
-    echo "[$label] Detached HEAD; refusing to continue." >&2
+    echo "[$name] Detached HEAD; refusing to continue." >&2
     return 1
 fi
 
-if [[ "$branch" != "$expected_branch" ]]; then
-    echo "[$label] Branch mismatch:" >&2
+if [[ -n "$expected_branch" && "$branch" != "$expected_branch" ]]; then
+    echo "[$name] Branch mismatch:" >&2
     echo "  Current:  $branch" >&2
     echo "  Expected: $expected_branch" >&2
     return 1
@@ -153,187 +128,141 @@ fi
 
 }
 
-show_pending_commit() {
-local path="$1"
-local label="$2"
-local status_lines
-
-```
-echo "[$label] Would commit with message: $MESSAGE"
-
-status_lines="$(git -C "$path" status --short)"
-
-if [[ -n "$status_lines" ]]; then
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && printf '    %s\n' "$line"
-    done <<< "$status_lines"
-fi
-```
-
-}
-
-show_pending_push() {
-local path="$1"
-local label="$2"
-local branch="$3"
-local upstream="$4"
-local ahead="$5"
-
-```
-echo "[$label] Would push $ahead commit(s): $branch -> $upstream"
-
-git -C "$path" log \
-    --oneline \
-    "$upstream..HEAD" |
-    sed 's/^/    /'
-```
-
-}
-
 commit_if_dirty() {
 local path="$1"
-local label="$2"
+local name="$2"
 local expected_branch="$3"
 
 ```
-verify_repository "$path" "$label" "$expected_branch"
+verify_repo "$path" "$name" "$expected_branch"
 
-if ! git -C "$path" status --porcelain | grep -q .; then
-    echo "[$label] No changes to commit."
+if [[ -z "$(git -C "$path" status --porcelain)" ]]; then
+    echo "[$name] No changes to commit."
     return 0
 fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-    show_pending_commit "$path" "$label"
+    echo "[$name] Would commit with message: $MESSAGE"
+    git -C "$path" status --short | sed 's/^/    /'
     return 0
 fi
 
 git -C "$path" add -A
 git -C "$path" commit -m "$MESSAGE"
 
-echo "[$label] Committed."
+echo "[$name] Committed."
 ```
 
 }
 
 push_if_ahead() {
 local path="$1"
-local label="$2"
+local name="$2"
 local expected_branch="$3"
-local branch upstream ahead
+local branch
+local upstream
+local ahead
 
 ```
-verify_repository "$path" "$label" "$expected_branch"
+verify_repo "$path" "$name" "$expected_branch"
 
-branch="$(git -C "$path" symbolic-ref --quiet --short HEAD)"
-upstream="$(git -C "$path" rev-parse --abbrev-ref '@{u}' 2>/dev/null || true)"
+branch="$(current_branch "$path")"
 
-if [[ -z "$upstream" ]]; then
-    echo "[$label] No upstream configured; skipping push."
+if ! upstream="$(git -C "$path" rev-parse --abbrev-ref '@{u}' 2>/dev/null)"; then
+    echo "[$name] No upstream configured; skipping push."
     return 0
 fi
 
 ahead="$(git -C "$path" rev-list --count "$upstream..HEAD")"
 
 if [[ "$ahead" -eq 0 ]]; then
-    echo "[$label] Nothing to push."
+    echo "[$name] Nothing to push."
     return 0
 fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-    show_pending_push \
-        "$path" \
-        "$label" \
-        "$branch" \
-        "$upstream" \
-        "$ahead"
+    echo "[$name] Would push $ahead commit(s): $branch -> $upstream"
+    git -C "$path" log --oneline "$upstream..HEAD" | sed 's/^/    /'
     return 0
 fi
 
 git -C "$path" push
 
-echo "[$label] Pushed $ahead commit(s)."
+echo "[$name] Pushed $ahead commit(s)."
 ```
 
 }
 
 main() {
-local entry
-local label relative_path expected_branch path
+local i
+local name
+local branch
+local path
 
 ```
 if [[ ! -d "$RISE_ROOT" ]]; then
-    echo "RISE-2026 directory does not exist: $RISE_ROOT" >&2
+    echo "RISE root does not exist: $RISE_ROOT" >&2
     exit 1
 fi
 
-if ! is_git_repository "$RISE_ROOT"; then
-    echo "Main repository is not a Git repository: $RISE_ROOT" >&2
+if ! is_git_repo "$RISE_ROOT"; then
+    echo "Not a Git repository: $RISE_ROOT" >&2
     exit 1
 fi
 
 echo "Main repository: $RISE_ROOT"
-echo "Sibling repositories:"
-
-for entry in "${REPOSITORIES[@]}"; do
-    IFS='|' read -r label relative_path expected_branch <<< "$entry"
-
-    printf '  - %s\n' "$label"
-    printf '    path: %s/%s\n' "$RISE_ROOT" "$relative_path"
-    printf '    branch: %s\n' "$expected_branch"
-done
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "Mode: dry run (no commit or push)"
+    echo "Mode: dry run"
 fi
 
 write_step "Commit sibling repositories"
 
-for entry in "${REPOSITORIES[@]}"; do
-    IFS='|' read -r label relative_path expected_branch <<< "$entry"
+for i in "${!REPO_NAMES[@]}"; do
+    name="${REPO_NAMES[$i]}"
+    branch="${REPO_BRANCHES[$i]}"
+    path="$RISE_ROOT/$name"
 
-    path="$RISE_ROOT/$relative_path"
-
-    commit_if_dirty \
-        "$path" \
-        "$label" \
-        "$expected_branch"
+    commit_if_dirty "$path" "$name" "$branch"
 done
 
 write_step "Commit main repository"
 
-if git -C "$RISE_ROOT" status --porcelain | grep -q .; then
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        show_pending_commit "$RISE_ROOT" "RISE-2026"
-    else
-        git -C "$RISE_ROOT" add -A
-        git -C "$RISE_ROOT" commit -m "$MESSAGE"
-
-        echo "[RISE-2026] Committed."
-    fi
-else
+if [[ -z "$(git -C "$RISE_ROOT" status --porcelain)" ]]; then
     echo "[RISE-2026] No changes to commit."
+elif [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[RISE-2026] Would commit with message: $MESSAGE"
+    git -C "$RISE_ROOT" status --short | sed 's/^/    /'
+else
+    git -C "$RISE_ROOT" add -A
+    git -C "$RISE_ROOT" commit -m "$MESSAGE"
+    echo "[RISE-2026] Committed."
 fi
 
 write_step "Push sibling repositories"
 
-for entry in "${REPOSITORIES[@]}"; do
-    IFS='|' read -r label relative_path expected_branch <<< "$entry"
+for i in "${!REPO_NAMES[@]}"; do
+    name="${REPO_NAMES[$i]}"
+    branch="${REPO_BRANCHES[$i]}"
+    path="$RISE_ROOT/$name"
 
-    path="$RISE_ROOT/$relative_path"
-
-    push_if_ahead \
-        "$path" \
-        "$label" \
-        "$expected_branch"
+    push_if_ahead "$path" "$name" "$branch"
 done
 
 write_step "Push main repository"
 
-push_if_ahead \
-    "$RISE_ROOT" \
-    "RISE-2026" \
-    "$(git -C "$RISE_ROOT" branch --show-current)"
+if ! is_git_repo "$RISE_ROOT"; then
+    echo "[RISE-2026] Not a Git repository." >&2
+    exit 1
+fi
+
+branch="$(current_branch "$RISE_ROOT")"
+
+if [[ -z "$branch" ]]; then
+    echo "[RISE-2026] Detached HEAD; skipping push." >&2
+else
+    push_if_ahead "$RISE_ROOT" "RISE-2026" "$branch"
+fi
 
 printf '\nDone.\n'
 ```
