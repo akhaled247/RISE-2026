@@ -330,6 +330,20 @@ function Commit-IfDirty {
     Write-Host "[$Name] Committed."
 }
 
+function Get-BehindCount {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Upstream
+    )
+
+    $result = Invoke-GitCommand -Path $Path rev-list --count "HEAD..$Upstream"
+    if ($result.ExitCode -ne 0) {
+        throw "Could not determine behind count for '$Path'."
+    }
+
+    return [int](($result.Output | Select-Object -First 1).ToString().Trim())
+}
+
 function Push-IfAhead {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -346,23 +360,52 @@ function Push-IfAhead {
     }
 
     $upstream = (($upstreamResult.Output | Select-Object -First 1).ToString().Trim())
+
+    Invoke-GitCommand -Path $Path fetch | Out-Null
+
+    $behind = Get-BehindCount -Path $Path -Upstream $upstream
     $aheadResult = Invoke-GitCommand -Path $Path rev-list --count "$upstream..HEAD"
     if ($aheadResult.ExitCode -ne 0) {
         throw "Could not determine ahead count for '$Name'."
     }
 
     $ahead = [int](($aheadResult.Output | Select-Object -First 1).ToString().Trim())
-    if ($ahead -eq 0) {
+
+    if ($ahead -eq 0 -and $behind -eq 0) {
         Write-Host "[$Name] Nothing to push."
         return
     }
 
     if ($DryRun) {
-        Write-Host "[$Name] Would push $ahead commit(s): $branch -> $upstream"
-        $commits = ConvertTo-StringArray (Invoke-GitCommand -Path $Path log --oneline "$upstream..HEAD").Output
-        foreach ($commit in $commits) {
-            Write-Detail "    $commit"
+        if ($behind -gt 0) {
+            Write-Host "[$Name] Would pull --rebase ($behind commit(s) behind $upstream)"
         }
+        if ($ahead -gt 0) {
+            Write-Host "[$Name] Would push $ahead commit(s): $branch -> $upstream"
+            $commits = ConvertTo-StringArray (Invoke-GitCommand -Path $Path log --oneline "$upstream..HEAD").Output
+            foreach ($commit in $commits) {
+                Write-Detail "    $commit"
+            }
+        }
+        elseif ($behind -gt 0) {
+            Write-Host "[$Name] Would have nothing to push after rebase."
+        }
+        return
+    }
+
+    if ($behind -gt 0) {
+        Write-Host "[$Name] Pulling --rebase ($behind commit(s) behind $upstream)"
+        Invoke-Git -Path $Path pull --rebase
+
+        $aheadResult = Invoke-GitCommand -Path $Path rev-list --count "$upstream..HEAD"
+        if ($aheadResult.ExitCode -ne 0) {
+            throw "Could not determine ahead count for '$Name' after rebase."
+        }
+        $ahead = [int](($aheadResult.Output | Select-Object -First 1).ToString().Trim())
+    }
+
+    if ($ahead -eq 0) {
+        Write-Host "[$Name] Up to date with $upstream after sync."
         return
     }
 

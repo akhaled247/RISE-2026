@@ -246,7 +246,7 @@ push_if_ahead() {
     local path="$1"
     local name="$2"
     local expected_branch="$3"
-    local branch upstream ahead
+    local branch upstream ahead behind
 
     branch="$(verify_repo "$path" "$name" "$expected_branch")"
 
@@ -255,15 +255,37 @@ push_if_ahead() {
         return 0
     fi
 
+    git -C "$path" fetch >/dev/null 2>&1 || true
+
+    behind="$(git -C "$path" rev-list --count "HEAD..$upstream")"
     ahead="$(git -C "$path" rev-list --count "$upstream..HEAD")"
-    if [[ "$ahead" -eq 0 ]]; then
+
+    if [[ "$ahead" -eq 0 && "$behind" -eq 0 ]]; then
         echo "[$name] Nothing to push."
         return 0
     fi
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "[$name] Would push $ahead commit(s): $branch -> $upstream"
-        git -C "$path" log --oneline "$upstream..HEAD" | sed 's/^/    /'
+        if [[ "$behind" -gt 0 ]]; then
+            echo "[$name] Would pull --rebase ($behind commit(s) behind $upstream)"
+        fi
+        if [[ "$ahead" -gt 0 ]]; then
+            echo "[$name] Would push $ahead commit(s): $branch -> $upstream"
+            git -C "$path" log --oneline "$upstream..HEAD" | sed 's/^/    /'
+        elif [[ "$behind" -gt 0 ]]; then
+            echo "[$name] Would have nothing to push after rebase."
+        fi
+        return 0
+    fi
+
+    if [[ "$behind" -gt 0 ]]; then
+        echo "[$name] Pulling --rebase ($behind commit(s) behind $upstream)"
+        git -C "$path" pull --rebase
+        ahead="$(git -C "$path" rev-list --count "$upstream..HEAD")"
+    fi
+
+    if [[ "$ahead" -eq 0 ]]; then
+        echo "[$name] Up to date with $upstream after sync."
         return 0
     fi
 
