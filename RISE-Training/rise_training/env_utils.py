@@ -1,8 +1,8 @@
-"""Training-side env constructor (delegates to SpecRLBench)."""
+"""Training-side env constructor (delegates to SpecRLBench zone_env)."""
 
 from __future__ import annotations
 
-from specbench.envs.zones import make_zone_env
+from rise_training.zones_factory import make_zone_env
 
 
 def make_env(env_name, render_mode=None, sb3=False):
