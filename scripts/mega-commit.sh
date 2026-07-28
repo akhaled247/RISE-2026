@@ -100,7 +100,7 @@ local name="$2"
 local expected_branch="$3"
 local branch
 
-```
+
 if [[ ! -d "$path" ]]; then
     echo "[$name] Directory does not exist: $path" >&2
     return 1
@@ -124,7 +124,7 @@ if [[ -n "$expected_branch" && "$branch" != "$expected_branch" ]]; then
     echo "  Expected: $expected_branch" >&2
     return 1
 fi
-```
+
 
 }
 
@@ -133,7 +133,7 @@ local path="$1"
 local name="$2"
 local expected_branch="$3"
 
-```
+
 verify_repo "$path" "$name" "$expected_branch"
 
 if [[ -z "$(git -C "$path" status --porcelain)" ]]; then
@@ -151,7 +151,7 @@ git -C "$path" add -A
 git -C "$path" commit -m "$MESSAGE"
 
 echo "[$name] Committed."
-```
+
 
 }
 
@@ -163,7 +163,7 @@ local branch
 local upstream
 local ahead
 
-```
+
 verify_repo "$path" "$name" "$expected_branch"
 
 branch="$(current_branch "$path")"
@@ -189,7 +189,7 @@ fi
 git -C "$path" push
 
 echo "[$name] Pushed $ahead commit(s)."
-```
+
 
 }
 
@@ -199,7 +199,7 @@ local name
 local branch
 local path
 
-```
+
 if [[ ! -d "$RISE_ROOT" ]]; then
     echo "RISE root does not exist: $RISE_ROOT" >&2
     exit 1
@@ -265,7 +265,7 @@ else
 fi
 
 printf '\nDone.\n'
-```
+
 
 }
 
