@@ -11,7 +11,7 @@ from gymnasium.wrappers import FlattenObservation
 from rise_training.env_utils import *
 
 seed = 0
-env_name = 'PointLTL2MASAR1WCDebug-v0'
+env_name = 'PointLTL0MASAR1Debug-v0'
 steps = 2500
 
 print(f"="*40)
