@@ -11,8 +11,10 @@ import os
 import sys
 import time
 from argparse import Namespace
-from rise_training.paths import default_log_dir
+from pathlib import Path
 from typing import Any
+
+from rise_training.paths import default_log_dir
 
 from rise_training.safepo.config import ALGO_DEFAULTS, SafePOTrainConfig
 from rise_training.safepo.env_hook import patch_safepo_env_factory, set_parallel
