@@ -1,6 +1,7 @@
 """Smoke / customize entrypoint for CustomizedSAR (multi-agent SAR).
 
-Edit the easy knobs below, then run:
+Edit the knobs below (defaults from configs/multi_goal_sar.yaml customized_defaults),
+then run:
   python SpecRLBench/customize_sar_env.py
 """
 
@@ -16,7 +17,7 @@ env_config = {
     # maximum number of steps per episode
     'max_episode_steps': 1000,
 
-    # === must be easily configurable ===
+    # === user-facing knobs (defaults from customized_defaults in multi_goal_sar.yaml) ===
     'agent_num': 2,
     'building_num': 2,  # omit or None → agent_num
     'wall_count': 10,
@@ -25,7 +26,7 @@ env_config = {
     'reward_goal': 1.0,
     'lidar_conf.num_bins': 16,
 
-    # optional advanced overrides (from sar_config.yaml configurable: section)
+    # optional advanced overrides (entity fields from configs/multi_goal_sar.yaml)
     # 'building_keepout': 0.4,
     # 'wall_ring_radius': 2.0,
 }

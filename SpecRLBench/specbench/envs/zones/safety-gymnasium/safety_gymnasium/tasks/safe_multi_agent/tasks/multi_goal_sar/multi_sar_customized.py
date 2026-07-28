@@ -20,7 +20,7 @@ from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.multi_sar_leve
     MultiGoalSARLevel3,
 )
 from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.sar_config_loader import (
-    merge_easy_sar_config,
+    merge_customized_defaults,
     pop_post_init_lidar_overrides,
 )
 
@@ -43,6 +43,7 @@ _EASY_AND_CONFIGURABLE_KEYS = frozenset({
     'casualty_size',
     'casualty_touch_offset',
     'casualty_keepout',
+    'entrapped_casualty_keepout',
     'gremlin_size',
     'gremlin_dist_threshold',
     'gremlin_keepout',
@@ -58,7 +59,7 @@ class CustomizedSAR(MultiGoalSARLevel3):
 
     def __init__(self, config) -> None:
         raw = dict(config)
-        merged = merge_easy_sar_config(raw)
+        merged = merge_customized_defaults(raw)
         lidar_overrides = pop_post_init_lidar_overrides(merged)
 
         skip_keys = frozenset(

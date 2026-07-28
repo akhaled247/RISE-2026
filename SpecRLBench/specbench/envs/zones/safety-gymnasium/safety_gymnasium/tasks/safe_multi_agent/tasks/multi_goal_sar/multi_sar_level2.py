@@ -56,7 +56,7 @@ class MultiGoalSARLevel2(MultiGoalSARLevel1):
                     num=entrapped_num,
                     category="entrapped",
                     size=self.casualty_size,
-                    keepout=0.0,
+                    keepout=self.entrapped_casualty_keepout,
                 ),
             )
         self._add_geoms(*geoms)
@@ -81,7 +81,7 @@ class MultiGoalSARLevel2(MultiGoalSARLevel1):
                 category="entrapped",
                 size=self.casualty_size,
                 num=entrapped_num,
-                keepout=0.0,
+                keepout=self.entrapped_casualty_keepout,
             ))
         self._replace_building_perimeter_walls()
         return super()._build()

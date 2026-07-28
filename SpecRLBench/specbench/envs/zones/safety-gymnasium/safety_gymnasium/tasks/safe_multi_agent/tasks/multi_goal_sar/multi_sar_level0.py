@@ -27,7 +27,7 @@ from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Build
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
 from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.sar_config_loader import (
-    apply_sar_constants,
+    apply_sar_recipe,
 )
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
     agent_inside_building_idx,
@@ -44,7 +44,7 @@ from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
 class MultiGoalSARLevel0(BaseTask):
     """Multi-agent zone navigation with optional ring-placed interior walls."""
 
-    # Level identity (stock L0). Shared geometry defaults live in sar_config.yaml.
+    # Level identity (stock L0). Shared recipe lives in configs/multi_goal_sar.yaml.
     wall_count = 0
     reward_goal = 1.0
     surface_casualties_enabled: bool = True
@@ -63,6 +63,7 @@ class MultiGoalSARLevel0(BaseTask):
     casualty_size = 0.05
     casualty_touch_offset = 0.15
     casualty_keepout = 0.2
+    entrapped_casualty_keepout = 0.0
     agent_keepout = 0.25
     agent_placements = [(-0.67, -0.67, 0.67, 0.67)]
     gremlin_size = 0.175
@@ -78,8 +79,8 @@ class MultiGoalSARLevel0(BaseTask):
         skip_keys = frozenset(config.pop('_sar_skip_constant_keys', ()))
         super().__init__(config=config)
 
-        apply_sar_constants(self, skip_keys=skip_keys)
-        # Stock levels keep fixed lidar resolution (easy section is CustomizedSAR-only).
+        apply_sar_recipe(self, skip_keys=skip_keys)
+        # Stock levels keep fixed lidar resolution (customized_defaults is CustomizedSAR-only).
         if 'lidar_conf.num_bins' not in skip_keys and 'num_bins' not in skip_keys:
             self.lidar_conf.num_bins = 16
 
