@@ -40,12 +40,12 @@ def make_cmdp_env(
 ):
     """Build single env: WC/SAR Gymnasium wrappers → cost bridge → flatten → norm.
 
-    Uses ``sb3=True`` SpecRLBench wrappers so obs/action are already flat Dict /
+    Uses ``flat=True`` SpecRLBench wrappers so obs/action are already flat Dict /
     Box for single-agent SAR, then flattens Dict → 1-D Box for SafePO.
     """
     from rise_training.env_utils import make_env
 
-    env = make_env(env_name, render_mode=render_mode, sb3=True)
+    env = make_env(env_name, render_mode=render_mode, flat=True)
     env = GymnasiumToSafetyStep(env)
     env = DictFlattenWrapper(env)
     if autoreset:

@@ -20,7 +20,7 @@ def make_ma_cmdp_env(task: str, seed: int, cfg_train: dict | None = None):
 
 
 class SpecRLMultiGoalEnv:
-    """Bridge ``make_env(..., sb3=False)`` to SafePO MultiGoalEnv step/reset contract.
+    """Bridge ``make_env(..., flat=False)`` to SafePO MultiGoalEnv step/reset contract.
 
     reset → (obs_n, share_obs_n, avail_actions)
     step(actions) → (obs, share_obs, rewards, costs, dones, infos, avail_actions)
@@ -30,7 +30,7 @@ class SpecRLMultiGoalEnv:
         from rise_training.env_utils import make_env
 
         self.task_id = task
-        self.env = make_env(task, sb3=False, render_mode=render_mode)
+        self.env = make_env(task, flat=False, render_mode=render_mode)
         self._seed = int(seed)
         obs0, info0 = self.env.reset(seed=self._seed)
         self._last_info = info0

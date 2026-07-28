@@ -74,7 +74,7 @@ def _info_dict(info: Any) -> dict[str, Any]:
 def _rescued_from_info(info: dict[str, Any]) -> bool:
     prop_keys = info.get("propositions", []) or []
     return any(
-        "cost_casualtys_surface" in k or "cost_casualtys_entrapped" in k for k in prop_keys
+        "surface" in k or "entrapped" in k for k in prop_keys
     )
 
 

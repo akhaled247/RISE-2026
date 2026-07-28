@@ -5,5 +5,5 @@ from __future__ import annotations
 from rise_training.zones_factory import make_zone_env
 
 
-def make_env(env_name, render_mode=None, sb3=False):
-    return make_zone_env(env_name, render_mode=render_mode, sb3=sb3)
+def make_env(env_name, render_mode=None, flat=False):
+    return make_zone_env(env_name, render_mode=render_mode, flat=flat)
