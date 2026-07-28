@@ -23,10 +23,12 @@ import numpy as np
 from safety_gymnasium.tasks.safe_multi_agent.bases.base_task import BaseTask
 from safety_gymnasium.tasks.safe_multi_agent.world import World
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import LtlWalls
-from safety_gymnasium.tasks.safe_multi_agent.assets.geoms import Walls
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.buildings import Buildings
 from safety_gymnasium.tasks.safe_multi_agent.assets.geoms.casualtys import Casualtys
 from safety_gymnasium.tasks.safe_multi_agent.assets.mocaps.gremlins import Gremlins
+from safety_gymnasium.tasks.safe_multi_agent.tasks.multi_goal_sar.sar_config_loader import (
+    apply_sar_constants,
+)
 from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
     agent_inside_building_idx,
     border_placements,
@@ -42,44 +44,55 @@ from safety_gymnasium.tasks.safe_multi_agent.utils.sar_utils import (
 class MultiGoalSARLevel0(BaseTask):
     """Multi-agent zone navigation with optional ring-placed interior walls."""
 
-    wall_ring_radius = 2.0
-    wall_base_half_sizes = [0.1, 0.3, 0.2]
-    wall_count = 20
-    wall_margin = 1.0
-    building_keepout = 0.3
-    building_border_side_length = 4.5
-    building_margin = 0.8
-    casualty_keepout = 0.2
-    agent_keepout = 0.25
-    max_dist = None
-    reward_distance = 1.0
+    # Level identity (stock L0). Shared geometry defaults live in sar_config.yaml.
+    wall_count = 0
     reward_goal = 1.0
-    time_alive_decay = 0.0
     surface_casualties_enabled: bool = True
     entrapped_casualties_enabled: bool = False
     building_num: int = 0
 
+    # Placeholders so BaseTask._parse can accept CustomizedSAR overrides.
+    wall_ring_radius = 2.0
+    wall_margin = 1.0
+    wall_base_half_sizes = [0.1, 0.3, 0.2]
+    walls_keepout = 0.4
+    walls_half_size_randomization = True
+    building_keepout = 0.4
+    building_border_side_length = 4.5
+    building_margin = 0.8
+    casualty_size = 0.05
+    casualty_touch_offset = 0.15
+    casualty_keepout = 0.2
+    agent_keepout = 0.25
+    agent_placements = [(-0.67, -0.67, 0.67, 0.67)]
+    gremlin_size = 0.175
+    gremlin_dist_threshold = 0.175
+    gremlin_keepout = 0.0
+    building_perimeter_wall_height = 0.75
+    building_perimeter_wall_collision_threshold = 8.0
+
     def __init__(self, config) -> None:
         self._cached_wall_half_sizes = None
         self._cached_building_rots = None
+        config = dict(config)
+        skip_keys = frozenset(config.pop('_sar_skip_constant_keys', ()))
         super().__init__(config=config)
 
-        self.placements_conf.extents = [-3.5, -3.5, 3.5, 3.5]
-        self.lidar_conf.num_bins = 16
-        self.lidar_conf.max_dist = self.max_dist
-        self.lidar_conf.exp_gain = 0.5
-        self.lidar_conf.alias = True
-        self.lidar_conf.type = 'pseudo'  # choices: 'pseudo' 'natural' 'pseudo_occluded'
-        self.cost_conf.constrain_indicator = False
-        self.observation_flatten = False
-        self.render_conf.lidar_markers = False
-        self.mechanism_conf.continue_goal = False
+        apply_sar_constants(self, skip_keys=skip_keys)
+        # Stock levels keep fixed lidar resolution (easy section is CustomizedSAR-only).
+        if 'lidar_conf.num_bins' not in skip_keys and 'num_bins' not in skip_keys:
+            self.lidar_conf.num_bins = 16
+
         self.last_dist_casualty = None
         self._buildings_entered: set[int] = set()
         self._lidar_suppressed_geom_ids: set[int] = set()
 
         # Spawn agents in a specified area
-        self._build_agent(self.agent_name, keepout=self.agent_keepout, placements=[(-0.67, -0.67, 0.67, 0.67)])
+        self._build_agent(
+            self.agent_name,
+            keepout=self.agent_keepout,
+            placements=self.agent_placements,
+        )
         surface_casualtys_int = int(self.agent_num * self.surface_casualties_enabled)
         # One surface casualty for solo training; otherwise one per agent.
         self.casualty_num = self.agent_num
@@ -87,18 +100,24 @@ class MultiGoalSARLevel0(BaseTask):
             LtlWalls(contype=1),
         )
 
-        if surface_casualtys_int>0: 
+        if surface_casualtys_int > 0:
             self._add_geoms(
                 Casualtys(
                     category="surface",
-                    size=0.05,
+                    size=self.casualty_size,
                     num=surface_casualtys_int,
                     keepout=self.casualty_keepout,
                 ),
             )
 
+        # Gremlin count is always agent_num (not user-configurable).
         self._add_mocaps(
-            Gremlins(num=config['agent_num'], size=0.175, dist_threshold=0.175, keepout=0.0)
+            Gremlins(
+                num=self.agent_num,
+                size=self.gremlin_size,
+                dist_threshold=self.gremlin_dist_threshold,
+                keepout=self.gremlin_keepout,
+            )
         )
 
     def _dist_to_casualty(self, agent_idx: int) -> float:
@@ -148,9 +167,9 @@ class MultiGoalSARLevel0(BaseTask):
         rewards = {}
         touch_threshold = 0.0
         if hasattr(self, 'surface_casualtys'):
-            touch_threshold = self.surface_casualtys.size + 0.15
+            touch_threshold = self.surface_casualtys.size + self.casualty_touch_offset
         if hasattr(self, 'entrapped_casualtys'):
-            touch_threshold = self.entrapped_casualtys.size + 0.15
+            touch_threshold = self.entrapped_casualtys.size + self.casualty_touch_offset
 
         for i in range(self.agent_num):
             a = f'agent_{i}'
@@ -158,7 +177,11 @@ class MultiGoalSARLevel0(BaseTask):
 
             # Distance-based reward shaping
             dists = self._dist_to_casualtys(i)
-            min_dist = min(dists) if dists else 0.0
+            if not dists:
+                rewards[a] = 0
+                self.last_dist_casualty[i] = 0.0
+                continue
+            min_dist = min(dists)
             min_casualty_rescued = self._casualtys_rescued()[dists.index(min_dist)]
             if min_dist <= touch_threshold and not min_casualty_rescued:
                 reward += self.reward_goal
@@ -317,8 +340,8 @@ class MultiGoalSARLevel0(BaseTask):
                 name=f'building{i}_ltl_walls',
                 locate_factor=factor,
                 size=factor,
-                height=0.75,
-                collision_threshold=8.0,
+                height=self.building_perimeter_wall_height,
+                collision_threshold=self.building_perimeter_wall_collision_threshold,
             ))
 
     def try_lidar_ids(self, obstacle, obs, i, skip_instance_rows=None):

@@ -1,0 +1,50 @@
+"""Smoke / customize entrypoint for CustomizedSAR (multi-agent SAR).
+
+Edit the easy knobs below, then run:
+  python SpecRLBench/customize_sar_env.py
+"""
+
+import safety_gymnasium
+import specbench  # noqa: F401  # registers SpecRLBench env helpers
+
+env_config = {
+    'env_id': 'CustomizedSAR-v0',
+
+    # agent type, choose from 'Point', 'Car', and 'Ant'
+    'agent_name': 'Point',
+
+    # maximum number of steps per episode
+    'max_episode_steps': 1000,
+
+    # === must be easily configurable ===
+    'agent_num': 2,
+    'building_num': 2,  # omit or None → agent_num
+    'wall_count': 10,
+    'surface_casualties_enabled': True,
+    'entrapped_casualties_enabled': True,
+    'reward_goal': 1.0,
+    'lidar_conf.num_bins': 16,
+
+    # optional advanced overrides (from sar_config.yaml configurable: section)
+    # 'building_keepout': 0.4,
+    # 'wall_ring_radius': 2.0,
+}
+
+
+from specbench.envs.zones.safety_gym_register import register_helper
+
+register_helper(env_config=env_config, multi_agent=True)
+
+env = safety_gymnasium.make(env_config['env_id'], render_mode='human')
+
+obs, info = env.reset(seed=0)
+
+for _ in range(200):
+    action = {
+        agent: env.action_space(agent).sample()
+        for agent in env.unwrapped.possible_agents
+    }
+    env.step(action)  # MA Builder returns obs, reward, cost, terminated, truncated, info
+    env.render()
+
+env.close()

@@ -22,6 +22,8 @@ import numpy as np
 
 def get_task_class_name(task_id):
     """Help to translate task_id into task_class_name."""
+    if 'CustomizedSAR' in task_id:
+        return 'CustomizedSAR'
     if 'LTLMASAR' in task_id:
         return "MultiGoalSAR"
     elif 'LTL' in task_id:
