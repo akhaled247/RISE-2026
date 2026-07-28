@@ -5,6 +5,10 @@
 *.pyc
 debug_msg.txt
 .venv-safepo
-Safe-Policy-Optimization
 .cursor
-safepo*
+# Root-level SafePO run dumps (not rise_training/safepo/)
+/safepo_*
+/safepo/
+RISE-Training/_training_logs/
+RISE-Training/_models/
+RISE-Training/_models_eval/
