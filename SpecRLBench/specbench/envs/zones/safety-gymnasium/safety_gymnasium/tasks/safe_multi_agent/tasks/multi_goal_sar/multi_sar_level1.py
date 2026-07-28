@@ -28,7 +28,8 @@ class MultiGoalSARLevel1(MultiGoalSARLevel0):
 
     def __init__(self, config) -> None:
         super().__init__(config=config)
-        self._add_geoms(Walls(num=self.wall_count))
+        if self.wall_count > 0:
+            self._add_geoms(Walls(num=self.wall_count))
 
     def specific_reset(self):
         return super().specific_reset()
@@ -40,18 +41,28 @@ class MultiGoalSARLevel1(MultiGoalSARLevel0):
         pass
 
     def _build(self):
-        self._cached_wall_half_sizes = size_randomization(
-            self.wall_base_half_sizes,
-            self.wall_count,
-            margins=(np.array(self.wall_base_half_sizes) / 2).tolist(),
-            random_generator=self.random_generator,
-        ) if self._cached_wall_half_sizes is None else self._cached_wall_half_sizes
+        if self.wall_count <= 0:
+            return super()._build()
+
+        if self.walls_half_size_randomization:
+            self._cached_wall_half_sizes = size_randomization(
+                self.wall_base_half_sizes,
+                self.wall_count,
+                margins=(np.array(self.wall_base_half_sizes) / 2).tolist(),
+                random_generator=self.random_generator,
+            ) if self._cached_wall_half_sizes is None else self._cached_wall_half_sizes
+        else:
+            if self._cached_wall_half_sizes is None:
+                self._cached_wall_half_sizes = [
+                    list(self.wall_base_half_sizes) for _ in range(self.wall_count)
+                ]
+
         self._replace_geom(Walls(
             num=self.wall_count,
             placements=ring_placements(
                 self.wall_ring_radius, self.wall_count, margin=self.wall_margin,
             ),
             half_sizes=self._cached_wall_half_sizes,
-            keepout=0.4,
+            keepout=self.walls_keepout,
         ))
         return super()._build()
