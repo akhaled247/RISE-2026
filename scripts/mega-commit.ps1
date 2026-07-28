@@ -38,17 +38,84 @@ function Get-SubmodulePaths([string]$Root) {
         }
 }
 
+function Get-SubmoduleBranch {
+    param(
+        [string]$Root,
+        [string]$SubPath
+    )
+
+    $gitmodules = Join-Path $Root ".gitmodules"
+    if (-not (Test-Path $gitmodules)) { return $null }
+
+    $entries = @(git config --file $gitmodules --get-regexp '^submodule\..*\.path$')
+    foreach ($entry in $entries) {
+        $name, $path = $entry -split ' ', 2
+        if ($path -ne $SubPath) { continue }
+
+        $section = $name -replace '\.path$', ''
+        return git config --file $gitmodules --get "${section}.branch"
+    }
+
+    return $null
+}
+
 function Test-RepoDirty {
     return [bool](git status --porcelain)
 }
 
+function Test-HasUpstream {
+    $null = git rev-parse --abbrev-ref "@{u}" 2>&1
+    return $LASTEXITCODE -eq 0
+}
+
 function Get-AheadCount {
-    git rev-parse --abbrev-ref "@{u}" 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) { return 0 }
+    if (-not (Test-HasUpstream)) { return 0 }
 
     $count = git rev-list --count "@{u}..HEAD" 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $count) { return 0 }
     return [int]$count
+}
+
+function Ensure-OnSubmoduleBranch {
+    param(
+        [string]$Root,
+        [string]$SubPath,
+        [string]$Label
+    )
+
+    Push-Location (Join-Path $Root $SubPath)
+    try {
+        $current = git rev-parse --abbrev-ref HEAD
+        if ($current -ne "HEAD") { return }
+
+        $branch = Get-SubmoduleBranch -Root $Root -SubPath $SubPath
+        if (-not $branch) {
+            Write-Warning "[$Label] Detached HEAD and no submodule.*.branch in .gitmodules."
+            return
+        }
+
+        $at = git rev-parse HEAD
+        git checkout $branch 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "[$Label] Could not checkout branch '$branch'."
+        }
+
+        $branchAt = git rev-parse HEAD
+        if ($branchAt -ne $at) {
+            git merge-base --is-ancestor $branchAt $at 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                git merge --ff-only $at 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    throw "[$Label] Could not fast-forward '$branch' to $at."
+                }
+            }
+        }
+
+        Write-Host "[$Label] On branch $branch (was detached at $($at.Substring(0, 7)))."
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 function Show-PendingCommit {
@@ -134,8 +201,12 @@ function Invoke-PushIfAhead {
     Push-Location $Path
     try {
         $branch = git rev-parse --abbrev-ref HEAD
-        git rev-parse --abbrev-ref "@{u}" 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
+        if ($branch -eq "HEAD") {
+            Write-Host "[$Label] Detached HEAD; skipping push."
+            return
+        }
+
+        if (-not (Test-HasUpstream)) {
             Write-Host "[$Label] No upstream configured; skipping push."
             return
         }
@@ -179,6 +250,9 @@ foreach ($sub in $submodules) {
     if (-not (Test-Path $subPath)) {
         Write-Host "[$sub] Path missing; skipping."
         continue
+    }
+    if (-not $DryRun) {
+        Ensure-OnSubmoduleBranch -Root $root -SubPath $sub -Label $sub
     }
     Invoke-CommitIfDirty -Path $subPath -Label $sub -Message $Message -DryRun:$DryRun
 }
