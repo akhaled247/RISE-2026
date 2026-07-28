@@ -1,4 +1,7 @@
-"""Encode/decode for SpecRLBench SafePO multi-agent train hyperparam comments."""
+"""Encode/decode for SpecRLBench SafePO multi-agent train hyperparam comments.
+
+Generated ``python train/...`` commands assume cwd is ``RISE-Training/``.
+"""
 
 from __future__ import annotations
 
