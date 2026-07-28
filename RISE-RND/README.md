@@ -8,4 +8,4 @@ Install (from SpecRLBench venv):
 pip install -e ../RISE-RND
 ```
 
-Use via `python train/ppo_rnd_train_env.py` in SpecRLBench (wraps CMDP env, runs stock SafePO PPO).
+Use via `python train/ppo_rnd_train_env.py` from **RISE-Training/** (wraps CMDP env, runs stock SafePO PPO).
