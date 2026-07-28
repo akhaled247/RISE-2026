@@ -11,9 +11,13 @@ import sys
 from distutils.util import strtobool
 from pathlib import Path
 
-# SpecRLBench root on path
+# RISE-Training on path, then vendored safety-gymnasium before any safepo import.
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
+from rise_training.paths import ensure_specrlbench_paths
+
+ensure_specrlbench_paths()
 
 from rise_training.safepo.config import ALGO_DEFAULTS, SafePOTrainConfig
 from rise_training.safepo.runners import train_with_safepo

@@ -1,5 +1,10 @@
 import gymnasium as gym 
 from numpy import uint8
+
+from rise_training.paths import ensure_specrlbench_paths
+
+ensure_specrlbench_paths()
+
 import specbench
 import safety_gymnasium
 from gymnasium.wrappers import FlattenObservation

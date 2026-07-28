@@ -12,6 +12,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
+from rise_training.paths import ensure_specrlbench_paths
+
+ensure_specrlbench_paths()
+
 from rise_training.safepo.evaluate_ma import main
 
 if __name__ == "__main__":

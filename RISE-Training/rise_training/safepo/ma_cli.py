@@ -10,7 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from rise_training.paths import default_log_dir
+from rise_training.paths import default_log_dir, ensure_specrlbench_paths
+
+ensure_specrlbench_paths()
+
 from rise_training.safepo.config import MA_IPPO_RECIPE_B, MA_SPECRL_RECIPE_B, SafePOTrainConfig
 from rise_training.safepo.ma_runners import train_with_safepo_ma
 
