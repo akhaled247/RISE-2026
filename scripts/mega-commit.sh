@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
 
-# Commit and push the main repository and all configured Git submodules
+# Commit and push the RISE-2026 repository and its sibling repositories
 
 # using one commit message.
+
+#
+
+# Repositories:
+
+# ~/RISE-2026
+
+# ~/RISE-2026/SpecRLBench
+
+# ~/RISE-2026/GenZ-LTL
+
+# ~/RISE-2026/Safe-Policy-Optimization
 
 #
 
@@ -10,7 +22,7 @@
 
 # Only pushes repositories that are ahead of their configured upstream.
 
-# Reads submodule paths and configured branches from .gitmodules.
+# Fails if a repository is not on its expected branch.
 
 # Uses Git only; no sudo is required.
 
@@ -20,12 +32,24 @@
 
 # ./scripts/mega-commit.sh "072828 sync SpecRLBench and RISE"
 
-# ./scripts/mega-commit.sh --dry-run "072828 sync submodules"
+# ./scripts/mega-commit.sh --dry-run "072828 sync repositories"
 
 set -euo pipefail
 
 MESSAGE=""
 DRY_RUN=0
+
+RISE_ROOT="$HOME/RISE-2026"
+
+# Format:
+
+# repository label | relative path | expected branch
+
+REPOSITORIES=(
+"SpecRLBench|SpecRLBench|feat/sar-envs"
+"GenZ-LTL|GenZ-LTL|feat/sar-props"
+"Safe-Policy-Optimization|Safe-Policy-Optimization|feat/specrlbench-additions"
+)
 
 usage() {
 cat <<'EOF'
@@ -70,47 +94,12 @@ write_step() {
 printf '\n=== %s ===\n' "$1"
 }
 
-write_detail() {
-printf '%s\n' "$1"
-}
-
-repo_root() {
-git rev-parse --show-toplevel
-}
-
-get_submodules() {
-local root="$1"
-local gitmodules="$root/.gitmodules"
-local key name
-
-```
-[[ -f "$gitmodules" ]] || return 0
-
-while IFS= read -r key; do
-    name="${key#submodule.}"
-    name="${name%.path}"
-
-    printf '%s\t%s\t%s\t%s\n' \
-        "$name" \
-        "$(git config --file "$gitmodules" --get "$key")" \
-        "$(git config --file "$gitmodules" --get "submodule.$name.url" 2>/dev/null || true)" \
-        "$(git config --file "$gitmodules" --get "submodule.$name.branch" 2>/dev/null || true)"
-done < <(
-    git config \
-        --file "$gitmodules" \
-        --name-only \
-        --get-regexp '^submodule\..*\.path$'
-)
-```
-
-}
-
-is_git_worktree() {
-git rev-parse --is-inside-work-tree >/dev/null 2>&1
+is_git_repository() {
+git -C "$1" rev-parse --is-inside-work-tree >/dev/null 2>&1
 }
 
 is_dirty() {
-[[ -n "$(git status --porcelain)" ]]
+git status --porcelain | grep -q .
 }
 
 current_branch() {
@@ -122,79 +111,81 @@ git rev-parse --abbrev-ref '@{u}' 2>/dev/null || true
 }
 
 ahead_count() {
-local upstream
+local upstream="$1"
 
 ```
-upstream="$(upstream_ref)"
-if [[ -z "$upstream" ]]; then
-    echo 0
-    return 0
+git rev-list --count "$upstream..HEAD"
+```
+
+}
+
+verify_repository() {
+local path="$1"
+local label="$2"
+local expected_branch="$3"
+local branch
+
+```
+if [[ ! -d "$path" ]]; then
+    echo "[$label] Repository path does not exist: $path" >&2
+    return 1
 fi
 
-git rev-list --count "$upstream..HEAD" 2>/dev/null || echo 0
+if ! is_git_repository "$path"; then
+    echo "[$label] Not a Git repository: $path" >&2
+    return 1
+fi
+
+branch="$(git -C "$path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+
+if [[ -z "$branch" ]]; then
+    echo "[$label] Detached HEAD; refusing to continue." >&2
+    return 1
+fi
+
+if [[ "$branch" != "$expected_branch" ]]; then
+    echo "[$label] Branch mismatch:" >&2
+    echo "  Current:  $branch" >&2
+    echo "  Expected: $expected_branch" >&2
+    return 1
+fi
 ```
 
 }
 
 show_pending_commit() {
-local label="$1"
-local status_lines staged_lines unstaged_lines porcelain_lines
+local path="$1"
+local label="$2"
+local status_lines
 
 ```
 echo "[$label] Would commit with message: $MESSAGE"
 
-status_lines="$(git status --short 2>/dev/null || true)"
+status_lines="$(git -C "$path" status --short)"
+
 if [[ -n "$status_lines" ]]; then
-    write_detail "  Status:"
     while IFS= read -r line; do
-        [[ -n "$line" ]] && write_detail "    $line"
+        [[ -n "$line" ]] && printf '    %s\n' "$line"
     done <<< "$status_lines"
-fi
-
-staged_lines="$(git diff --cached --stat 2>/dev/null || true)"
-if [[ -n "$staged_lines" ]]; then
-    write_detail "  Staged diff:"
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && write_detail "    $line"
-    done <<< "$staged_lines"
-fi
-
-unstaged_lines="$(git diff --stat 2>/dev/null || true)"
-if [[ -n "$unstaged_lines" ]]; then
-    write_detail "  Unstaged diff:"
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && write_detail "    $line"
-    done <<< "$unstaged_lines"
-fi
-
-if [[ -z "$status_lines" &&
-      -z "$staged_lines" &&
-      -z "$unstaged_lines" ]]; then
-    write_detail "  Status details:"
-    porcelain_lines="$(git status --porcelain 2>/dev/null || true)"
-
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && write_detail "    $line"
-    done <<< "$porcelain_lines"
 fi
 ```
 
 }
 
 show_pending_push() {
-local label="$1"
-local ahead="$2"
+local path="$1"
+local label="$2"
 local branch="$3"
 local upstream="$4"
-local commits
+local ahead="$5"
 
 ```
 echo "[$label] Would push $ahead commit(s): $branch -> $upstream"
 
-commits="$(git log --oneline "$upstream..HEAD" 2>/dev/null || true)"
-while IFS= read -r line; do
-    [[ -n "$line" ]] && write_detail "    $line"
-done <<< "$commits"
+git -C "$path" log \
+    --oneline \
+    "$upstream..HEAD" |
+    sed 's/^/    /'
 ```
 
 }
@@ -202,45 +193,25 @@ done <<< "$commits"
 commit_if_dirty() {
 local path="$1"
 local label="$2"
-local configured_branch="${3:-}"
+local expected_branch="$3"
 
 ```
-(
-    cd "$path"
+verify_repository "$path" "$label" "$expected_branch"
 
-    if ! is_git_worktree; then
-        echo "[$label] Not an initialized Git worktree; skipping."
-        exit 0
-    fi
+if ! git -C "$path" status --porcelain | grep -q .; then
+    echo "[$label] No changes to commit."
+    return 0
+fi
 
-    local branch
-    branch="$(current_branch)"
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    show_pending_commit "$path" "$label"
+    return 0
+fi
 
-    if [[ -z "$branch" ]]; then
-        echo "[$label] Detached HEAD; skipping commit."
-        exit 0
-    fi
+git -C "$path" add -A
+git -C "$path" commit -m "$MESSAGE"
 
-    if [[ -n "$configured_branch" &&
-          "$branch" != "$configured_branch" ]]; then
-        echo "[$label] Current branch: $branch; configured branch: $configured_branch"
-    fi
-
-    if ! is_dirty; then
-        echo "[$label] No changes to commit."
-        exit 0
-    fi
-
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        show_pending_commit "$label"
-        exit 0
-    fi
-
-    git add -A
-    git commit -m "$MESSAGE"
-
-    echo "[$label] Committed on $branch."
-)
+echo "[$label] Committed."
 ```
 
 }
@@ -248,125 +219,121 @@ local configured_branch="${3:-}"
 push_if_ahead() {
 local path="$1"
 local label="$2"
-local configured_branch="${3:-}"
+local expected_branch="$3"
+local branch upstream ahead
 
 ```
-(
-    cd "$path"
+verify_repository "$path" "$label" "$expected_branch"
 
-    if ! is_git_worktree; then
-        echo "[$label] Not an initialized Git worktree; skipping."
-        exit 0
-    fi
+branch="$(git -C "$path" symbolic-ref --quiet --short HEAD)"
+upstream="$(git -C "$path" rev-parse --abbrev-ref '@{u}' 2>/dev/null || true)"
 
-    local branch upstream ahead
+if [[ -z "$upstream" ]]; then
+    echo "[$label] No upstream configured; skipping push."
+    return 0
+fi
 
-    branch="$(current_branch)"
-    if [[ -z "$branch" ]]; then
-        echo "[$label] Detached HEAD; skipping push."
-        exit 0
-    fi
+ahead="$(git -C "$path" rev-list --count "$upstream..HEAD")"
 
-    if [[ -n "$configured_branch" &&
-          "$branch" != "$configured_branch" ]]; then
-        echo "[$label] Current branch: $branch; configured branch: $configured_branch"
-    fi
+if [[ "$ahead" -eq 0 ]]; then
+    echo "[$label] Nothing to push."
+    return 0
+fi
 
-    upstream="$(upstream_ref)"
-    if [[ -z "$upstream" ]]; then
-        echo "[$label] No upstream configured; skipping push."
-        exit 0
-    fi
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    show_pending_push \
+        "$path" \
+        "$label" \
+        "$branch" \
+        "$upstream" \
+        "$ahead"
+    return 0
+fi
 
-    ahead="$(ahead_count)"
-    if [[ "$ahead" -le 0 ]]; then
-        echo "[$label] Nothing to push."
-        exit 0
-    fi
+git -C "$path" push
 
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        show_pending_push "$label" "$ahead" "$branch" "$upstream"
-        exit 0
-    fi
-
-    git push
-
-    echo "[$label] Pushed $ahead commit(s): $branch -> $upstream"
-)
+echo "[$label] Pushed $ahead commit(s)."
 ```
 
 }
 
 main() {
-local root
-local name path url branch
-local -a submodules=()
+local entry
+local label relative_path expected_branch path
 
 ```
-root="$(repo_root)"
-cd "$root"
-
-while IFS=$'\t' read -r name path url branch; do
-    [[ -n "$path" ]] || continue
-    submodules+=("$name"$'\t'"$path"$'\t'"$url"$'\t'"$branch")
-done < <(get_submodules "$root")
-
-echo "Repo: $root"
-
-if [[ "${#submodules[@]}" -eq 0 ]]; then
-    echo "Submodules: (none)"
-else
-    echo "Submodules:"
-
-    for name in "${submodules[@]}"; do
-        IFS=$'\t' read -r name path url branch <<< "$name"
-
-        printf '  - %s\n' "$name"
-        printf '    path: %s\n' "$path"
-
-        [[ -n "$url" ]] &&
-            printf '    url: %s\n' "$url"
-
-        [[ -n "$branch" ]] &&
-            printf '    branch: %s\n' "$branch"
-    done
+if [[ ! -d "$RISE_ROOT" ]]; then
+    echo "RISE-2026 directory does not exist: $RISE_ROOT" >&2
+    exit 1
 fi
+
+if ! is_git_repository "$RISE_ROOT"; then
+    echo "Main repository is not a Git repository: $RISE_ROOT" >&2
+    exit 1
+fi
+
+echo "Main repository: $RISE_ROOT"
+echo "Sibling repositories:"
+
+for entry in "${REPOSITORIES[@]}"; do
+    IFS='|' read -r label relative_path expected_branch <<< "$entry"
+
+    printf '  - %s\n' "$label"
+    printf '    path: %s/%s\n' "$RISE_ROOT" "$relative_path"
+    printf '    branch: %s\n' "$expected_branch"
+done
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "Mode: dry run (no commit or push)"
 fi
 
-write_step "Commit submodules"
+write_step "Commit sibling repositories"
 
-for entry in "${submodules[@]}"; do
-    IFS=$'\t' read -r name path url branch <<< "$entry"
+for entry in "${REPOSITORIES[@]}"; do
+    IFS='|' read -r label relative_path expected_branch <<< "$entry"
 
-    if [[ ! -d "$root/$path" ]]; then
-        echo "[$name] Path missing: $path; skipping."
-        continue
-    fi
+    path="$RISE_ROOT/$relative_path"
 
-    commit_if_dirty "$root/$path" "$name" "$branch"
+    commit_if_dirty \
+        "$path" \
+        "$label" \
+        "$expected_branch"
 done
 
 write_step "Commit main repository"
-commit_if_dirty "$root" "main"
 
-write_step "Push submodules"
+if git -C "$RISE_ROOT" status --porcelain | grep -q .; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        show_pending_commit "$RISE_ROOT" "RISE-2026"
+    else
+        git -C "$RISE_ROOT" add -A
+        git -C "$RISE_ROOT" commit -m "$MESSAGE"
 
-for entry in "${submodules[@]}"; do
-    IFS=$'\t' read -r name path url branch <<< "$entry"
-
-    if [[ ! -d "$root/$path" ]]; then
-        echo "[$name] Path missing: $path; skipping."
-        continue
+        echo "[RISE-2026] Committed."
     fi
+else
+    echo "[RISE-2026] No changes to commit."
+fi
 
-    push_if_ahead "$root/$path" "$name" "$branch"
+write_step "Push sibling repositories"
+
+for entry in "${REPOSITORIES[@]}"; do
+    IFS='|' read -r label relative_path expected_branch <<< "$entry"
+
+    path="$RISE_ROOT/$relative_path"
+
+    push_if_ahead \
+        "$path" \
+        "$label" \
+        "$expected_branch"
 done
 
 write_step "Push main repository"
-push_if_ahead "$root" "main"
+
+push_if_ahead \
+    "$RISE_ROOT" \
+    "RISE-2026" \
+    "$(git -C "$RISE_ROOT" branch --show-current)"
 
 printf '\nDone.\n'
 ```
