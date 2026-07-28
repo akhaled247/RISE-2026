@@ -2,3 +2,6 @@
 	path = SpecRLBench
 	url = https://github.com/akhaled247/SpecRLBench
 	branch = SAR-features
+[submodule "GenZ-LTL"]
+	path = GenZ-LTL
+	url = https://github.com/akhaled247/GenZ-LTL.git
