@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SafePO PPO-Lag — PointLTL{0,1,3}MASAR1[-WC]-v0 (6 envs, fixed hyperparams).
+# SafePO PPO-Lag — PointLTL2MASAR1[-WC]-v0 (train + eval).
 # Run in its own terminal:  bash scripts/ladder_algo_ltl/train_ppo_lag.sh
 set -euo pipefail
 
@@ -8,13 +8,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 cd "${RISE_TRAINING_ROOT}"
 
+ALGO="ppo_lag"
+RESULTS="$(results_file_for "$ALGO")"
+mkdir -p "$LOG_ROOT"
+: > "$RESULTS"
+
 run_one() {
   local level="$1" variant="$2"
-  local task experiment
+  local task experiment run_dir
   task="$(task_for "$level" "$variant")"
-  experiment="$(experiment_for "ppo_lag" "$level" "$variant")"
+  experiment="$(experiment_for "$ALGO" "$level" "$variant")"
 
-  echo "======== TRAIN ppo_lag $task  exp=$experiment  gpu=$DEVICE_ID ========"
+  echo "======== TRAIN $ALGO $task  exp=$experiment  gpu=$DEVICE_ID ========"
   python train/ppo_lag_train_env.py \
     --task "$task" --seed "$SEED" \
     --experiment "$experiment" \
@@ -31,11 +36,14 @@ run_one() {
     --device "$DEVICE" --device-id "$DEVICE_ID" \
     --write-terminal False --use-tensorboard True \
     --parallel True --lr_end_factor 1.0 --ent-coef 0.0
+
+  run_dir="$(latest_run_dir "$task" "$ALGO")"
+  eval_run_dir "$ALGO" "$task" "$experiment" "$run_dir"
 }
 
 while IFS= read -r row; do
   # shellcheck disable=SC2086
   run_one $row
-done < <(filtered_jobs)
+done < <(filtered_train_jobs)
 
-echo "PPO-Lag ladder done (seed=$SEED, log_root=$LOG_ROOT)."
+echo "PPO-Lag ladder done (seed=$SEED). Eval results → $RESULTS"
