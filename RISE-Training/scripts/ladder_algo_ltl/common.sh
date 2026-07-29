@@ -12,11 +12,11 @@ LOG_ROOT="${LOG_ROOT:-./_training_logs/safepo}"
 
 # Train jobs (L0–L2 plain + WC). Override with LEVEL=0 VARIANT=wc for a single job.
 TRAIN_JOBS=(
-  "0 plain"
+  # "0 plain"
   "0 wc"
-  "1 plain"
+  # "1 plain"
   "1 wc"
-  "2 plain"
+  # "2 plain"
   "2 wc"
 )
 
@@ -67,12 +67,12 @@ filtered_eval_jobs() {
 recipe_for() {
   local level="$1" variant="$2"
   case "${level}_${variant}" in
-    0_plain) echo "3000000 32768 0.995 0.98 0.05" ;;
-    0_wc)    echo "5000000 32768 0.995 0.98 0.05" ;;
+    0_plain) echo "5000000 32768 0.995 0.98 0.05" ;;
+    0_wc)    echo "5000000 65536 0.995 0.98 0.05" ;;
     1_plain) echo "5000000 32768 0.995 0.98 0.05" ;;
     1_wc)    echo "5000000 65536 0.995 0.98 0.05" ;;
     2_plain) echo "5000000 32768 0.995 0.98 0.05" ;;
-    2_wc)    echo "6000000 65536 0.995 0.98 0.05" ;;
+    2_wc)    echo "5000000 65536 0.995 0.98 0.05" ;;
     *) echo "unknown recipe: level=$level variant=$variant" >&2; return 1 ;;
   esac
 }
