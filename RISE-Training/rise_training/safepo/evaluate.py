@@ -78,11 +78,26 @@ def _rescued_from_info(info: dict[str, Any]) -> bool:
     )
 
 
+def _find_sar_task(env: Any) -> Any | None:
+    """Walk wrapper chain for SAR ``task`` (CMDP stack hides it from ``unwrapped``)."""
+    seen: set[int] = set()
+    cur: Any = env
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        task = getattr(cur, "task", None)
+        if task is not None:
+            return task
+        nxt = getattr(cur, "env", None)
+        if nxt is None:
+            break
+        cur = nxt
+    return None
+
+
 def _casualty_rescued_flags(env: Any) -> list[bool]:
     """Per-casualty rescued flags from SAR task (empty if unavailable)."""
-    try:
-        task = env.unwrapped.task
-    except Exception:
+    task = _find_sar_task(env)
+    if task is None:
         return []
     if hasattr(task, "_casualtys_rescued"):
         return [bool(x) for x in task._casualtys_rescued()]
@@ -212,9 +227,15 @@ def eval_single_run(
     torch.set_num_threads(int(config.get("torch_threads", 4)))
     device_t = torch.device(device)
 
-    # Always eval with 1 env, frozen RMS updates.
+    # Always eval with 1 env, frozen RMS updates. No autoreset — terminal step must
+    # keep SAR ``rescued`` flags until we read them (AutoResetSafetyWrapper clears).
     eval_env, obs_space, act_space = make_specrlbench_sa_env(
-        1, str(env_id), seed=seed, training=False, render_mode=render_mode
+        1,
+        str(env_id),
+        seed=seed,
+        training=False,
+        render_mode=render_mode,
+        autoreset=False,
     )
 
     if norm_path is not None and os.path.isfile(norm_path):
@@ -243,7 +264,6 @@ def eval_single_run(
     rew_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
     cost_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
     len_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
-    rescue_count = 0
     full_count = partial_count = none_count = 0
     total_casualty_rescues = 0
     fail_walls = fail_collision = fail_timeout = fail_other = 0
@@ -332,8 +352,6 @@ def eval_single_run(
         rew_deque.append(eval_rew)
         cost_deque.append(eval_cost)
         len_deque.append(eval_len)
-        if rescued or n_rescued >= casualty_num:
-            rescue_count += 1
         ep_seed += 1
 
     eval_env.close()
@@ -345,7 +363,7 @@ def eval_single_run(
         "std_cost": float(np.std(cost_deque)),
         "mean_ep_len": float(np.mean(len_deque)),
         "std_ep_len": float(np.std(len_deque)),
-        "rescue_rate": float(rescue_count) / float(eval_episodes),
+        "rescue_rate": float(full_count) / float(eval_episodes),
         "eval_episodes": float(eval_episodes),
         "casualty_num": float(casualty_num),
         "rescue_full": float(full_count),

@@ -70,6 +70,7 @@ def make_specrlbench_sa_env(
     training: bool = True,
     parallel: bool = True,
     render_mode: str | None = None,
+    autoreset: bool = True,
 ):
     """Return ``(env, obs_space, act_space)`` matching SafePO's SA contract.
 
@@ -102,7 +103,7 @@ def make_specrlbench_sa_env(
     env = make_cmdp_env(
         env_id,
         normalize_obs=True,
-        autoreset=True,
+        autoreset=autoreset,
         training=training,
         render_mode=render_mode,
     )

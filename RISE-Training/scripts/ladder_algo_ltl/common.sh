@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Shared settings for ladder_algo_ltl training + eval scripts.
-# Train: PointLTL2MASAR1-v0 + PointLTL2MASAR1WC-v0
-# Eval companion: latest runs for PointLTL{0,1}MASAR1[-WC]-v0
+# Train + eval: PointLTL{0,1,2}MASAR1[-WC]-v0 (override single job with LEVEL + VARIANT).
 
 RISE_TRAINING_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -11,13 +10,17 @@ SEED="${SEED:-0}"
 EVAL_EPISODES="${EVAL_EPISODES:-50}"
 LOG_ROOT="${LOG_ROOT:-./_training_logs/safepo}"
 
-# Train jobs (L2 plain + WC). Override with LEVEL=2 VARIANT=wc for a single job.
+# Train jobs (L0–L2 plain + WC). Override with LEVEL=0 VARIANT=wc for a single job.
 TRAIN_JOBS=(
+  "0 plain"
+  "0 wc"
+  "1 plain"
+  "1 wc"
   "2 plain"
   "2 wc"
 )
 
-# Eval companion jobs (L0 + L1 plain + WC).
+# Eval-only jobs (L0 + L1 plain + WC; eval_*.sh without retraining).
 EVAL_JOBS=(
   "0 plain"
   "0 wc"
@@ -57,6 +60,38 @@ filtered_eval_jobs() {
     return
   fi
   printf '%s\n' "${EVAL_JOBS[@]}"
+}
+
+# Per-level recipes (from run_ppo_l0_l3_ladder / vault #32 rematch grid).
+# Emits: total_steps steps_per_epoch gamma lam target_kl
+recipe_for() {
+  local level="$1" variant="$2"
+  case "${level}_${variant}" in
+    0_plain) echo "3000000 32768 0.995 0.98 0.05" ;;
+    0_wc)    echo "5000000 32768 0.995 0.98 0.05" ;;
+    1_plain) echo "5000000 32768 0.995 0.98 0.05" ;;
+    1_wc)    echo "5000000 65536 0.995 0.98 0.05" ;;
+    2_plain) echo "5000000 32768 0.995 0.98 0.05" ;;
+    2_wc)    echo "6000000 65536 0.995 0.98 0.05" ;;
+    *) echo "unknown recipe: level=$level variant=$variant" >&2; return 1 ;;
+  esac
+}
+
+# Lag rematch: λ_init=0 (vault mem.safepo — avoid λ stuck when cost sparse).
+lag_lambda_init() {
+  echo "0.0"
+}
+
+lag_lambda_lr() {
+  echo "${LAG_LAMBDA_LR:-0.01}"
+}
+
+lag_cost_limit() {
+  echo "${LAG_COST_LIMIT:-0.25}"
+}
+
+ppo_ent_coef() {
+  echo "${PPO_ENT_COEF:-0.02}"
 }
 
 latest_run_dir() {
