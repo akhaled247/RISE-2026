@@ -82,7 +82,7 @@ def eval_ma_run(
 
     env = SpecRLMultiGoalEnv(task=str(env_id), seed=int(seed or 0), render_mode=render_mode)
     use_walls, use_collision = cmdp_cost_channels(str(env_id))
-    num_agents = env.num_agents
+    num_agents = env.unwrapped.num_agents
     models_dir = _find_models_dir(run_dir, int(config.get("seed", seed or 0)))
 
     actors = []

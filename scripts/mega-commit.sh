@@ -1,16 +1,30 @@
 #!/usr/bin/env bash
-# Commit and push the main repo plus all git submodules with one message.
+# Commit and push the main RISE-2026 repository and its submodules with one message.
 # Only commits dirty repos; only pushes repos that are ahead of upstream.
+# If a submodule is on a detached HEAD, attaches it to the branch from .gitmodules.
 # Uses git only (no sudo).
 #
+# Repository layout (submodules discovered from .gitmodules):
+#   RISE-2026/
+#     SpecRLBench/
+#     GenZ-LTL/
+#     Safe-Policy-Optimization/
+#
 # Usage:
-#   ./scripts/mega-commit.sh "072828 sync SpecRLBench and RISE"
-#   ./scripts/mega-commit.sh --dry-run "072828 sync submodules"
+#   ./scripts/mega-commit.sh "commit message"
+#   ./scripts/mega-commit.sh --dry-run "commit message"
+#   ./scripts/mega-commit.sh -n "commit message"
 
 set -euo pipefail
 
 MESSAGE=""
 DRY_RUN=0
+
+RISE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+SUBMODULE_NAMES=()
+SUBMODULE_PATHS=()
+SUBMODULE_BRANCHES=()
 
 usage() {
     cat <<'EOF'
@@ -31,6 +45,10 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
+            usage
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
             usage
             ;;
         *)
@@ -55,38 +73,129 @@ write_detail() {
     printf '%s\n' "$1"
 }
 
-repo_root() {
-    git rev-parse --show-toplevel
+is_git_repo() {
+    git -C "$1" rev-parse --is-inside-work-tree >/dev/null 2>&1
 }
 
-get_submodules() {
-    local root="$1"
-    local gitmodules="$root/.gitmodules"
-    if [[ ! -f "$gitmodules" ]]; then
+current_branch() {
+    git -C "$1" branch --show-current
+}
+
+load_submodules() {
+    local gitmodules="$RISE_ROOT/.gitmodules"
+    local name path branch key value
+
+    SUBMODULE_NAMES=()
+    SUBMODULE_PATHS=()
+    SUBMODULE_BRANCHES=()
+
+    [[ -f "$gitmodules" ]] || return 0
+
+    declare -A paths=()
+    declare -A branches=()
+
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        if [[ "$line" =~ ^submodule\.(.+)\.(path|branch)[[:space:]]+(.+)$ ]]; then
+            name="${BASH_REMATCH[1]}"
+            key="${BASH_REMATCH[2]}"
+            value="${BASH_REMATCH[3]}"
+            if [[ "$key" == "path" ]]; then
+                paths["$name"]="$value"
+            else
+                branches["$name"]="$value"
+            fi
+        fi
+    done < <(git config --file "$gitmodules" --get-regexp '^submodule\..*\.(path|branch)$')
+
+    for name in "${!paths[@]}"; do
+        path="${paths[$name]}"
+        branch="${branches[$name]:-}"
+        SUBMODULE_NAMES+=("$name")
+        SUBMODULE_PATHS+=("$path")
+        SUBMODULE_BRANCHES+=("$branch")
+    done
+}
+
+ensure_attached_head() {
+    local path="$1"
+    local name="$2"
+    local expected_branch="$3"
+    local branch
+
+    branch="$(current_branch "$path")"
+    if [[ -n "$branch" ]]; then
+        printf '%s' "$branch"
         return 0
     fi
-    git config --file "$gitmodules" --get-regexp '^submodule\..*\.path$' | awk '{ print $2 }'
-}
 
-is_dirty() {
-    [[ -n "$(git status --porcelain)" ]]
-}
+    if [[ -z "$expected_branch" ]]; then
+        echo "[$name] Detached HEAD and no branch configured in .gitmodules." >&2
+        return 1
+    fi
 
-ahead_count() {
-    if ! git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
-        echo 0
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[$name] Would attach detached HEAD to branch: $expected_branch"
+        printf '%s' "$expected_branch"
         return 0
     fi
-    git rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0
+
+    echo "[$name] Detached HEAD detected; attaching to $expected_branch"
+    git -C "$path" fetch origin "$expected_branch" >/dev/null 2>&1 || true
+
+    if git -C "$path" show-ref --verify --quiet "refs/heads/$expected_branch"; then
+        git -C "$path" checkout "$expected_branch"
+    else
+        git -C "$path" checkout -B "$expected_branch" "origin/$expected_branch"
+    fi
+
+    if ! git -C "$path" rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
+        git -C "$path" branch --set-upstream-to "origin/$expected_branch" "$expected_branch" >/dev/null 2>&1 || true
+    fi
+
+    branch="$(current_branch "$path")"
+    if [[ -z "$branch" ]]; then
+        echo "[$name] Failed to attach detached HEAD to $expected_branch." >&2
+        return 1
+    fi
+
+    echo "[$name] Attached HEAD to $branch"
+    printf '%s' "$branch"
+}
+
+verify_repo() {
+    local path="$1"
+    local name="$2"
+    local expected_branch="$3"
+    local branch
+
+    if [[ ! -d "$path" ]]; then
+        echo "[$name] Directory does not exist: $path" >&2
+        return 1
+    fi
+
+    if ! is_git_repo "$path"; then
+        echo "[$name] Not a Git repository: $path" >&2
+        return 1
+    fi
+
+    branch="$(ensure_attached_head "$path" "$name" "$expected_branch")"
+
+    if [[ -n "$expected_branch" && "$branch" != "$expected_branch" ]]; then
+        echo "[$name] Warning: on '$branch' (configured branch is '$expected_branch')."
+    fi
+
+    printf '%s' "$branch"
 }
 
 show_pending_commit() {
-    local label="$1"
-    local status_lines staged_lines unstaged_lines porcelain_lines
+    local path="$1"
+    local name="$2"
+    local status_lines staged_lines unstaged_lines
 
-    echo "[$label] Would commit with message: $MESSAGE"
+    echo "[$name] Would commit with message: $MESSAGE"
 
-    status_lines="$(git status --short 2>/dev/null || true)"
+    status_lines="$(git -C "$path" status --short 2>/dev/null || true)"
     if [[ -n "$status_lines" ]]; then
         write_detail "  Status:"
         while IFS= read -r line; do
@@ -94,7 +203,7 @@ show_pending_commit() {
         done <<< "$status_lines"
     fi
 
-    staged_lines="$(git diff --cached --stat 2>/dev/null || true)"
+    staged_lines="$(git -C "$path" diff --cached --stat 2>/dev/null || true)"
     if [[ -n "$staged_lines" ]]; then
         write_detail "  Staged diff:"
         while IFS= read -r line; do
@@ -102,130 +211,150 @@ show_pending_commit() {
         done <<< "$staged_lines"
     fi
 
-    unstaged_lines="$(git diff --stat 2>/dev/null || true)"
+    unstaged_lines="$(git -C "$path" diff --stat 2>/dev/null || true)"
     if [[ -n "$unstaged_lines" ]]; then
         write_detail "  Unstaged diff:"
         while IFS= read -r line; do
             [[ -n "$line" ]] && write_detail "    $line"
         done <<< "$unstaged_lines"
     fi
-
-    if [[ -z "$status_lines" && -z "$staged_lines" && -z "$unstaged_lines" ]]; then
-        write_detail "  (dirty per porcelain, but no diff details - possibly line-ending or mode-only changes)"
-        porcelain_lines="$(git status --porcelain 2>/dev/null || true)"
-        while IFS= read -r line; do
-            [[ -n "$line" ]] && write_detail "    $line"
-        done <<< "$porcelain_lines"
-    fi
-}
-
-show_pending_push() {
-    local label="$1"
-    local ahead="$2"
-    local branch="$3"
-    local commits
-
-    echo "[$label] Would push $ahead commit(s) on $branch:"
-    commits="$(git log --oneline '@{u}..HEAD' 2>/dev/null || true)"
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && write_detail "    $line"
-    done <<< "$commits"
 }
 
 commit_if_dirty() {
     local path="$1"
-    local label="$2"
+    local name="$2"
+    local expected_branch="$3"
 
-    (
-        cd "$path"
-        if ! is_dirty; then
-            echo "[$label] No changes to commit."
-            exit 0
-        fi
+    verify_repo "$path" "$name" "$expected_branch" >/dev/null
 
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-            show_pending_commit "$label"
-            exit 0
-        fi
+    if [[ -z "$(git -C "$path" status --porcelain)" ]]; then
+        echo "[$name] No changes to commit."
+        return 0
+    fi
 
-        git add -A
-        git commit -m "$MESSAGE"
-        echo "[$label] Committed."
-    )
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        show_pending_commit "$path" "$name"
+        return 0
+    fi
+
+    git -C "$path" add -A
+    git -C "$path" commit -m "$MESSAGE"
+    echo "[$name] Committed."
 }
 
 push_if_ahead() {
     local path="$1"
-    local label="$2"
+    local name="$2"
+    local expected_branch="$3"
+    local branch upstream ahead behind
 
-    (
-        cd "$path"
-        local branch ahead
+    branch="$(verify_repo "$path" "$name" "$expected_branch")"
 
-        branch="$(git rev-parse --abbrev-ref HEAD)"
-        if ! git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
-            echo "[$label] No upstream configured; skipping push."
-            exit 0
+    if ! upstream="$(git -C "$path" rev-parse --abbrev-ref '@{u}' 2>/dev/null)"; then
+        echo "[$name] No upstream configured; skipping push."
+        return 0
+    fi
+
+    git -C "$path" fetch >/dev/null 2>&1 || true
+
+    behind="$(git -C "$path" rev-list --count "HEAD..$upstream")"
+    ahead="$(git -C "$path" rev-list --count "$upstream..HEAD")"
+
+    if [[ "$ahead" -eq 0 && "$behind" -eq 0 ]]; then
+        echo "[$name] Nothing to push."
+        return 0
+    fi
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        if [[ "$behind" -gt 0 ]]; then
+            echo "[$name] Would pull --rebase ($behind commit(s) behind $upstream)"
         fi
-
-        ahead="$(ahead_count)"
-        if [[ "$ahead" -le 0 ]]; then
-            echo "[$label] Nothing to push."
-            exit 0
+        if [[ "$ahead" -gt 0 ]]; then
+            echo "[$name] Would push $ahead commit(s): $branch -> $upstream"
+            git -C "$path" log --oneline "$upstream..HEAD" | sed 's/^/    /'
+        elif [[ "$behind" -gt 0 ]]; then
+            echo "[$name] Would have nothing to push after rebase."
         fi
+        return 0
+    fi
 
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-            show_pending_push "$label" "$ahead" "$branch"
-            exit 0
-        fi
+    if [[ "$behind" -gt 0 ]]; then
+        echo "[$name] Pulling --rebase ($behind commit(s) behind $upstream)"
+        git -C "$path" pull --rebase
+        ahead="$(git -C "$path" rev-list --count "$upstream..HEAD")"
+    fi
 
-        git push
-        echo "[$label] Pushed $ahead commit(s)."
-    )
+    if [[ "$ahead" -eq 0 ]]; then
+        echo "[$name] Up to date with $upstream after sync."
+        return 0
+    fi
+
+    git -C "$path" push
+    echo "[$name] Pushed $ahead commit(s)."
 }
 
 main() {
-    local root subs sub_list
+    local i name path branch submodule_list
 
-    root="$(repo_root)"
-    cd "$root"
+    if [[ ! -d "$RISE_ROOT" ]]; then
+        echo "RISE root does not exist: $RISE_ROOT" >&2
+        exit 1
+    fi
 
-    mapfile -t sub_list < <(get_submodules "$root")
+    if ! is_git_repo "$RISE_ROOT"; then
+        echo "Not a Git repository: $RISE_ROOT" >&2
+        exit 1
+    fi
 
-    echo "Repo: $root"
-    if [[ "${#sub_list[@]}" -eq 0 ]]; then
+    load_submodules
+
+    echo "Main repository: $RISE_ROOT"
+    if [[ "${#SUBMODULE_PATHS[@]}" -eq 0 ]]; then
         echo "Submodules: (none)"
     else
-        subs="$(printf '%s, ' "${sub_list[@]}")"
-        echo "Submodules: ${subs%, }"
+        submodule_list="$(printf '%s, ' "${SUBMODULE_PATHS[@]}")"
+        echo "Submodules: ${submodule_list%, }"
     fi
+
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "Mode: dry run (no commit/push)"
+        echo "Mode: dry run"
     fi
 
-    write_step "Commit submodules"
-    for sub in "${sub_list[@]}"; do
-        [[ -n "$sub" ]] || continue
-        if [[ ! -d "$root/$sub" ]]; then
-            echo "[$sub] Path missing; skipping."
-            continue
-        fi
-        commit_if_dirty "$root/$sub" "$sub"
+    write_step "Commit submodule repositories"
+    for i in "${!SUBMODULE_PATHS[@]}"; do
+        name="${SUBMODULE_NAMES[$i]}"
+        path="$RISE_ROOT/${SUBMODULE_PATHS[$i]}"
+        branch="${SUBMODULE_BRANCHES[$i]}"
+        commit_if_dirty "$path" "$name" "$branch"
     done
 
-    write_step "Commit main repo"
-    commit_if_dirty "$root" "main"
+    write_step "Commit main repository"
+    if [[ -z "$(git -C "$RISE_ROOT" status --porcelain)" ]]; then
+        echo "[RISE-2026] No changes to commit."
+    elif [[ "$DRY_RUN" -eq 1 ]]; then
+        show_pending_commit "$RISE_ROOT" "RISE-2026"
+    else
+        git -C "$RISE_ROOT" add -A
+        git -C "$RISE_ROOT" commit -m "$MESSAGE"
+        echo "[RISE-2026] Committed."
+    fi
 
-    write_step "Push submodules"
-    for sub in "${sub_list[@]}"; do
-        [[ -n "$sub" ]] || continue
-        if [[ -d "$root/$sub" ]]; then
-            push_if_ahead "$root/$sub" "$sub"
-        fi
+    write_step "Push submodule repositories"
+    for i in "${!SUBMODULE_PATHS[@]}"; do
+        name="${SUBMODULE_NAMES[$i]}"
+        path="$RISE_ROOT/${SUBMODULE_PATHS[$i]}"
+        branch="${SUBMODULE_BRANCHES[$i]}"
+        push_if_ahead "$path" "$name" "$branch"
     done
 
-    write_step "Push main repo"
-    push_if_ahead "$root" "main"
+    write_step "Push main repository"
+    branch="$(current_branch "$RISE_ROOT")"
+    if [[ -z "$branch" ]]; then
+        echo "[RISE-2026] Detached HEAD; refusing to push main repository." >&2
+        exit 1
+    fi
+
+    push_if_ahead "$RISE_ROOT" "RISE-2026" "$branch"
 
     printf '\nDone.\n'
 }

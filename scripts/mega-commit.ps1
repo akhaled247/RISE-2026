@@ -1,274 +1,502 @@
-# Commit and push the main repo plus all git submodules with one message.
-# Only commits dirty repos; only pushes repos that are ahead of upstream.
-#
-# Usage:
-#   .\scripts\mega-commit.ps1 "072828 sync SpecRLBench and RISE"
-#   .\scripts\mega-commit.ps1 "fix eval" -DryRun
+<#
+Commit and push the main RISE-2026 repository and its submodules with one message.
+Only commits dirty repos; only pushes repos that are ahead of upstream.
+If a submodule is on a detached HEAD, attaches it to the branch from .gitmodules.
 
+Repository layout (submodules discovered from .gitmodules):
+  RISE-2026/
+    SpecRLBench/
+    GenZ-LTL/
+    Safe-Policy-Optimization/
+
+Usage:
+  .\scripts\mega-commit.ps1 "commit message"
+  .\scripts\mega-commit.ps1 -DryRun "commit message"
+  .\scripts\mega-commit.ps1 -n "commit message"
+#>
+
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
+    [Parameter(Position = 0)]
     [string]$Message,
 
-    [switch]$DryRun
+    [Alias("n")]
+    [switch]$DryRun,
+
+    [switch]$Help
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Write-Step([string]$Text) {
-    Write-Host "`n=== $Text ===" -ForegroundColor Cyan
+$RiseRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+function Show-Usage {
+    Write-Host @"
+Usage:
+  .\scripts\mega-commit.ps1 "commit message"
+  .\scripts\mega-commit.ps1 -DryRun "commit message"
+  .\scripts\mega-commit.ps1 -n "commit message"
+
+Examples:
+  .\scripts\mega-commit.ps1 "072828 sync submodules"
+  .\scripts\mega-commit.ps1 -DryRun "072828 sync submodules"
+"@
 }
 
-function Write-Detail([string]$Text) {
+function Write-Step {
+    param([Parameter(Mandatory)][string]$Text)
+    Write-Host ""
+    Write-Host "=== $Text ==="
+}
+
+function Write-Detail {
+    param([Parameter(Mandatory)][string]$Text)
     Write-Host $Text -ForegroundColor DarkGray
 }
 
-function Get-RepoRoot {
-    $root = git rev-parse --show-toplevel 2>$null
-    if (-not $root) { throw "Not inside a git repository." }
-    return $root
-}
+function ConvertTo-StringArray {
+    param($Value)
 
-function Get-SubmodulePaths([string]$Root) {
-    $gitmodules = Join-Path $Root ".gitmodules"
-    if (-not (Test-Path $gitmodules)) { return @() }
-
-    git config --file $gitmodules --get-regexp '^submodule\..*\.path$' |
-        ForEach-Object {
-            ($_ -split ' ', 2)[1]
-        }
-}
-
-function Get-SubmoduleBranch {
-    param(
-        [string]$Root,
-        [string]$SubPath
-    )
-
-    $gitmodules = Join-Path $Root ".gitmodules"
-    if (-not (Test-Path $gitmodules)) { return $null }
-
-    $entries = @(git config --file $gitmodules --get-regexp '^submodule\..*\.path$')
-    foreach ($entry in $entries) {
-        $name, $path = $entry -split ' ', 2
-        if ($path -ne $SubPath) { continue }
-
-        $section = $name -replace '\.path$', ''
-        return git config --file $gitmodules --get "${section}.branch"
+    if ($null -eq $Value) {
+        return @()
     }
 
-    return $null
+    return @(
+        $Value |
+            Where-Object { $null -ne $_ } |
+            ForEach-Object { $_.ToString() }
+    )
 }
 
-function Test-RepoDirty {
-    return [bool](git status --porcelain)
-}
-
-function Test-HasUpstream {
-    $null = git rev-parse --abbrev-ref "@{u}" 2>&1
-    return $LASTEXITCODE -eq 0
-}
-
-function Get-AheadCount {
-    if (-not (Test-HasUpstream)) { return 0 }
-
-    $count = git rev-list --count "@{u}..HEAD" 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $count) { return 0 }
-    return [int]$count
-}
-
-function Ensure-OnSubmoduleBranch {
+function Invoke-GitCommand {
     param(
-        [string]$Root,
-        [string]$SubPath,
-        [string]$Label
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(ValueFromRemainingArguments = $true)][string[]]$GitArguments
     )
 
-    Push-Location (Join-Path $Root $SubPath)
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     try {
-        $current = git rev-parse --abbrev-ref HEAD
-        if ($current -ne "HEAD") { return }
-
-        $branch = Get-SubmoduleBranch -Root $Root -SubPath $SubPath
-        if (-not $branch) {
-            Write-Warning "[$Label] Detached HEAD and no submodule.*.branch in .gitmodules."
-            return
+        $output = & git -C $Path @GitArguments 2>&1
+        if ($null -eq $output) {
+            $output = @()
+        }
+        elseif ($output -isnot [System.Array]) {
+            $output = @($output)
         }
 
-        $at = git rev-parse HEAD
-        git checkout $branch 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "[$Label] Could not checkout branch '$branch'."
+        return @{
+            ExitCode = $LASTEXITCODE
+            Output   = $output
         }
-
-        $branchAt = git rev-parse HEAD
-        if ($branchAt -ne $at) {
-            git merge-base --is-ancestor $branchAt $at 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                git merge --ff-only $at 2>&1 | Out-Null
-                if ($LASTEXITCODE -ne 0) {
-                    throw "[$Label] Could not fast-forward '$branch' to $at."
-                }
-            }
-        }
-
-        Write-Host "[$Label] On branch $branch (was detached at $($at.Substring(0, 7)))."
     }
     finally {
-        Pop-Location
+        $ErrorActionPreference = $previousPreference
     }
+}
+
+function Invoke-Git {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(ValueFromRemainingArguments = $true)][string[]]$GitArguments
+    )
+
+    $result = Invoke-GitCommand -Path $Path @GitArguments
+    if ($result.ExitCode -ne 0) {
+        $detail = ($result.Output | Out-String).Trim()
+        if ($detail) {
+            throw "Git command failed in '$Path': git $($GitArguments -join ' ')`n$detail"
+        }
+        throw "Git command failed in '$Path': git $($GitArguments -join ' ')"
+    }
+}
+
+function Test-GitRepository {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        return $false
+    }
+
+    $result = Invoke-GitCommand -Path $Path rev-parse --is-inside-work-tree
+    return (
+        $result.ExitCode -eq 0 -and
+        (($result.Output | Select-Object -First 1).ToString().Trim() -eq "true")
+    )
+}
+
+function Get-CurrentBranch {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $result = Invoke-GitCommand -Path $Path branch --show-current
+    if ($result.ExitCode -ne 0) {
+        throw "Could not determine the current branch for '$Path'."
+    }
+
+    $branch = $result.Output | Select-Object -First 1
+    if ($null -eq $branch) {
+        return ""
+    }
+
+    return ($branch.ToString().Trim())
+}
+
+function Get-SubmoduleRepositories {
+    param([Parameter(Mandatory)][string]$Root)
+
+    $gitmodules = Join-Path $Root ".gitmodules"
+    if (-not (Test-Path -LiteralPath $gitmodules)) {
+        return @()
+    }
+
+    $entries = @{}
+    $configResult = Invoke-GitCommand -Path $Root config --file $gitmodules --get-regexp '^submodule\..*\.(path|branch)$'
+    if ($configResult.ExitCode -ne 0) {
+        return @()
+    }
+
+    foreach ($line in $configResult.Output) {
+        $line = $line.ToString()
+        if ($line -match '^submodule\.(.+)\.(path|branch)\s+(.+)$') {
+            $name = $Matches[1]
+            $key = $Matches[2]
+            $value = $Matches[3].Trim()
+
+            if (-not $entries.ContainsKey($name)) {
+                $entries[$name] = @{
+                    Name   = $name
+                    Path   = ""
+                    Branch = ""
+                }
+            }
+
+            $entries[$name][$key] = $value
+        }
+    }
+
+    return @(
+        $entries.Values |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_.Path) } |
+            Sort-Object Path
+    )
+}
+
+function Ensure-AttachedHead {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Name,
+        [string]$ExpectedBranch
+    )
+
+    $branch = Get-CurrentBranch -Path $Path
+    if (-not [string]::IsNullOrWhiteSpace($branch)) {
+        return $branch
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ExpectedBranch)) {
+        throw "[$Name] Detached HEAD and no branch configured in .gitmodules."
+    }
+
+    if ($DryRun) {
+        Write-Host "[$Name] Would attach detached HEAD to branch: $ExpectedBranch"
+        return $ExpectedBranch
+    }
+
+    Write-Host "[$Name] Detached HEAD detected; attaching to $ExpectedBranch"
+
+    $fetchResult = Invoke-GitCommand -Path $Path fetch origin $ExpectedBranch
+    if ($fetchResult.ExitCode -ne 0) {
+        $detail = ($fetchResult.Output | Out-String).Trim()
+        throw "[$Name] Failed to fetch origin/$ExpectedBranch.`n$detail"
+    }
+
+    $localRef = "refs/heads/$ExpectedBranch"
+    $localResult = Invoke-GitCommand -Path $Path show-ref --verify --quiet $localRef
+    if ($localResult.ExitCode -eq 0) {
+        Invoke-Git -Path $Path checkout $ExpectedBranch
+    }
+    else {
+        Invoke-Git -Path $Path checkout -B $ExpectedBranch "origin/$ExpectedBranch"
+    }
+
+    $upstreamResult = Invoke-GitCommand -Path $Path rev-parse --abbrev-ref "@{u}"
+    if ($upstreamResult.ExitCode -ne 0) {
+        Invoke-GitCommand -Path $Path branch --set-upstream-to "origin/$ExpectedBranch" $ExpectedBranch | Out-Null
+    }
+
+    $branch = Get-CurrentBranch -Path $Path
+    if ([string]::IsNullOrWhiteSpace($branch)) {
+        throw "[$Name] Failed to attach detached HEAD to $ExpectedBranch."
+    }
+
+    Write-Host "[$Name] Attached HEAD to $branch"
+    return $branch
+}
+
+function Test-Repository {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Name,
+        [string]$ExpectedBranch
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        throw "[$Name] Directory does not exist: $Path"
+    }
+
+    if (-not (Test-GitRepository -Path $Path)) {
+        throw "[$Name] Not a Git repository: $Path"
+    }
+
+    $branch = Ensure-AttachedHead -Path $Path -Name $Name -ExpectedBranch $ExpectedBranch
+
+    if (
+        -not [string]::IsNullOrWhiteSpace($ExpectedBranch) -and
+        $branch -ne $ExpectedBranch
+    ) {
+        Write-Host "[$Name] Warning: on '$branch' (configured branch is '$ExpectedBranch')."
+    }
+
+    return $branch
+}
+
+function Get-GitStatus {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $result = Invoke-GitCommand -Path $Path status --porcelain
+    if ($result.ExitCode -ne 0) {
+        throw "Could not get Git status for '$Path'."
+    }
+
+    return ConvertTo-StringArray $result.Output
 }
 
 function Show-PendingCommit {
-    param([string]$Label)
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Name
+    )
 
-    Write-Host "[$Label] Would commit with message: $Message"
+    Write-Host "[$Name] Would commit with message: $Message"
 
-    $status = @(git status --short 2>$null)
-    if ($status.Count -gt 0) {
+    $status = @(Get-GitStatus -Path $Path)
+    if ($status) {
         Write-Detail "  Status:"
-        $status | ForEach-Object { Write-Detail "    $_" }
+        foreach ($line in $status) {
+            Write-Detail "    $line"
+        }
     }
 
-    $staged = @(git diff --cached --stat 2>$null)
-    if ($staged.Count -gt 0) {
+    $staged = @(ConvertTo-StringArray (Invoke-GitCommand -Path $Path diff --cached --stat).Output)
+    if ($staged) {
         Write-Detail "  Staged diff:"
-        $staged | ForEach-Object { Write-Detail "    $_" }
+        foreach ($line in $staged) {
+            Write-Detail "    $line"
+        }
     }
 
-    $unstaged = @(git diff --stat 2>$null)
-    if ($unstaged.Count -gt 0) {
+    $unstaged = @(ConvertTo-StringArray (Invoke-GitCommand -Path $Path diff --stat).Output)
+    if ($unstaged) {
         Write-Detail "  Unstaged diff:"
-        $unstaged | ForEach-Object { Write-Detail "    $_" }
-    }
-
-    if ($status.Count -eq 0 -and $staged.Count -eq 0 -and $unstaged.Count -eq 0) {
-        Write-Detail "  (dirty per porcelain, but no diff details - possibly line-ending or mode-only changes)"
-        $porcelain = @(git status --porcelain 2>$null)
-        $porcelain | ForEach-Object { Write-Detail "    $_" }
+        foreach ($line in $unstaged) {
+            Write-Detail "    $line"
+        }
     }
 }
 
-function Show-PendingPush {
+function Commit-IfDirty {
     param(
-        [string]$Label,
-        [int]$Ahead,
-        [string]$Branch
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Name,
+        [string]$ExpectedBranch
     )
 
-    Write-Host "[$Label] Would push $Ahead commit(s) on ${Branch}:"
-    $commits = @(git log --oneline "@{u}..HEAD" 2>$null)
-    if ($commits.Count -gt 0) {
-        $commits | ForEach-Object { Write-Detail "    $_" }
+    Test-Repository -Path $Path -Name $Name -ExpectedBranch $ExpectedBranch | Out-Null
+
+    $status = @(Get-GitStatus -Path $Path)
+    if (-not $status) {
+        Write-Host "[$Name] No changes to commit."
+        return
     }
+
+    if ($DryRun) {
+        Show-PendingCommit -Path $Path -Name $Name
+        return
+    }
+
+    Invoke-Git -Path $Path add -A
+    Invoke-Git -Path $Path commit -m $Message
+    Write-Host "[$Name] Committed."
 }
 
-function Invoke-CommitIfDirty {
+function Get-BehindCount {
     param(
-        [string]$Path,
-        [string]$Label,
-        [string]$Message,
-        [switch]$DryRun
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Upstream
     )
 
-    Push-Location $Path
-    try {
-        if (-not (Test-RepoDirty)) {
-            Write-Host "[$Label] No changes to commit."
-            return
-        }
-
-        if ($DryRun) {
-            Show-PendingCommit -Label $Label
-            return
-        }
-
-        git add -A
-        git commit -m $Message
-        Write-Host "[$Label] Committed."
+    $result = Invoke-GitCommand -Path $Path rev-list --count "HEAD..$Upstream"
+    if ($result.ExitCode -ne 0) {
+        throw "Could not determine behind count for '$Path'."
     }
-    finally {
-        Pop-Location
-    }
+
+    return [int](($result.Output | Select-Object -First 1).ToString().Trim())
 }
 
-function Invoke-PushIfAhead {
+function Push-IfAhead {
     param(
-        [string]$Path,
-        [string]$Label,
-        [switch]$DryRun
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Name,
+        [string]$ExpectedBranch
     )
 
-    Push-Location $Path
-    try {
-        $branch = git rev-parse --abbrev-ref HEAD
-        if ($branch -eq "HEAD") {
-            Write-Host "[$Label] Detached HEAD; skipping push."
-            return
+    $branch = Test-Repository -Path $Path -Name $Name -ExpectedBranch $ExpectedBranch
+
+    $upstreamResult = Invoke-GitCommand -Path $Path rev-parse --abbrev-ref "@{u}"
+    if ($upstreamResult.ExitCode -ne 0) {
+        Write-Host "[$Name] No upstream configured; skipping push."
+        return
+    }
+
+    $upstream = (($upstreamResult.Output | Select-Object -First 1).ToString().Trim())
+
+    Invoke-GitCommand -Path $Path fetch | Out-Null
+
+    $behind = Get-BehindCount -Path $Path -Upstream $upstream
+    $aheadResult = Invoke-GitCommand -Path $Path rev-list --count "$upstream..HEAD"
+    if ($aheadResult.ExitCode -ne 0) {
+        throw "Could not determine ahead count for '$Name'."
+    }
+
+    $ahead = [int](($aheadResult.Output | Select-Object -First 1).ToString().Trim())
+
+    if ($ahead -eq 0 -and $behind -eq 0) {
+        Write-Host "[$Name] Nothing to push."
+        return
+    }
+
+    if ($DryRun) {
+        if ($behind -gt 0) {
+            Write-Host "[$Name] Would pull --rebase ($behind commit(s) behind $upstream)"
         }
-
-        if (-not (Test-HasUpstream)) {
-            Write-Host "[$Label] No upstream configured; skipping push."
-            return
+        if ($ahead -gt 0) {
+            Write-Host "[$Name] Would push $ahead commit(s): $branch -> $upstream"
+            $commits = ConvertTo-StringArray (Invoke-GitCommand -Path $Path log --oneline "$upstream..HEAD").Output
+            foreach ($commit in $commits) {
+                Write-Detail "    $commit"
+            }
         }
-
-        $ahead = Get-AheadCount
-        if ($ahead -le 0) {
-            Write-Host "[$Label] Nothing to push."
-            return
+        elseif ($behind -gt 0) {
+            Write-Host "[$Name] Would have nothing to push after rebase."
         }
+        return
+    }
 
-        if ($DryRun) {
-            Show-PendingPush -Label $Label -Ahead $ahead -Branch $branch
-            return
+    if ($behind -gt 0) {
+        Write-Host "[$Name] Pulling --rebase ($behind commit(s) behind $upstream)"
+        Invoke-Git -Path $Path pull --rebase
+
+        $aheadResult = Invoke-GitCommand -Path $Path rev-list --count "$upstream..HEAD"
+        if ($aheadResult.ExitCode -ne 0) {
+            throw "Could not determine ahead count for '$Name' after rebase."
         }
+        $ahead = [int](($aheadResult.Output | Select-Object -First 1).ToString().Trim())
+    }
 
-        git push
-        Write-Host "[$Label] Pushed $ahead commit(s)."
+    if ($ahead -eq 0) {
+        Write-Host "[$Name] Up to date with $upstream after sync."
+        return
     }
-    finally {
-        Pop-Location
-    }
+
+    Invoke-Git -Path $Path push
+    Write-Host "[$Name] Pushed $ahead commit(s)."
 }
 
-$root = Get-RepoRoot
-Set-Location $root
-
-$submodules = Get-SubmodulePaths $root
-Write-Host "Repo: $root"
-if ($submodules.Count -eq 0) {
-    Write-Host "Submodules: (none)"
-} else {
-    Write-Host "Submodules: $($submodules -join ', ')"
-}
-if ($DryRun) {
-    Write-Host "Mode: dry run (no commit/push)" -ForegroundColor Yellow
-}
-
-Write-Step "Commit submodules"
-foreach ($sub in $submodules) {
-    $subPath = Join-Path $root $sub
-    if (-not (Test-Path $subPath)) {
-        Write-Host "[$sub] Path missing; skipping."
-        continue
+function Invoke-Main {
+    if ($Help) {
+        Show-Usage
+        return
     }
-    if (-not $DryRun) {
-        Ensure-OnSubmoduleBranch -Root $root -SubPath $sub -Label $sub
+
+    if ([string]::IsNullOrWhiteSpace($Message)) {
+        Show-Usage
+        exit 1
     }
-    Invoke-CommitIfDirty -Path $subPath -Label $sub -Message $Message -DryRun:$DryRun
+
+    if (-not (Test-Path -LiteralPath $RiseRoot -PathType Container)) {
+        throw "RISE root does not exist: $RiseRoot"
+    }
+
+    if (-not (Test-GitRepository -Path $RiseRoot)) {
+        throw "Not a Git repository: $RiseRoot"
+    }
+
+    $repositories = @(Get-SubmoduleRepositories -Root $RiseRoot)
+
+    Write-Host "Main repository: $RiseRoot"
+    if ($repositories.Count -eq 0) {
+        Write-Host "Submodules: (none)"
+    }
+    else {
+        Write-Host "Submodules: $($repositories.Path -join ', ')"
+    }
+
+    if ($DryRun) {
+        Write-Host "Mode: dry run"
+    }
+
+    Write-Step "Commit submodule repositories"
+    foreach ($repository in $repositories) {
+        $path = Join-Path $RiseRoot $repository.Path
+        Commit-IfDirty `
+            -Path $path `
+            -Name $repository.Name `
+            -ExpectedBranch $repository.Branch
+    }
+
+    Write-Step "Commit main repository"
+    $mainStatus = @(Get-GitStatus -Path $RiseRoot)
+    if (-not $mainStatus) {
+        Write-Host "[RISE-2026] No changes to commit."
+    }
+    elseif ($DryRun) {
+        Show-PendingCommit -Path $RiseRoot -Name "RISE-2026"
+    }
+    else {
+        Invoke-Git -Path $RiseRoot add -A
+        Invoke-Git -Path $RiseRoot commit -m $Message
+        Write-Host "[RISE-2026] Committed."
+    }
+
+    Write-Step "Push submodule repositories"
+    foreach ($repository in $repositories) {
+        $path = Join-Path $RiseRoot $repository.Path
+        Push-IfAhead `
+            -Path $path `
+            -Name $repository.Name `
+            -ExpectedBranch $repository.Branch
+    }
+
+    Write-Step "Push main repository"
+    $mainBranch = Get-CurrentBranch -Path $RiseRoot
+    if ([string]::IsNullOrWhiteSpace($mainBranch)) {
+        throw "[RISE-2026] Detached HEAD; refusing to push main repository."
+    }
+
+    Push-IfAhead `
+        -Path $RiseRoot `
+        -Name "RISE-2026" `
+        -ExpectedBranch $mainBranch
+
+    Write-Host ""
+    Write-Host "Done."
 }
 
-Write-Step "Commit main repo"
-Invoke-CommitIfDirty -Path $root -Label "main" -Message $Message -DryRun:$DryRun
-
-Write-Step "Push submodules"
-foreach ($sub in $submodules) {
-    $subPath = Join-Path $root $sub
-    if (Test-Path $subPath) {
-        Invoke-PushIfAhead -Path $subPath -Label $sub -DryRun:$DryRun
-    }
+try {
+    Invoke-Main
 }
-
-Write-Step "Push main repo"
-Invoke-PushIfAhead -Path $root -Label "main" -DryRun:$DryRun
-
-Write-Host "`nDone."
+catch {
+    Write-Error $_.Exception.Message
+    exit 1
+}

@@ -14,7 +14,7 @@ class DictFlattenWrapper(gymnasium.Wrapper):
     """Flatten ``Dict`` obs to 1-D ``Box`` with stable sorted key order.
 
     Supports Gymnasium 5-tuple and Safety 6-tuple ``step`` returns.
-    Expects flat Dict of arrays (``sb3=True`` SpecRLBench wrappers).
+    Expects flat Dict of arrays (``flat=True`` SpecRLBench wrappers).
     """
 
     def __init__(self, env: gymnasium.Env):
