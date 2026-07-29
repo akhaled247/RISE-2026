@@ -15,8 +15,9 @@ def cmdp_cost_channels(task_id: str) -> tuple[bool, bool]:
 
 def make_ma_cmdp_env(task: str, seed: int, cfg_train: dict | None = None):
     """Build one SpecRL MultiGoal-compatible env (used inside Share* vec workers)."""
+    sar_ltl = bool((cfg_train or {}).get("sar_ltl_ordering", False))
     del cfg_train  # SafePO passes cfg; unused for construction parity with MultiGoalEnv
-    return SpecRLMultiGoalEnv(task=task, seed=seed)
+    return SpecRLMultiGoalEnv(task=task, seed=seed, sar_ltl_ordering=sar_ltl)
 
 
 class SpecRLMultiGoalEnv:
@@ -26,11 +27,11 @@ class SpecRLMultiGoalEnv:
     step(actions) → (obs, share_obs, rewards, costs, dones, infos, avail_actions)
     """
 
-    def __init__(self, task: str, seed: int, render_mode = None):
+    def __init__(self, task: str, seed: int, render_mode = None, sar_ltl_ordering: bool = False):
         from rise_training.env_utils import make_env
 
         self.task_id = task
-        self.env = make_env(task, flat=False, render_mode=render_mode)
+        self.env = make_env(task, flat=False, render_mode=render_mode, sar_ltl_ordering=sar_ltl_ordering)
         self._seed = int(seed)
         obs0, info0 = self.env.reset(seed=self._seed)
         self._last_info = info0

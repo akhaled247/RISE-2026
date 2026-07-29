@@ -230,8 +230,8 @@ def make_specrlbench_ma_multi_goal_env(task: str, seed: int, cfg_train: dict):
 
             silence_farama_adroit_spam()
             from rise_training.safepo.ma_factory import SpecRLMultiGoalEnv as _Env
-
-            return _Env(task=task, seed=int(seed) + rank * 1000)
+            sar_ltl = bool(cfg_train.get("sar_ltl_ordering", False))
+            return _Env(task=task, seed=int(seed) + rank * 1000, sar_ltl_ordering=sar_ltl)
 
         return init_env
 

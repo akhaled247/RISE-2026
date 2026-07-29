@@ -17,7 +17,7 @@ steps = 2500
 print(f"="*40)
 print(f"environment: {env_name}")
 render_mode = "human" if 'Vision' not in env_name else None
-env = make_env(env_name, render_mode=render_mode)
+env = make_env(env_name, render_mode=render_mode, sar_ltl_ordering=True)
 # env = FlattenObservation(gym.make(env_name, render_mode="human"))
 obs, info = env.reset(seed=seed)
 done = False
