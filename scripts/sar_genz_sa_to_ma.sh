@@ -16,7 +16,7 @@ DEVICE="${DEVICE:-cuda:0}"
 ENV="${ENV:-PointLTL0MASAR1WC-v0}"
 EVAL_ENV="${EVAL_ENV:-PointLTL0MASAR2WC-v0}"
 EVAL_EPISODES="${EVAL_EPISODES:-100}"
-FORMULA="${FORMULA:-((!surface_0 U entrapped_0) & F surface_0) & ((!surface_1 U entrapped_1) & F surface_1)}"
+FORMULA="${FORMULA:-((!surface_0 & !surface_1) U all_entrapped) & (F surface_0 & F surface_1)}"
 
 export PYTHONPATH=src
 
