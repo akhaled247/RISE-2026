@@ -48,7 +48,8 @@ if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
     --write-terminal False \
     --use-tensorboard True \
     --parallel True \
-    --lr_end_factor 1.0
+    --lr_end_factor 1.0 \
+    --sar-ltl-ordering True
 fi
 
 RUN_DIR="${RUN_DIR:-$(latest_run_dir)}"

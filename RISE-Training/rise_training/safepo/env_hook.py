@@ -14,6 +14,7 @@ _ORIGINAL_MAKE = None
 _MA_PATCHED = False
 _ORIGINAL_MA_MAKE = None
 _PARALLEL = True  # set by runners / set_parallel before SafePO main()
+_SAR_LTL_ORDERING = False  # set by runners / set_sar_ltl_ordering before SafePO main()
 _RND_STATE: tuple[Any, str, int, int] | None = None  # config, device, steps_per_epoch, num_envs
 
 SPECRL_PREFIXES = ("PointLTL", "CarLTL", "AntLTL")
@@ -27,6 +28,12 @@ def set_parallel(parallel: bool) -> None:
     """Control SafetyAsync vs Sync for SpecRL CMDP vec (SafePO factory has no kw)."""
     global _PARALLEL
     _PARALLEL = bool(parallel)
+
+
+def set_sar_ltl_ordering(sar_ltl_ordering: bool) -> None:
+    """Use SafetyGymWrapperMASARLTL (entrapped-before-surface cost) for SAR SA train/eval."""
+    global _SAR_LTL_ORDERING
+    _SAR_LTL_ORDERING = bool(sar_ltl_ordering)
 
 
 def enable_rnd_wrapper(
@@ -71,6 +78,7 @@ def make_specrlbench_sa_env(
     parallel: bool = True,
     render_mode: str | None = None,
     autoreset: bool = True,
+    sar_ltl_ordering: bool | None = None,
 ):
     """Return ``(env, obs_space, act_space)`` matching SafePO's SA contract.
 
@@ -79,6 +87,8 @@ def make_specrlbench_sa_env(
     ``render_mode='human'`` requires ``num_envs=1`` (GUI cannot run in vec workers).
     """
     from rise_training.cmdp.factory import make_cmdp_env, make_cmdp_vec
+
+    use_ltl = _SAR_LTL_ORDERING if sar_ltl_ordering is None else bool(sar_ltl_ordering)
 
     if render_mode == "human" and num_envs > 1:
         raise ValueError(
@@ -94,6 +104,7 @@ def make_specrlbench_sa_env(
             seed=seed,
             parallel=parallel,
             render_mode=render_mode,
+            sar_ltl_ordering=use_ltl,
         )
         obs_space = env.single_observation_space
         act_space = env.single_action_space
@@ -106,6 +117,7 @@ def make_specrlbench_sa_env(
         autoreset=autoreset,
         training=training,
         render_mode=render_mode,
+        sar_ltl_ordering=use_ltl,
     )
     if seed is not None:
         env.reset(seed=seed)

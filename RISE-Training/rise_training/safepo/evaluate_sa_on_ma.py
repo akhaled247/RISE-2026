@@ -61,7 +61,10 @@ def eval_sa_on_ma(
     ):
         raise NotImplementedError("Use evaluate_ma for MA-trained checkpoints")
 
-    flatten_keys = config.get("flatten_keys") or probe_flatten_keys(str(train_env))
+    flatten_keys = config.get("flatten_keys") or probe_flatten_keys(
+        str(train_env),
+        sar_ltl_ordering=bool(config.get("sar_ltl_ordering", False)),
+    )
     rms = load_rms_from_pkl(norm_path) if norm_path and os.path.isfile(norm_path) else None
 
     hidden_sizes = config.get("hidden_sizes", [64, 64])

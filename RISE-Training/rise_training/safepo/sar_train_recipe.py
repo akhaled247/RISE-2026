@@ -28,6 +28,7 @@ SHARED_TRAIN_KWARGS: dict[str, Any] = {
     "write_terminal": False,
     "use_tensorboard": True,
     "lr_end_factor": 1.0,
+    "sar_ltl_ordering": True,
 }
 
 ALGO_RECIPES: dict[str, dict[str, Any]] = {

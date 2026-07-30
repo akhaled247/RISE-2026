@@ -239,6 +239,7 @@ def eval_single_run(
         training=False,
         render_mode=render_mode,
         autoreset=False,
+        sar_ltl_ordering=bool(config.get("sar_ltl_ordering", False)),
     )
 
     if norm_path is not None and os.path.isfile(norm_path):

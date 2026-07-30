@@ -121,6 +121,13 @@ def build_parser(default_algo: str) -> argparse.ArgumentParser:
         help="True → SafetyAsyncVectorEnv when num-envs>1 (SB3 Subproc-like); "
         "False → SyncVectorSafetyEnv (serial)",
     )
+    p.add_argument(
+        "--sar-ltl-ordering",
+        type=_str2bool,
+        default=False,
+        help="SAR: use SafetyGymWrapperMASARLTL (entrapped-before-surface cost + walls). "
+        "Default False → WC-only wrapper.",
+    )
     return p
 
 
@@ -160,6 +167,7 @@ def main(default_algo: str = "ppo") -> None:
         write_terminal=args.write_terminal,
         use_tensorboard=args.use_tensorboard,
         parallel=args.parallel,
+        sar_ltl_ordering=args.sar_ltl_ordering,
     )
 
 

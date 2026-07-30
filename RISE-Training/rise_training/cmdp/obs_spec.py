@@ -9,11 +9,17 @@ import numpy as np
 from rise_training.cmdp.flatten import DictFlattenWrapper
 
 
-def probe_flatten_keys(env_id: str) -> list[str]:
+def probe_flatten_keys(env_id: str, *, sar_ltl_ordering: bool = False) -> list[str]:
     """Return sorted DictFlatten keys used during SA training on ``env_id``."""
     from rise_training.cmdp.factory import make_cmdp_env
 
-    env = make_cmdp_env(env_id, normalize_obs=False, autoreset=False, training=False)
+    env = make_cmdp_env(
+        env_id,
+        normalize_obs=False,
+        autoreset=False,
+        training=False,
+        sar_ltl_ordering=sar_ltl_ordering,
+    )
     try:
         cur: Any = env
         while cur is not None:

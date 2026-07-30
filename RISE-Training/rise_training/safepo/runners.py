@@ -17,7 +17,7 @@ from typing import Any
 from rise_training.paths import default_log_dir
 
 from rise_training.safepo.config import ALGO_DEFAULTS, SAR_PAPER_PROTOCOL, SafePOTrainConfig
-from rise_training.safepo.env_hook import patch_safepo_env_factory, set_parallel
+from rise_training.safepo.env_hook import patch_safepo_env_factory, set_parallel, set_sar_ltl_ordering
 from rise_training.safepo.registry import resolve_algo
 
 # Map SpecRLBench algo names → SafePO single_agent modules
@@ -215,6 +215,8 @@ def train_with_safepo(
 
     # SpecRL vec parallelism (SafetyAsync); not SafePO MA ``args.parallel``.
     set_parallel(bool(merged.pop("parallel", _CFG.parallel)))
+    sar_ltl_ordering = bool(merged.pop("sar_ltl_ordering", False))
+    set_sar_ltl_ordering(sar_ltl_ordering)
 
     import importlib
 
@@ -225,6 +227,7 @@ def train_with_safepo(
         task=env_id,
         seed=seed,
         device_id=device_id,
+        sar_ltl_ordering=sar_ltl_ordering,
         **merged,
     )
 
