@@ -11,7 +11,7 @@ SEED="${SEED:-0}"
 MODE="${MODE:-sa}"  # sa | ma
 EPISODES="${EPISODES:-100}"
 FORMULA_SA="${FORMULA_SA:-(!surface_0 U entrapped_0) & F surface_0}"
-FORMULA_MA="${FORMULA_MA:-((!surface_0 & !surface_1) U all_entrapped) & (F surface_0 & F surface_1)}"
+FORMULA_MA="${FORMULA_MA:-((!surface_0 & !surface_1) U all_entrapped) & F all_surface}"
 
 if [[ -n "${RESTORE_FROM:-}" ]]; then
   DEST="$REPO_ROOT/GenZ-LTL/experiments/rco/${TRAIN_ENV}/${NAME}/${SEED}"
