@@ -16,13 +16,14 @@ mkdir -p "$LOG_ROOT"
 
 run_one() {
   local level="$1" variant="$2"
-  local task experiment run_dir steps spe gamma lam tkl lam_i lam_lr cost_lim
+  local task experiment run_dir steps spe gamma lam tkl lam_i lam_lr cost_lim ltl_flag
   task="$(task_for "$level" "$variant")"
   experiment="$(experiment_for "$ALGO" "$level" "$variant")"
   read -r steps spe gamma lam tkl < <(recipe_for "$level" "$variant")
   lam_i="$(lag_lambda_init)"
   lam_lr="$(lag_lambda_lr)"
   cost_lim="$(lag_cost_limit)"
+  ltl_flag="$(sar_ltl_ordering_flag "$variant")"
 
   echo "======== TRAIN $ALGO $task  exp=$experiment  steps=$steps T=$spe λi=$lam_i  gpu=$DEVICE_ID ========"
   python train/trpo_lag_train_env.py \
@@ -40,7 +41,8 @@ run_one() {
     --save-model-freq 10 \
     --device "$DEVICE" --device-id "$DEVICE_ID" \
     --write-terminal False --use-tensorboard True \
-    --parallel True
+    --parallel True \
+    $ltl_flag
 
   run_dir="$(latest_run_dir "$task" "$ALGO")"
   eval_run_dir "$ALGO" "$task" "$experiment" "$run_dir"

@@ -66,6 +66,13 @@ if [[ "${TRAIN_ONLY:-0}" == "1" ]]; then
   exit 0
 fi
 
+echo "======== PPO-Lag SA eval ${TASK} episodes=${EVAL_EPISODES} ========"
+python eval_safepo_sa_env.py \
+  --run-dir "$RUN_DIR" \
+  --eval-episodes "$EVAL_EPISODES" \
+  --seed "$SEED" \
+  --device "$DEVICE"
+
 echo "======== PPO-Lag MA deploy eval ${EVAL_ENV} episodes=${EVAL_EPISODES} ========"
 python eval_safepo_sa_on_ma_env.py \
   --run-dir "$RUN_DIR" \
@@ -74,4 +81,5 @@ python eval_safepo_sa_on_ma_env.py \
   --seed "$SEED" \
   --device "$DEVICE"
 
+echo "Done. SA eval summary: ${RUN_DIR}/eval_summary.json"
 echo "Done. MA eval summary: ${RUN_DIR}/eval_summary_ma_deploy.json"

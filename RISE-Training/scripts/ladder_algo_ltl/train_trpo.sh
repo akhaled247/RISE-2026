@@ -15,10 +15,11 @@ mkdir -p "$LOG_ROOT"
 
 run_one() {
   local level="$1" variant="$2"
-  local task experiment run_dir steps spe gamma lam tkl
+  local task experiment run_dir steps spe gamma lam tkl ltl_flag
   task="$(task_for "$level" "$variant")"
   experiment="$(experiment_for "$ALGO" "$level" "$variant")"
   read -r steps spe gamma lam tkl < <(recipe_for "$level" "$variant")
+  ltl_flag="$(sar_ltl_ordering_flag "$variant")"
 
   echo "======== TRAIN $ALGO $task  exp=$experiment  steps=$steps T=$spe  gpu=$DEVICE_ID ========"
   python train/trpo_train_env.py \
@@ -36,7 +37,8 @@ run_one() {
     --save-model-freq 10 \
     --device "$DEVICE" --device-id "$DEVICE_ID" \
     --write-terminal False --use-tensorboard True \
-    --parallel True
+    --parallel True \
+    $ltl_flag
 
   run_dir="$(latest_run_dir "$task" "$ALGO")"
   eval_run_dir "$ALGO" "$task" "$experiment" "$run_dir"

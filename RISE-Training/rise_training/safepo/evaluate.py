@@ -177,6 +177,7 @@ def eval_single_run(
     device: str = "cpu",
     seed: int | None = 0,
     render_mode: str | None = None,
+    sar_ltl_ordering: bool | None = None,
 ) -> dict[str, float]:
     """Evaluate one SafePO seed folder. Returns metric dict.
 
@@ -229,6 +230,8 @@ def eval_single_run(
     hidden_sizes = config.get("hidden_sizes", [64, 64])
     torch.set_num_threads(int(config.get("torch_threads", 4)))
     device_t = torch.device(device)
+    if sar_ltl_ordering is None:
+        sar_ltl_ordering = bool(config.get("sar_ltl_ordering", False))
 
     # Always eval with 1 env, frozen RMS updates. No autoreset — terminal step must
     # keep SAR ``rescued`` flags until we read them (AutoResetSafetyWrapper clears).
@@ -239,7 +242,7 @@ def eval_single_run(
         training=False,
         render_mode=render_mode,
         autoreset=False,
-        sar_ltl_ordering=bool(config.get("sar_ltl_ordering", False)),
+        sar_ltl_ordering=sar_ltl_ordering,
     )
 
     if norm_path is not None and os.path.isfile(norm_path):
@@ -466,6 +469,7 @@ def benchmark_eval(
     device: str = "cpu",
     seed: int = 0,
     render_mode: str | None = None,
+    sar_ltl_ordering: bool | None = None,
 ) -> list[dict[str, Any]]:
     if bool(benchmark_dir) == bool(run_dir):
         raise ValueError("Pass exactly one of --benchmark-dir or --run-dir")
@@ -479,6 +483,7 @@ def benchmark_eval(
             device=device,
             seed=seed,
             render_mode=render_mode,
+            sar_ltl_ordering=sar_ltl_ordering,
         )
         # Infer env/algo from path: .../task/algo/seed-...
         parts = Path(run_dir).resolve().parts
@@ -537,6 +542,7 @@ def benchmark_eval(
                 device=device,
                 seed=seed,
                 render_mode=render_mode,
+                sar_ltl_ordering=sar_ltl_ordering,
             )
             _print_eval_path(path)
             last_metrics = metrics
@@ -600,6 +606,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Gymnasium render mode, e.g. human (live window) or rgb_array",
     )
+    p.add_argument(
+        "--sar-ltl-ordering",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override sar_ltl_ordering (default: from train config.json)",
+    )
     return p
 
 
@@ -613,6 +625,7 @@ def main(argv: list[str] | None = None) -> None:
         device=args.device,
         seed=args.seed,
         render_mode=args.render_mode,
+        sar_ltl_ordering=args.sar_ltl_ordering,
     )
 
 

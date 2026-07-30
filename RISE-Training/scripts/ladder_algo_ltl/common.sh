@@ -94,6 +94,23 @@ ppo_ent_coef() {
   echo "${PPO_ENT_COEF:-0.02}"
 }
 
+# WC SAR: entrapped-before-surface cost via SafetyGymWrapperMASARLTL (override: SAR_LTL_ORDERING=False).
+sar_ltl_ordering_for() {
+  local variant="$1"
+  if [[ "$variant" == "wc" ]]; then
+    echo "${SAR_LTL_ORDERING:-True}"
+  else
+    echo "False"
+  fi
+}
+
+sar_ltl_ordering_flag() {
+  local variant="$1"
+  local val
+  val="$(sar_ltl_ordering_for "$variant")"
+  echo "--sar-ltl-ordering $val"
+}
+
 latest_run_dir() {
   local task="$1" algo="$2"
   ls -td "${LOG_ROOT}/${task}/${algo}"/seed-* 2>/dev/null | head -1
