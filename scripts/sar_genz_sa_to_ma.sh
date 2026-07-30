@@ -9,7 +9,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT/GenZ-LTL"
 
-NAME="${NAME:-GenZ-SAR}"
+NAME="${NAME:-GenZ-RCO-SAR}"
 SEED="${SEED:-0}"
 DEVICE="${DEVICE:-cuda:0}"
 ENV="${ENV:-PointLTL0MASAR1WC-v0}"
@@ -29,20 +29,19 @@ if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
     --model_config "$ENV" \
     --seed "$SEED" \
     --device "$DEVICE" \
-    --num_steps 10000000 \
-    --num_procs 24 \
+    --num_steps 15000000 \
+    --num_procs 16 \
     --steps_per_process 4096 \
     --batch_size 2048 \
-    --epochs 10 \
+    --epochs 80 \
     --save_interval 10 \
     --discount 0.998 \
     --lr 0.0003 \
     --entropy_coef 0.003 \
     --vec_backend safety_async \
     --sar_env_backend specrl \
-    --fast_action_bridge
+    --fast_action_bridge True
 fi
-
 if [[ "${TRAIN_ONLY:-0}" == "1" ]]; then
   exit 0
 fi

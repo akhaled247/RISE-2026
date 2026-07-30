@@ -29,7 +29,7 @@ if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
     --experiment "$EXPERIMENT" \
     --log-dir "$LOG_ROOT" \
     --total-steps 10000000 \
-    --num-envs 16 \
+    --num-envs 8 \
     --steps-per-epoch 65536 \
     --actor-lr 5e-5 \
     --critic-lr 1e-3 \

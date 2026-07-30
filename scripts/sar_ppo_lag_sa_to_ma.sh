@@ -29,7 +29,7 @@ if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
     --experiment "$EXPERIMENT" \
     --log-dir "$LOG_ROOT" \
     --total-steps 10000000 \
-    --num-envs 16 \
+    --num-envs 8 \
     --steps-per-epoch 65536 \
     --actor-lr 5e-5 \
     --critic-lr 1e-3 \
@@ -43,7 +43,7 @@ if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
     --max-grad-norm 40 \
     --hidden-sizes 64 64 \
     --ent-coef 0.02 \
-    --cost-limit 0.25 \
+    --cost-limit 0.0 \
     --lagrangian-multiplier-init 0.0 \
     --lagrangian-multiplier-lr 0.01 \
     --device "$DEVICE" \
