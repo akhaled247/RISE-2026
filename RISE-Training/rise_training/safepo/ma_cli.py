@@ -110,6 +110,7 @@ def main(default_algo: str = "mappo") -> None:
         args.algo,
         args.task,
         seed=args.seed,
+        sar_ltl_ordering=args.sar_ltl_ordering,
         total_steps=args.total_steps,
         num_envs=args.num_envs,
         cost_limit=args.cost_limit,
