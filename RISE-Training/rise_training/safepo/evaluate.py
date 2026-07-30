@@ -116,13 +116,16 @@ def _classify_fail(
     saw_collision: bool,
     truncated: bool,
 ) -> str | None:
-    """Return fail label for unsuccessful eps; wall beats timeout."""
+    """Return fail label for unsuccessful eps; wall beats timeout.
+
+    ``saw_collision`` is retained for API compatibility but is not used as a
+    failure bucket (SAR paper protocol ignores inter-agent collision).
+    """
+    del saw_collision
     if success:
         return None
     if saw_walls:
         return "cost_walls"
-    if saw_collision:
-        return "cost_collision"
     if truncated:
         return "timeout"
     return "other"

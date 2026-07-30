@@ -16,7 +16,7 @@ from typing import Any
 
 from rise_training.paths import default_log_dir
 
-from rise_training.safepo.config import ALGO_DEFAULTS, SafePOTrainConfig
+from rise_training.safepo.config import ALGO_DEFAULTS, SAR_PAPER_PROTOCOL, SafePOTrainConfig
 from rise_training.safepo.env_hook import patch_safepo_env_factory, set_parallel
 from rise_training.safepo.registry import resolve_algo
 
@@ -155,6 +155,16 @@ def _patch_safepo_default_cfg(mod: Any, args: Namespace) -> dict[str, Any]:
     return updates
 
 
+def _apply_sar_paper_protocol(env_id: str, merged: dict[str, Any]) -> None:
+    """Apply GenZ-adjacent SAR solo-train recipe on MASAR1WC tasks."""
+    if "MASAR1" not in env_id or "WC" not in env_id:
+        return
+    skip = {"train_env", "eval_env", "team_done"}
+    for key, value in SAR_PAPER_PROTOCOL.items():
+        if key not in skip:
+            merged.setdefault(key, value)
+
+
 def train_with_safepo(
     algo: str,
     env_id: str,
@@ -176,6 +186,7 @@ def train_with_safepo(
         raise ValueError(f"No SafePO module mapping for {algo!r}")
 
     merged = _merge_train_kwargs(algo, dict(extra))
+    _apply_sar_paper_protocol(env_id, merged)
     if total_steps is not None:
         merged["total_steps"] = total_steps
     if num_envs is not None:

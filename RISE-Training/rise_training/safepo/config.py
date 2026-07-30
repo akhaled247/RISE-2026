@@ -90,3 +90,20 @@ MA_IPPO_RECIPE_B: dict[str, Any] = {
     "eval_interval": 25,
     "eval_episodes": 25,
 }
+
+# Paper §5.3 SAR: train SA on MASAR1WC, deploy shared actor on MASAR2WC.
+SAR_PAPER_PROTOCOL: dict[str, Any] = {
+    "train_env": "PointLTL0MASAR1WC-v0",
+    "eval_env": "PointLTL0MASAR2WC-v0",
+    "total_steps": 15_000_000,
+    "gamma": 0.998,
+    "lam": 0.97,
+    "hidden_sizes": [64, 64],
+    "num_envs": 8,
+    "steps_per_epoch": 32768,
+    "learning_iters": 10,
+    "actor_lr": 5e-5,
+    "critic_lr": 1e-3,
+    "ent_coef": 0.0,
+    "team_done": "any",
+}
