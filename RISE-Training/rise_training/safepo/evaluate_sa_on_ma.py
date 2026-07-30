@@ -13,7 +13,7 @@ from tqdm import trange
 
 from rise_training.cmdp.obs_spec import (
     assert_deploy_obs_compatible,
-    flatten_agent_obs,
+    flatten_ma_agent_for_sa_deploy,
     infer_actor_obs_dim,
     load_rms_from_pkl,
     normalize_obs_vector,
@@ -84,7 +84,7 @@ def eval_sa_on_ma(
     )
     agents = list(env.unwrapped.possible_agents)
     obs0, _ = env.reset(seed=seed)
-    flat0 = flatten_agent_obs(obs0[agents[0]], flatten_keys)
+    flat0 = flatten_ma_agent_for_sa_deploy(obs0[agents[0]], 0, flatten_keys)
     assert_deploy_obs_compatible(
         flat0,
         flatten_keys,
@@ -127,7 +127,8 @@ def eval_sa_on_ma(
         while not done:
             actions = {}
             for agent in agents:
-                flat = flatten_agent_obs(obs[agent], flatten_keys)
+                agent_idx = int(agent.rsplit("_", 1)[-1])
+                flat = flatten_ma_agent_for_sa_deploy(obs[agent], agent_idx, flatten_keys)
                 if rms is not None:
                     flat = normalize_obs_vector(flat, rms)
                 obs_t = torch.as_tensor(flat, dtype=torch.float32, device=device_t)

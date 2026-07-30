@@ -37,6 +37,41 @@ def flatten_agent_obs(agent_obs: dict[str, Any], keys: list[str]) -> np.ndarray:
     return np.concatenate(parts, axis=0).astype(np.float32)
 
 
+def remap_ma_agent_obs_to_sa_train(
+    agent_obs: dict[str, Any],
+    agent_idx: int,
+    train_keys: list[str],
+) -> dict[str, Any]:
+    """Map MA per-agent dict obs to SA train key names (shared-policy deploy).
+
+    SA training on MASAR1WC uses ``*_0`` sensor keys. On MASAR2WC deploy, agent_k
+    exposes ``*_{k}``; remap so the same flatten_keys work for every agent.
+    """
+    out: dict[str, Any] = {}
+    alt_suffix = f"_{agent_idx}"
+    for key in train_keys:
+        if key in agent_obs:
+            out[key] = agent_obs[key]
+            continue
+        if key.endswith("_0"):
+            alt = key[:-2] + alt_suffix
+            if alt in agent_obs:
+                out[key] = agent_obs[alt]
+                continue
+        raise KeyError(f"{key!r} missing for agent_{agent_idx} (keys={sorted(agent_obs)})")
+    return out
+
+
+def flatten_ma_agent_for_sa_deploy(
+    agent_obs: dict[str, Any],
+    agent_idx: int,
+    train_keys: list[str],
+) -> np.ndarray:
+    """Remap MA agent obs to SA train layout, then flatten."""
+    mapped = remap_ma_agent_obs_to_sa_train(agent_obs, agent_idx, train_keys)
+    return flatten_agent_obs(mapped, train_keys)
+
+
 def normalize_obs_vector(
     vec: np.ndarray,
     rms_state: dict[str, Any] | Any,

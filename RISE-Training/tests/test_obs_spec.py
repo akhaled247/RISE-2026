@@ -8,7 +8,9 @@ import torch
 from rise_training.cmdp.obs_spec import (
     assert_deploy_obs_compatible,
     flatten_agent_obs,
+    flatten_ma_agent_for_sa_deploy,
     infer_actor_obs_dim,
+    remap_ma_agent_obs_to_sa_train,
 )
 
 
@@ -41,3 +43,24 @@ def test_assert_deploy_obs_compatible_raises_on_mismatch():
             train_env="PointLTL0MASAR1WC-v0",
             eval_env="PointLTL0MASAR2WC-v0",
         )
+
+
+def test_remap_ma_agent_obs_to_sa_train_agent1():
+    train_keys = ["accelerometer_0", "velocimeter_0", "terracotta_buildings_visited"]
+    agent1_obs = {
+        "accelerometer_1": np.array([1.0, 0.0]),
+        "velocimeter_1": np.array([0.5, 0.5]),
+        "terracotta_buildings_visited": np.array([1.0]),
+    }
+    mapped = remap_ma_agent_obs_to_sa_train(agent1_obs, 1, train_keys)
+    assert set(mapped.keys()) == set(train_keys)
+    flat = flatten_ma_agent_for_sa_deploy(agent1_obs, 1, train_keys)
+    assert flat.shape == (5,)
+    np.testing.assert_allclose(flat[:2], [1.0, 0.0])
+    np.testing.assert_allclose(flat[2:4], [0.5, 0.5])
+    assert flat[4] == 1.0
+
+
+def test_remap_ma_agent_obs_raises_when_key_missing():
+    with pytest.raises(KeyError, match="accelerometer_0"):
+        remap_ma_agent_obs_to_sa_train({}, 1, ["accelerometer_0"])
