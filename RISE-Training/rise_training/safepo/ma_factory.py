@@ -27,7 +27,7 @@ class SpecRLMultiGoalEnv:
     step(actions) → (obs, share_obs, rewards, costs, dones, infos, avail_actions)
     """
 
-    def __init__(self, task: str, seed: int, render_mode = None, sar_ltl_ordering: bool = False):
+    def __init__(self, task: str, seed: int, render_mode = None, sar_ltl_ordering: bool = True):
         from rise_training.env_utils import make_env
 
         self.task_id = task
