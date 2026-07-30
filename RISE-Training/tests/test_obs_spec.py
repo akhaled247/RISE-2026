@@ -45,6 +45,17 @@ def test_assert_deploy_obs_compatible_raises_on_mismatch():
         )
 
 
+def test_remap_ma_agent_obs_to_sa_train_agent0():
+    train_keys = ["accelerometer_0", "velocimeter_0", "terracotta_buildings_visited"]
+    agent0_obs = {
+        "accelerometer_0": np.array([1.0, 0.0]),
+        "velocimeter_0": np.array([0.5, 0.5]),
+        "terracotta_buildings_visited": np.array([1.0]),
+    }
+    flat0 = flatten_ma_agent_for_sa_deploy(agent0_obs, 0, train_keys)
+    assert flat0.shape == (5,)
+
+
 def test_remap_ma_agent_obs_to_sa_train_agent1():
     train_keys = ["accelerometer_0", "velocimeter_0", "terracotta_buildings_visited"]
     agent1_obs = {

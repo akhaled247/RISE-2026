@@ -44,6 +44,14 @@ EXP_DIR="experiments/rco/${ENV}/${NAME}/${SEED}"
 
 export PYTHONPATH=src
 
+# Preflight: Rabinizer + Java (Büchi search during MA eval)
+python -c "from envs.sar_deploy import check_rabinizer; check_rabinizer()"
+
+if [[ "${EVAL_ONLY:-0}" == "1" && ! -f "${EXP_DIR}/status.pth" ]]; then
+  echo "ERROR: EVAL_ONLY=1 but no ${EXP_DIR}/status.pth" >&2
+  exit 1
+fi
+
 if [[ -n "${RESTORE_FROM:-}" ]]; then
   if [[ ! -d "${RESTORE_FROM}" ]]; then
     echo "ERROR: RESTORE_FROM=${RESTORE_FROM} is not a directory" >&2
