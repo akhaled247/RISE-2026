@@ -26,7 +26,7 @@ EVAL_ENV="${EVAL_ENV:-PointLTL0MASAR2WC-v0}"
 NUM_STEPS="${NUM_STEPS:-15000000}"
 NUM_PROCS="${NUM_PROCS:-16}"
 EVAL_EPISODES="${EVAL_EPISODES:-100}"
-FORMULA="${FORMULA:-((!surface_0 & !surface_1) U all_entrapped) & F all_surface}"
+FORMULA="${FORMULA:-((!surface_0 & !surface_1 & !all_surface) U all_entrapped) & F all_surface}"
 
 # RCO hyperparams (override via env; presets set these in wrapper scripts)
 LR="${LR:-0.0003}"
