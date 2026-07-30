@@ -34,6 +34,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--eval-episodes", type=int, default=50)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", default="cpu")
+    p.add_argument("--render-mode", default=None)
     p.add_argument(
         "--sar-ltl-ordering",
         action=argparse.BooleanOptionalAction,
@@ -49,6 +50,7 @@ def main(argv: list[str] | None = None) -> None:
         seed=args.seed,
         device=args.device,
         sar_ltl_ordering=args.sar_ltl_ordering,
+        render_mode=args.render_mode
     )
     print(f"EVAL_MA_DEPLOY_PATH={out_path}")
 

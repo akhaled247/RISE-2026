@@ -42,7 +42,7 @@ case "$MODE" in
       --exp "$NAME" \
       --seed "$SEED" \
       --formula "$FORMULA_MA" \
-      --num_episodes "$EPISODES"
+      --num_episodes "$EPISODES" \
     ;;
   *)
     echo "MODE must be sa or ma (got $MODE)" >&2

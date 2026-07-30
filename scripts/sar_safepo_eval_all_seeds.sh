@@ -45,12 +45,6 @@ for algo in ${ALGOS}; do
     [[ -f "${run_dir}/config.json" ]] || continue
     found_any=1
     echo ""
-    echo "======== ${algo} SA eval seed_dir=${run_dir} ========"
-    python eval_safepo_sa_env.py \
-      --run-dir "$run_dir" \
-      --eval-episodes "$EVAL_EPISODES" \
-      --seed "$SEED" \
-      --device "$DEVICE"
 
     echo "======== ${algo} MA deploy eval seed_dir=${run_dir} ========"
     python eval_safepo_sa_on_ma_env.py \
@@ -58,7 +52,8 @@ for algo in ${ALGOS}; do
       --eval-env "$EVAL_ENV" \
       --eval-episodes "$EVAL_EPISODES" \
       --seed "$SEED" \
-      --device "$DEVICE"
+      --device "$DEVICE" \
+      --render-mode human
   done
 done
 

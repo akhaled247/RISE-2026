@@ -242,6 +242,7 @@ def eval_single_run(
     eval_episodes: int = 50,
     seed: int | None = 0,
     device: str = "cpu",
+    render_mode: str | None = None,
     sar_ltl_ordering: bool | None = None,
 ) -> str:
     """Evaluate and write ``eval_summary_ma_deploy.json`` next to run dir."""
@@ -252,6 +253,7 @@ def eval_single_run(
         seed=seed,
         device=device,
         sar_ltl_ordering=sar_ltl_ordering,
+        render_mode=render_mode,
     )
     out_path = os.path.join(os.path.abspath(run_dir), "eval_summary_ma_deploy.json")
     payload = {
