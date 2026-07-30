@@ -37,6 +37,7 @@ def make_cmdp_env(
     autoreset: bool = True,
     training: bool = True,
     clip_obs: float = 10.0,
+    sar_ltl_ordering: bool = False,
 ):
     """Build single env: WC/SAR Gymnasium wrappers → cost bridge → flatten → norm.
 
@@ -45,7 +46,12 @@ def make_cmdp_env(
     """
     from rise_training.env_utils import make_env
 
-    env = make_env(env_name, render_mode=render_mode, flat=True)
+    env = make_env(
+        env_name,
+        render_mode=render_mode,
+        flat=True,
+        sar_ltl_ordering=sar_ltl_ordering,
+    )
     env = GymnasiumToSafetyStep(env)
     env = DictFlattenWrapper(env)
     if autoreset:
@@ -61,6 +67,7 @@ def _make_cmdp_worker_env(
     training: bool,
     clip_obs: float,
     render_mode: str | None = None,
+    sar_ltl_ordering: bool = False,
 ):
     """Top-level picklable factory for SafetyAsyncVectorEnv workers (spawn-safe)."""
     # Windows spawn starts a fresh interpreter — restore SpecRL + SG paths.
@@ -77,6 +84,7 @@ def _make_cmdp_worker_env(
         autoreset=False,  # SafetyAsync worker autoresets + final_observation
         training=training,
         clip_obs=clip_obs,
+        sar_ltl_ordering=sar_ltl_ordering,
     )
 
 
@@ -282,6 +290,7 @@ def make_cmdp_vec(
     clip_obs: float = 10.0,
     seed: int | None = 0,
     parallel: bool = True,
+    sar_ltl_ordering: bool = False,
 ) -> SyncVectorSafetyEnv | AsyncVectorSafetyEnv:
     """Vectorized CMDP envs for SafePO training.
 
@@ -302,6 +311,7 @@ def make_cmdp_vec(
                 training,
                 clip_obs,
                 render_mode,
+                sar_ltl_ordering,
             )
             for _ in range(n_envs)
         ]
@@ -318,6 +328,7 @@ def make_cmdp_vec(
                     autoreset=True,
                     training=training,
                     clip_obs=clip_obs,
+                    sar_ltl_ordering=sar_ltl_ordering,
                 )
 
             return _fn

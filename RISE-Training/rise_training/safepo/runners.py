@@ -16,8 +16,8 @@ from typing import Any
 
 from rise_training.paths import default_log_dir
 
-from rise_training.safepo.config import ALGO_DEFAULTS, SafePOTrainConfig
-from rise_training.safepo.env_hook import patch_safepo_env_factory, set_parallel
+from rise_training.safepo.config import ALGO_DEFAULTS, SAR_PAPER_PROTOCOL, SafePOTrainConfig
+from rise_training.safepo.env_hook import patch_safepo_env_factory, set_parallel, set_sar_ltl_ordering
 from rise_training.safepo.registry import resolve_algo
 
 # Map SpecRLBench algo names → SafePO single_agent modules
@@ -155,6 +155,16 @@ def _patch_safepo_default_cfg(mod: Any, args: Namespace) -> dict[str, Any]:
     return updates
 
 
+def _apply_sar_paper_protocol(env_id: str, merged: dict[str, Any]) -> None:
+    """Apply GenZ-adjacent SAR solo-train recipe on MASAR1WC tasks."""
+    if "MASAR1" not in env_id or "WC" not in env_id:
+        return
+    skip = {"train_env", "eval_env", "team_done"}
+    for key, value in SAR_PAPER_PROTOCOL.items():
+        if key not in skip:
+            merged.setdefault(key, value)
+
+
 def train_with_safepo(
     algo: str,
     env_id: str,
@@ -176,6 +186,7 @@ def train_with_safepo(
         raise ValueError(f"No SafePO module mapping for {algo!r}")
 
     merged = _merge_train_kwargs(algo, dict(extra))
+    _apply_sar_paper_protocol(env_id, merged)
     if total_steps is not None:
         merged["total_steps"] = total_steps
     if num_envs is not None:
@@ -204,6 +215,8 @@ def train_with_safepo(
 
     # SpecRL vec parallelism (SafetyAsync); not SafePO MA ``args.parallel``.
     set_parallel(bool(merged.pop("parallel", _CFG.parallel)))
+    sar_ltl_ordering = bool(merged.pop("sar_ltl_ordering", False))
+    set_sar_ltl_ordering(sar_ltl_ordering)
 
     import importlib
 
@@ -214,6 +227,7 @@ def train_with_safepo(
         task=env_id,
         seed=seed,
         device_id=device_id,
+        sar_ltl_ordering=sar_ltl_ordering,
         **merged,
     )
 
@@ -235,12 +249,54 @@ def train_with_safepo(
 
     # SafePO mains expect (args, cfg_env=None) for mujoco path
     mod.main(args, None)
+
+    _augment_run_config(
+        args.log_dir,
+        env_id=env_id,
+        sar_ltl_ordering=sar_ltl_ordering,
+    )
+
     return {
         "log_dir": args.log_dir,
         "algo": algo,
         "env_id": env_id,
         "default_cfg_patch": cfg_patch,
     }
+
+
+def _augment_run_config(
+    log_dir: str,
+    *,
+    env_id: str,
+    sar_ltl_ordering: bool,
+) -> None:
+    """Merge SA deploy obs metadata into SafePO config.json when missing."""
+    import json
+
+    from rise_training.cmdp.obs_spec import probe_flatten_keys, probe_train_obs_dim
+
+    config_path = os.path.join(log_dir, "config.json")
+    if not os.path.isfile(config_path):
+        return
+    with open(config_path, encoding="utf-8") as f:
+        config = json.load(f)
+    updated = False
+    if "sar_ltl_ordering" not in config:
+        config["sar_ltl_ordering"] = bool(sar_ltl_ordering)
+        updated = True
+    if "flatten_keys" not in config:
+        config["flatten_keys"] = probe_flatten_keys(
+            env_id, sar_ltl_ordering=bool(config.get("sar_ltl_ordering", sar_ltl_ordering))
+        )
+        updated = True
+    if "obs_dim" not in config:
+        config["obs_dim"] = probe_train_obs_dim(
+            env_id, sar_ltl_ordering=bool(config.get("sar_ltl_ordering", sar_ltl_ordering))
+        )
+        updated = True
+    if updated:
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
 
 
 def train_algo(algo: str, **overrides: Any) -> dict[str, Any]:

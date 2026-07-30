@@ -78,11 +78,26 @@ def _rescued_from_info(info: dict[str, Any]) -> bool:
     )
 
 
+def _find_sar_task(env: Any) -> Any | None:
+    """Walk wrapper chain for SAR ``task`` (CMDP stack hides it from ``unwrapped``)."""
+    seen: set[int] = set()
+    cur: Any = env
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        task = getattr(cur, "task", None)
+        if task is not None:
+            return task
+        nxt = getattr(cur, "env", None)
+        if nxt is None:
+            break
+        cur = nxt
+    return None
+
+
 def _casualty_rescued_flags(env: Any) -> list[bool]:
     """Per-casualty rescued flags from SAR task (empty if unavailable)."""
-    try:
-        task = env.unwrapped.task
-    except Exception:
+    task = _find_sar_task(env)
+    if task is None:
         return []
     if hasattr(task, "_casualtys_rescued"):
         return [bool(x) for x in task._casualtys_rescued()]
@@ -101,13 +116,16 @@ def _classify_fail(
     saw_collision: bool,
     truncated: bool,
 ) -> str | None:
-    """Return fail label for unsuccessful eps; wall beats timeout."""
+    """Return fail label for unsuccessful eps; wall beats timeout.
+
+    ``saw_collision`` is retained for API compatibility but is not used as a
+    failure bucket (SAR paper protocol ignores inter-agent collision).
+    """
+    del saw_collision
     if success:
         return None
     if saw_walls:
         return "cost_walls"
-    if saw_collision:
-        return "cost_collision"
     if truncated:
         return "timeout"
     return "other"
@@ -159,6 +177,7 @@ def eval_single_run(
     device: str = "cpu",
     seed: int | None = 0,
     render_mode: str | None = None,
+    sar_ltl_ordering: bool | None = None,
 ) -> dict[str, float]:
     """Evaluate one SafePO seed folder. Returns metric dict.
 
@@ -211,10 +230,19 @@ def eval_single_run(
     hidden_sizes = config.get("hidden_sizes", [64, 64])
     torch.set_num_threads(int(config.get("torch_threads", 4)))
     device_t = torch.device(device)
+    if sar_ltl_ordering is None:
+        sar_ltl_ordering = bool(config.get("sar_ltl_ordering", False))
 
-    # Always eval with 1 env, frozen RMS updates.
+    # Always eval with 1 env, frozen RMS updates. No autoreset — terminal step must
+    # keep SAR ``rescued`` flags until we read them (AutoResetSafetyWrapper clears).
     eval_env, obs_space, act_space = make_specrlbench_sa_env(
-        1, str(env_id), seed=seed, training=False, render_mode=render_mode
+        1,
+        str(env_id),
+        seed=seed,
+        training=False,
+        render_mode=render_mode,
+        autoreset=False,
+        sar_ltl_ordering=sar_ltl_ordering,
     )
 
     if norm_path is not None and os.path.isfile(norm_path):
@@ -243,7 +271,6 @@ def eval_single_run(
     rew_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
     cost_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
     len_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
-    rescue_count = 0
     full_count = partial_count = none_count = 0
     total_casualty_rescues = 0
     fail_walls = fail_collision = fail_timeout = fail_other = 0
@@ -332,8 +359,6 @@ def eval_single_run(
         rew_deque.append(eval_rew)
         cost_deque.append(eval_cost)
         len_deque.append(eval_len)
-        if rescued or n_rescued >= casualty_num:
-            rescue_count += 1
         ep_seed += 1
 
     eval_env.close()
@@ -345,7 +370,7 @@ def eval_single_run(
         "std_cost": float(np.std(cost_deque)),
         "mean_ep_len": float(np.mean(len_deque)),
         "std_ep_len": float(np.std(len_deque)),
-        "rescue_rate": float(rescue_count) / float(eval_episodes),
+        "rescue_rate": float(full_count) / float(eval_episodes),
         "eval_episodes": float(eval_episodes),
         "casualty_num": float(casualty_num),
         "rescue_full": float(full_count),
@@ -444,6 +469,7 @@ def benchmark_eval(
     device: str = "cpu",
     seed: int = 0,
     render_mode: str | None = None,
+    sar_ltl_ordering: bool | None = None,
 ) -> list[dict[str, Any]]:
     if bool(benchmark_dir) == bool(run_dir):
         raise ValueError("Pass exactly one of --benchmark-dir or --run-dir")
@@ -457,6 +483,7 @@ def benchmark_eval(
             device=device,
             seed=seed,
             render_mode=render_mode,
+            sar_ltl_ordering=sar_ltl_ordering,
         )
         # Infer env/algo from path: .../task/algo/seed-...
         parts = Path(run_dir).resolve().parts
@@ -515,6 +542,7 @@ def benchmark_eval(
                 device=device,
                 seed=seed,
                 render_mode=render_mode,
+                sar_ltl_ordering=sar_ltl_ordering,
             )
             _print_eval_path(path)
             last_metrics = metrics
@@ -578,6 +606,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Gymnasium render mode, e.g. human (live window) or rgb_array",
     )
+    p.add_argument(
+        "--sar-ltl-ordering",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override sar_ltl_ordering (default: from train config.json)",
+    )
     return p
 
 
@@ -591,6 +625,7 @@ def main(argv: list[str] | None = None) -> None:
         device=args.device,
         seed=args.seed,
         render_mode=args.render_mode,
+        sar_ltl_ordering=args.sar_ltl_ordering,
     )
 
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# SafePO PPO-Lag — PointLTL2MASAR1[-WC]-v0 (train + eval).
+# SafePO PPO-Lag — PointLTL{0,1,2}MASAR1[-WC]-v0 (train + eval).
+# Lag rematch: λ_init=0, per-level recipe from common.sh.
 # Run in its own terminal:  bash scripts/ladder_algo_ltl/train_ppo_lag.sh
 set -euo pipefail
 
@@ -15,27 +16,34 @@ mkdir -p "$LOG_ROOT"
 
 run_one() {
   local level="$1" variant="$2"
-  local task experiment run_dir
+  local task experiment run_dir steps spe gamma lam tkl ent lam_i lam_lr cost_lim ltl_flag
   task="$(task_for "$level" "$variant")"
   experiment="$(experiment_for "$ALGO" "$level" "$variant")"
+  read -r steps spe gamma lam tkl < <(recipe_for "$level" "$variant")
+  ent="$(ppo_ent_coef)"
+  lam_i="$(lag_lambda_init)"
+  lam_lr="$(lag_lambda_lr)"
+  cost_lim="$(lag_cost_limit)"
+  ltl_flag="$(sar_ltl_ordering_flag "$variant")"
 
-  echo "======== TRAIN $ALGO $task  exp=$experiment  gpu=$DEVICE_ID ========"
+  echo "======== TRAIN $ALGO $task  exp=$experiment  steps=$steps T=$spe λi=$lam_i  gpu=$DEVICE_ID ========"
   python train/ppo_lag_train_env.py \
     --task "$task" --seed "$SEED" \
     --experiment "$experiment" \
     --log-dir "$LOG_ROOT" \
-    --total-steps 5000000 --num-envs 8 --steps-per-epoch 65536 \
+    --total-steps "$steps" --num-envs 8 --steps-per-epoch "$spe" \
     --actor-lr 5e-5 --critic-lr 1e-3 \
     --batch-size 256 --learning-iters 10 \
-    --target-kl 0.05 --gamma 0.995 --lam 0.98 --lam-c 0.98 \
+    --target-kl "$tkl" --gamma "$gamma" --lam "$lam" --lam-c "$lam" \
     --clip-ratio 0.2 --max-grad-norm 40 --hidden-sizes 64 64 \
-    --cost-limit 0.25 \
-    --lagrangian-multiplier-init 0.25 \
-    --lagrangian-multiplier-lr 0.01 \
+    --cost-limit "$cost_lim" \
+    --lagrangian-multiplier-init "$lam_i" \
+    --lagrangian-multiplier-lr "$lam_lr" \
     --save-model-freq 10 \
     --device "$DEVICE" --device-id "$DEVICE_ID" \
     --write-terminal False --use-tensorboard True \
-    --parallel True --lr_end_factor 1.0 --ent-coef 0.0
+    --parallel True --lr_end_factor 1.0 --ent-coef "$ent" \
+    $ltl_flag
 
   run_dir="$(latest_run_dir "$task" "$ALGO")"
   eval_run_dir "$ALGO" "$task" "$experiment" "$run_dir"

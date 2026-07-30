@@ -4,6 +4,9 @@ Examples:
   cd RISE-Training
   python eval_safepo_sa_env.py --run-dir ./_training_logs/safepo/PointLTL2MASAR1WC-v0/ppo/seed-000-... --eval-episodes 50
 
+Uses ``sar_ltl_ordering`` from the run's config.json when present; override with
+``--sar-ltl-ordering`` / ``--no-sar-ltl-ordering``.
+
 Writes eval_summary.json next to the run dir and prints EVAL_PATH + metrics.
 """
 from __future__ import annotations

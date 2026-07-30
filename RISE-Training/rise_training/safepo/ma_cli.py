@@ -34,6 +34,7 @@ def build_ma_parser(default_algo: str) -> argparse.ArgumentParser:
     p.add_argument("--algo", type=str, default=default_algo)
     p.add_argument("--task", "--env-id", dest="task", type=str, default="PointLTL0MASAR2-v0")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--sar-ltl-ordering", type=_str2bool, default=False)
     p.add_argument("--total-steps", type=int, default=4_000_000)
     p.add_argument("--num-envs", type=int, default=8)
     p.add_argument("--cost-limit", type=float, default=0.0)
@@ -109,6 +110,7 @@ def main(default_algo: str = "mappo") -> None:
         args.algo,
         args.task,
         seed=args.seed,
+        sar_ltl_ordering=args.sar_ltl_ordering,
         total_steps=args.total_steps,
         num_envs=args.num_envs,
         cost_limit=args.cost_limit,

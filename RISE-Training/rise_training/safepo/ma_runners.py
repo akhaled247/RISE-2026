@@ -110,6 +110,7 @@ def train_with_safepo_ma(
     env_id: str,
     *,
     seed: int = 0,
+    sar_ltl_ordering: bool | None = None,
     total_steps: int | None = None,
     num_envs: int | None = None,
     cost_limit: float | None = None,
@@ -250,5 +251,8 @@ def train_with_safepo_ma(
             encoding="utf-8",
         )
 
+    if sar_ltl_ordering is not None:
+          cfg_train["sar_ltl_ordering"] = bool(sar_ltl_ordering)
+          
     mod.train(args=args, cfg_train=cfg_train)
     return {"log_dir": cfg_train["log_dir"], "algo": algo_key, "task": env_id}
