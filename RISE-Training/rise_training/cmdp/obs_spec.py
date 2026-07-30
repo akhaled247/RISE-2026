@@ -68,3 +68,82 @@ def load_rms_from_pkl(norm_path: str) -> Any:
     if isinstance(state, dict) and "Normalizer" in state:
         return state["Normalizer"]
     return state
+
+
+def infer_actor_obs_dim(state_dict: dict[str, Any]) -> int:
+    """Input dimension of SafePO Actor MLP from checkpoint weights."""
+    weight = state_dict.get("mean.0.weight")
+    if weight is None:
+        raise KeyError("Actor state_dict missing mean.0.weight")
+    return int(weight.shape[1])
+
+
+def probe_train_obs_dim(env_id: str, *, sar_ltl_ordering: bool = False) -> int:
+    """Flat Box obs size used during SA training on ``env_id``."""
+    from rise_training.cmdp.factory import make_cmdp_env
+
+    env = make_cmdp_env(
+        env_id,
+        normalize_obs=False,
+        autoreset=False,
+        training=False,
+        sar_ltl_ordering=sar_ltl_ordering,
+    )
+    try:
+        return int(env.observation_space.shape[0])
+    finally:
+        env.close()
+
+
+def _key_ravel_size(obs: dict[str, Any], key: str) -> int | str:
+    if key not in obs:
+        return "MISSING"
+    return int(np.ravel(np.asarray(obs[key], dtype=np.float32)).size)
+
+
+def assert_deploy_obs_compatible(
+    flat_vec: np.ndarray,
+    keys: list[str],
+    expected_dim: int,
+    *,
+    train_env: str,
+    eval_env: str,
+    sar_ltl_ordering: bool = False,
+) -> None:
+    """Raise if deploy flatten length differs from trained actor input dim."""
+    actual = int(len(flat_vec))
+    if actual == expected_dim:
+        return
+
+    from rise_training.env_utils import make_env
+
+    mismatches: list[str] = []
+    train_obs: dict[str, Any] | None = None
+    eval_obs: dict[str, Any] | None = None
+    try:
+        train_e = make_env(train_env, flat=True, sar_ltl_ordering=sar_ltl_ordering)
+        train_obs, _ = train_e.reset(seed=0)
+        train_e.close()
+    except Exception as exc:
+        mismatches.append(f"train probe failed ({train_env!r}): {exc}")
+    try:
+        eval_e = make_env(eval_env, flat=False, sar_ltl_ordering=sar_ltl_ordering)
+        eval_obs0, _ = eval_e.reset(seed=0)
+        agents = list(eval_e.unwrapped.possible_agents)
+        eval_obs = eval_obs0[agents[0]]
+        eval_e.close()
+    except Exception as exc:
+        mismatches.append(f"eval probe failed ({eval_env!r}): {exc}")
+
+    if train_obs is not None and eval_obs is not None:
+        for key in keys:
+            s_train = _key_ravel_size(train_obs, key)
+            s_eval = _key_ravel_size(eval_obs, key)
+            if s_train != s_eval:
+                mismatches.append(f"{key!r}: train={s_train} eval_agent_0={s_eval}")
+
+    detail = "; ".join(mismatches) if mismatches else "no per-key diff (check flatten_keys order)"
+    raise ValueError(
+        f"Deploy obs dim {actual} != trained actor obs_dim {expected_dim} "
+        f"(train={train_env!r}, eval={eval_env!r}). {detail}"
+    )

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # GenZ-LTL RCO: train single-agent on MASAR1WC → deploy eval on MASAR2WC.
-# Speed-tuned for 32-thread CPU (24 env workers, 10 PPO epochs, async vec).
+# Speed-tuned for 32-thread CPU (16 env workers, 80 RCO epochs, async vec).
 # Run in its own terminal:
 #   ./scripts/sar_genz_sa_to_ma.sh
 #   SEED=0 DEVICE=cuda:0 ./scripts/sar_genz_sa_to_ma.sh
+#   EVAL_ONLY=1 NAME=GenZ-SAR ./scripts/sar_genz_sa_to_ma.sh  # skip train, run MA eval
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT/GenZ-LTL"
 
-NAME="${NAME:-GenZ-RCO-SAR}"
+NAME="${NAME:-GenZ-SAR}"
 SEED="${SEED:-0}"
 DEVICE="${DEVICE:-cuda:0}"
 ENV="${ENV:-PointLTL0MASAR1WC-v0}"
@@ -40,8 +41,9 @@ if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
     --entropy_coef 0.003 \
     --vec_backend safety_async \
     --sar_env_backend specrl \
-    --fast_action_bridge True
+    --fast_action_bridge
 fi
+
 if [[ "${TRAIN_ONLY:-0}" == "1" ]]; then
   exit 0
 fi

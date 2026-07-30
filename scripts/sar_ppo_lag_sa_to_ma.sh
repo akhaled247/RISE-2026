@@ -18,7 +18,12 @@ EVAL_EPISODES="${EVAL_EPISODES:-50}"
 EXPERIMENT="${EXPERIMENT:-ppo_lag_sar_sa_to_ma_s${SEED}}"
 
 latest_run_dir() {
-  ls -td "${LOG_ROOT}/${TASK}/ppo_lag"/seed-* 2>/dev/null | head -1
+  local found=""
+  found="$(ls -td "${LOG_ROOT}/${TASK}/ppo_lag"/seed-"$(printf '%03d' "${SEED}")"-* 2>/dev/null | head -1 || true)"
+  if [[ -z "${found}" ]]; then
+    found="$(ls -td "${LOG_ROOT}/${TASK}/ppo_lag"/seed-* 2>/dev/null | head -1 || true)"
+  fi
+  printf '%s' "${found}"
 }
 
 if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
@@ -55,7 +60,9 @@ if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
     --sar-ltl-ordering True
 fi
 
-RUN_DIR="${RUN_DIR:-$(latest_run_dir)}"
+if [[ -z "${RUN_DIR:-}" ]]; then
+  RUN_DIR="$(latest_run_dir)"
+fi
 if [[ -z "${RUN_DIR}" || ! -d "${RUN_DIR}" ]]; then
   echo "ERROR: no PPO-Lag run dir under ${LOG_ROOT}/${TASK}/ppo_lag/" >&2
   exit 1

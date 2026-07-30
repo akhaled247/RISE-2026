@@ -249,12 +249,54 @@ def train_with_safepo(
 
     # SafePO mains expect (args, cfg_env=None) for mujoco path
     mod.main(args, None)
+
+    _augment_run_config(
+        args.log_dir,
+        env_id=env_id,
+        sar_ltl_ordering=sar_ltl_ordering,
+    )
+
     return {
         "log_dir": args.log_dir,
         "algo": algo,
         "env_id": env_id,
         "default_cfg_patch": cfg_patch,
     }
+
+
+def _augment_run_config(
+    log_dir: str,
+    *,
+    env_id: str,
+    sar_ltl_ordering: bool,
+) -> None:
+    """Merge SA deploy obs metadata into SafePO config.json when missing."""
+    import json
+
+    from rise_training.cmdp.obs_spec import probe_flatten_keys, probe_train_obs_dim
+
+    config_path = os.path.join(log_dir, "config.json")
+    if not os.path.isfile(config_path):
+        return
+    with open(config_path, encoding="utf-8") as f:
+        config = json.load(f)
+    updated = False
+    if "sar_ltl_ordering" not in config:
+        config["sar_ltl_ordering"] = bool(sar_ltl_ordering)
+        updated = True
+    if "flatten_keys" not in config:
+        config["flatten_keys"] = probe_flatten_keys(
+            env_id, sar_ltl_ordering=bool(config.get("sar_ltl_ordering", sar_ltl_ordering))
+        )
+        updated = True
+    if "obs_dim" not in config:
+        config["obs_dim"] = probe_train_obs_dim(
+            env_id, sar_ltl_ordering=bool(config.get("sar_ltl_ordering", sar_ltl_ordering))
+        )
+        updated = True
+    if updated:
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
 
 
 def train_algo(algo: str, **overrides: Any) -> dict[str, Any]:

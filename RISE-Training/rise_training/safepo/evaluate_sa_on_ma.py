@@ -12,7 +12,9 @@ import torch
 from tqdm import trange
 
 from rise_training.cmdp.obs_spec import (
+    assert_deploy_obs_compatible,
     flatten_agent_obs,
+    infer_actor_obs_dim,
     load_rms_from_pkl,
     normalize_obs_vector,
     probe_flatten_keys,
@@ -63,13 +65,16 @@ def eval_sa_on_ma(
 
     flatten_keys = config.get("flatten_keys") or probe_flatten_keys(
         str(train_env),
-        sar_ltl_ordering=bool(config.get("sar_ltl_ordering", False)),
+        sar_ltl_ordering=sar_ltl_ordering,
     )
     rms = load_rms_from_pkl(norm_path) if norm_path and os.path.isfile(norm_path) else None
 
     hidden_sizes = config.get("hidden_sizes", [64, 64])
     device_t = torch.device(device)
     torch.set_num_threads(int(config.get("torch_threads", 4)))
+
+    state_dict = torch.load(model_path, map_location=device_t, weights_only=False)
+    obs_dim = int(config.get("obs_dim") or infer_actor_obs_dim(state_dict))
 
     env = make_env(
         eval_env,
@@ -79,7 +84,15 @@ def eval_sa_on_ma(
     )
     agents = list(env.unwrapped.possible_agents)
     obs0, _ = env.reset(seed=seed)
-    obs_dim = len(flatten_agent_obs(obs0[agents[0]], flatten_keys))
+    flat0 = flatten_agent_obs(obs0[agents[0]], flatten_keys)
+    assert_deploy_obs_compatible(
+        flat0,
+        flatten_keys,
+        obs_dim,
+        train_env=str(train_env),
+        eval_env=str(eval_env),
+        sar_ltl_ordering=sar_ltl_ordering,
+    )
     act_dim = int(np.prod(env.action_space(agents[0]).shape))
 
     model = ActorVCritic(
@@ -87,7 +100,6 @@ def eval_sa_on_ma(
         act_dim=act_dim,
         hidden_sizes=hidden_sizes,
     ).to(device_t)
-    state_dict = torch.load(model_path, map_location=device_t, weights_only=False)
     model.actor.load_state_dict(state_dict)
     model.eval()
 
@@ -216,6 +228,8 @@ def eval_sa_on_ma(
         "train_env": str(train_env),
         "eval_env": str(eval_env),
         "deploy_mode": "sa_on_ma",
+        "obs_dim": float(obs_dim),
+        "flatten_keys_count": float(len(flatten_keys)),
     }
     return metrics
 
