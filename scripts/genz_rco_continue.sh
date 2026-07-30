@@ -11,7 +11,7 @@
 #   RESTORE_FROM=~/RISE-2026/FileTransfer/singleagent_runs/GenZ-2300-Runs/GenZ-LTL-RCO-Direct/0 \
 #     ./scripts/genz_rco_continue_direct.sh
 #
-# Eval only (MA deploy):
+# Eval only (MA deploy) — run SA gate first: NAME=GenZ-SAR-s0 ./scripts/genz_sa_eval_gate.sh
 #   EVAL_ONLY=1 NAME=GenZ-SAR-s0 ./scripts/genz_rco_continue.sh
 set -euo pipefail
 
