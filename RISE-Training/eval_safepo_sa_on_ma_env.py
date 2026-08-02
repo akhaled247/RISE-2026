@@ -3,7 +3,7 @@
 Examples:
   cd RISE-Training
   python eval_safepo_sa_on_ma_env.py \\
-    --run-dir ./_training_logs/safepo/PointLTL0MASAR1WC-v0/ppo/seed-000-... \\
+    --run-dir ./_training_logs/safepo/PointLTL1MASAR1WC-v0/ppo/seed-001-2026-08-01-01-33-28 \\
     --eval-env PointLTL0MASAR2WC-v0 --eval-episodes 50
 """
 from __future__ import annotations
