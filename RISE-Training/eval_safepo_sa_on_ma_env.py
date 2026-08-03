@@ -53,6 +53,7 @@ def main(argv: list[str] | None = None) -> None:
         render_mode=args.render_mode
     )
     print(f"EVAL_MA_DEPLOY_PATH={out_path}")
+    print("Primary metrics: success_rate (S), violation_rate (V), mean_success_ep_len (AS)")
 
 
 if __name__ == "__main__":

@@ -41,6 +41,13 @@ python eval_safepo_sa_on_ma_env.py \
 
 Uses `rise_training/cmdp/obs_spec.py` flatten keys from SA training (not `ma_factory._pack_obs`).
 
+**Obs parity:** `gremlins_lidar_*` is zeroed at SA→MA deploy. On MASAR1 that channel is ~always empty (self gremlin deleted); on MASAR2 it would otherwise inject live other-agent lidar (OOD for SA ckpts). Paper protocol ignores inter-agent collision.
+
+**Metrics (GenZ-LTL parity):** prints `[S=…, V=…, AS=…]` where
+- **S** `success_rate` — full team rescue
+- **V** `violation_rate` — wall-cost termination without success
+- **AS** `mean_success_ep_len` — mean length of successful episodes only
+
 Writes `eval_summary_ma_deploy.json` beside the run dir.
 
 ## GenZ-LTL
