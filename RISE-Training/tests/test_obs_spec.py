@@ -10,8 +10,10 @@ from rise_training.cmdp.obs_spec import (
     flatten_agent_obs,
     flatten_ma_agent_for_sa_deploy,
     infer_actor_obs_dim,
+    is_buildings_visited_key,
     is_gremlins_lidar_key,
     remap_ma_agent_obs_to_sa_train,
+    zero_buildings_visited_channels,
     zero_gremlins_lidar_channels,
 )
 
@@ -114,3 +116,27 @@ def test_flatten_ma_agent_can_keep_gremlins():
         agent0_obs, 0, train_keys, zero_gremlins=False,
     )
     np.testing.assert_allclose(flat, [0.5, 0.25])
+
+
+def test_is_buildings_visited_key():
+    assert is_buildings_visited_key("terracotta_buildings_visited")
+    assert not is_buildings_visited_key("terracotta_buildings_lidar_0")
+
+
+def test_zero_buildings_visited_keeps_dim():
+    train_keys = ["accelerometer_0", "terracotta_buildings_visited"]
+    agent0_obs = {
+        "accelerometer_0": np.array([1.0, 0.0], dtype=np.float32),
+        "terracotta_buildings_visited": np.array([1.0], dtype=np.float32),
+    }
+    flat = flatten_ma_agent_for_sa_deploy(
+        agent0_obs, 0, train_keys, zero_buildings_visited=True,
+    )
+    np.testing.assert_allclose(flat[:2], [1.0, 0.0])
+    np.testing.assert_array_equal(flat[2:], np.zeros(1, dtype=np.float32))
+    kept = zero_buildings_visited_channels(
+        {"terracotta_buildings_visited": np.array([1.0], dtype=np.float32)},
+    )
+    np.testing.assert_array_equal(
+        kept["terracotta_buildings_visited"], np.zeros(1, dtype=np.float32),
+    )

@@ -41,6 +41,18 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Override sar_ltl_ordering (default: from train config.json)",
     )
+    p.add_argument(
+        "--rms",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Apply frozen train RMS (default: off for MA deploy ablation)",
+    )
+    p.add_argument(
+        "--buildings-visited",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Pass through buildings_visited (default: zero channel, keep dim)",
+    )
     args = p.parse_args(argv)
 
     out_path = eval_single_run(
@@ -50,7 +62,9 @@ def main(argv: list[str] | None = None) -> None:
         seed=args.seed,
         device=args.device,
         sar_ltl_ordering=args.sar_ltl_ordering,
-        render_mode=args.render_mode
+        render_mode=args.render_mode,
+        use_rms=args.rms,
+        zero_buildings_visited=not args.buildings_visited,
     )
     print(f"EVAL_MA_DEPLOY_PATH={out_path}")
     print("Primary metrics: success_rate (S), violation_rate (V), mean_success_ep_len (AS)")

@@ -39,6 +39,8 @@ def eval_sa_on_ma(
     device: str = "cpu",
     render_mode: str | None = None,
     sar_ltl_ordering: bool | None = None,
+    use_rms: bool = False,
+    zero_buildings_visited: bool = True,
 ) -> dict[str, float]:
     """Roll out shared SA actor on native MA env (flat=False).
 
@@ -46,6 +48,8 @@ def eval_sa_on_ma(
     - ``success_rate`` (S): full team rescue
     - ``violation_rate`` (V): wall-cost termination without success
     - ``mean_success_ep_len`` (AS): mean length of successful episodes only
+
+    Ablation defaults: no RMS; zero ``*_buildings_visited`` (slot kept for obs dim).
     """
     from rise_training.env_utils import make_env
     from rise_training.paths import ensure_specrlbench_paths
@@ -73,7 +77,13 @@ def eval_sa_on_ma(
         str(train_env),
         sar_ltl_ordering=sar_ltl_ordering,
     )
-    rms = load_rms_from_pkl(norm_path) if norm_path and os.path.isfile(norm_path) else None
+    rms = None
+    if use_rms and norm_path and os.path.isfile(norm_path):
+        rms = load_rms_from_pkl(norm_path)
+    print(
+        f"[sa_on_ma] use_rms={use_rms and rms is not None} "
+        f"zero_buildings_visited={zero_buildings_visited}"
+    )
 
     hidden_sizes = config.get("hidden_sizes", [64, 64])
     device_t = torch.device(device)
@@ -90,7 +100,12 @@ def eval_sa_on_ma(
     )
     agents = list(env.unwrapped.possible_agents)
     obs0, _ = env.reset(seed=seed)
-    flat0 = flatten_ma_agent_for_sa_deploy(obs0[agents[0]], 0, flatten_keys)
+    flat0 = flatten_ma_agent_for_sa_deploy(
+        obs0[agents[0]],
+        0,
+        flatten_keys,
+        zero_buildings_visited=zero_buildings_visited,
+    )
     assert_deploy_obs_compatible(
         flat0,
         flatten_keys,
@@ -137,7 +152,12 @@ def eval_sa_on_ma(
             actions = {}
             for agent in agents:
                 agent_idx = int(agent.rsplit("_", 1)[-1])
-                flat = flatten_ma_agent_for_sa_deploy(obs[agent], agent_idx, flatten_keys)
+                flat = flatten_ma_agent_for_sa_deploy(
+                    obs[agent],
+                    agent_idx,
+                    flatten_keys,
+                    zero_buildings_visited=zero_buildings_visited,
+                )
                 if rms is not None:
                     flat = normalize_obs_vector(flat, rms)
                 obs_t = torch.as_tensor(flat, dtype=torch.float32, device=device_t)
@@ -267,6 +287,8 @@ def eval_sa_on_ma(
         "deploy_mode": "sa_on_ma",
         "obs_dim": float(obs_dim),
         "flatten_keys_count": float(len(flatten_keys)),
+        "use_rms": float(use_rms and rms is not None),
+        "zero_buildings_visited": float(zero_buildings_visited),
     }
     print(
         f"[S={success_rate:.3f}, V={violation_rate:.3f}, "
@@ -284,6 +306,8 @@ def eval_single_run(
     device: str = "cpu",
     render_mode: str | None = None,
     sar_ltl_ordering: bool | None = None,
+    use_rms: bool = False,
+    zero_buildings_visited: bool = True,
 ) -> str:
     """Evaluate and write ``eval_summary_ma_deploy.json`` next to run dir."""
     metrics = eval_sa_on_ma(
@@ -294,6 +318,8 @@ def eval_single_run(
         device=device,
         sar_ltl_ordering=sar_ltl_ordering,
         render_mode=render_mode,
+        use_rms=use_rms,
+        zero_buildings_visited=zero_buildings_visited,
     )
     out_path = os.path.join(os.path.abspath(run_dir), "eval_summary_ma_deploy.json")
     payload = {

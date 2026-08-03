@@ -57,12 +57,28 @@ def zero_gremlins_lidar_channels(mapped: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def is_buildings_visited_key(key: str) -> bool:
+    """True for ``*_buildings_visited`` (MA semantics differ from SA)."""
+    return key.endswith("buildings_visited") or "buildings_visited" in key
+
+
+def zero_buildings_visited_channels(mapped: dict[str, Any]) -> dict[str, Any]:
+    """Zero buildings-visited flags; keep slot so actor obs dim stays valid."""
+    out = dict(mapped)
+    for key, value in mapped.items():
+        if is_buildings_visited_key(key):
+            arr = np.asarray(value, dtype=np.float32)
+            out[key] = np.zeros_like(arr, dtype=np.float32)
+    return out
+
+
 def remap_ma_agent_obs_to_sa_train(
     agent_obs: dict[str, Any],
     agent_idx: int,
     train_keys: list[str],
     *,
     zero_gremlins: bool = True,
+    zero_buildings_visited: bool = False,
 ) -> dict[str, Any]:
     """Map MA per-agent dict obs to SA train key names (shared-policy deploy).
 
@@ -85,6 +101,8 @@ def remap_ma_agent_obs_to_sa_train(
         raise KeyError(f"{key!r} missing for agent_{agent_idx} (keys={sorted(agent_obs)})")
     if zero_gremlins:
         out = zero_gremlins_lidar_channels(out)
+    if zero_buildings_visited:
+        out = zero_buildings_visited_channels(out)
     return out
 
 
@@ -94,10 +112,15 @@ def flatten_ma_agent_for_sa_deploy(
     train_keys: list[str],
     *,
     zero_gremlins: bool = True,
+    zero_buildings_visited: bool = False,
 ) -> np.ndarray:
     """Remap MA agent obs to SA train layout, then flatten."""
     mapped = remap_ma_agent_obs_to_sa_train(
-        agent_obs, agent_idx, train_keys, zero_gremlins=zero_gremlins,
+        agent_obs,
+        agent_idx,
+        train_keys,
+        zero_gremlins=zero_gremlins,
+        zero_buildings_visited=zero_buildings_visited,
     )
     return flatten_agent_obs(mapped, train_keys)
 
