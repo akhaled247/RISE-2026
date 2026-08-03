@@ -6,7 +6,7 @@ import os
 # Data
 # ============================================================
 
-levels = ["Level 0"]
+levels = ["Level 0", "Level 1"]
 algorithms = ["PPO", "PPO-Lagrangian", "GenZ-LTL"]
 
 data = {
@@ -19,7 +19,7 @@ data = {
         "Level 1": [
             [0.01,0.00,0.00,0.00,0.00],
             [0.00,0.00,0.00,0.00,0.00],
-            []
+            [0.07,0.1,0.08]
         ]
     },
 
@@ -32,7 +32,7 @@ data = {
         "Level 1": [
             [0.03,0.01,0.111,0.05,0.28],
             [0.25,0.13,0.17,0.07,0.24],
-            []
+            [0.12,0.07,0.13]
         ]
     },
 
@@ -45,7 +45,7 @@ data = {
         "Level 1": [
             [721,467,1869,2319,2275],
             [922,881,576,787,1114],
-            []
+            [567,797,694]
         ]
     }
 }
@@ -124,19 +124,19 @@ make_plot(
     "success",
     "Success Rate ηₛ",
     "Success Rate Comparison",
-    "success_rate.png"
+    "ltl_success_rate.png"
 )
 
 make_plot(
     "violation",
     "Violation Rate ηᵥ",
     "Violation Rate Comparison",
-    "violation_rate.png"
+    "ltl_violation_rate.png"
 )
 
 make_plot(
     "episode_length",
     "Episode Length μ",
     "Episode Length Comparison",
-    "episode_length.png"
+    "ltl_episode_length.png"
 )
