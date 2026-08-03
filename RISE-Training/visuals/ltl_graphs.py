@@ -6,7 +6,7 @@ import os
 # Data
 # ============================================================
 
-levels = ["Level 0", "Level 1"]
+levels = ["Level 0"]
 algorithms = ["PPO", "PPO-Lagrangian", "GenZ-LTL"]
 
 data = {
