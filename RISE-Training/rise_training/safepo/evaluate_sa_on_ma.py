@@ -39,8 +39,8 @@ def eval_sa_on_ma(
     device: str = "cpu",
     render_mode: str | None = None,
     sar_ltl_ordering: bool | None = None,
-    use_rms: bool = False,
-    zero_buildings_visited: bool = True,
+    use_rms: bool = True,
+    zero_buildings_visited: bool = False,
 ) -> dict[str, float]:
     """Roll out shared SA actor on native MA env (flat=False).
 
@@ -48,8 +48,6 @@ def eval_sa_on_ma(
     - ``success_rate`` (S): full team rescue
     - ``violation_rate`` (V): wall-cost termination without success
     - ``mean_success_ep_len`` (AS): mean length of successful episodes only
-
-    Ablation defaults: no RMS; zero ``*_buildings_visited`` (slot kept for obs dim).
     """
     from rise_training.env_utils import make_env
     from rise_training.paths import ensure_specrlbench_paths
@@ -306,8 +304,8 @@ def eval_single_run(
     device: str = "cpu",
     render_mode: str | None = None,
     sar_ltl_ordering: bool | None = None,
-    use_rms: bool = False,
-    zero_buildings_visited: bool = True,
+    use_rms: bool = True,
+    zero_buildings_visited: bool = False,
 ) -> str:
     """Evaluate and write ``eval_summary_ma_deploy.json`` next to run dir."""
     metrics = eval_sa_on_ma(

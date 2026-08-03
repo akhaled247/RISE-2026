@@ -44,14 +44,14 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--rms",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Apply frozen train RMS (default: off for MA deploy ablation)",
+        default=True,
+        help="Apply frozen train RMS (default: on; match SA train preprocess)",
     )
     p.add_argument(
         "--buildings-visited",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Pass through buildings_visited (default: zero channel, keep dim)",
+        default=True,
+        help="Pass through buildings_visited (default: on; --no-buildings-visited zeros it)",
     )
     args = p.parse_args(argv)
 
