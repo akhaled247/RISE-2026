@@ -46,9 +46,9 @@ L1 <- list(
   ),
   
   GenZ_LTL = list(
-  success = c(0.020, 0.050, 0.100, 0.010, 0.030),
-  violation = c(0.910, 0.910, 0.870, 0.950, 0.900),
-  ep_len = c(542.500, 652.600, 620.100, 716.000, 664.667)
+  success = c(0.080, 0.100, 0.170, 0.130, 0.240),
+  violation = c(0.910, 0.900, 0.820, 0.850, 0.750),
+  ep_len = c(633.250, 786.600, 833.059, 785.077, 794.458)
   )
 )
 
@@ -97,7 +97,7 @@ make_row <- function(level, d) {
     PPOL_v  = paper_fmt_violation(d$PPO_Lagrangian$violation),
     PPOL_mu = paper_fmt_len(d$PPO_Lagrangian$ep_len),
     
-    GENZ_s  = paper_fmt_success(d$GenZ_LTL$success),
+    # GENZ_s  = paper_fmt_success(d$GenZ_LTL$success),
     GENZ_v  = paper_fmt_violation(d$GenZ_LTL$violation),
     GENZ_mu = paper_fmt_len(d$GenZ_LTL$ep_len)
   )
