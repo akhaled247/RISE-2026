@@ -56,28 +56,29 @@ L1 <- list(
 # ============================================================
 # Formatting
 # ============================================================
+paper_fmt_success <- function(x) {
+  sprintf(
+    "%.3f ± %.3f",
+    mean(x, na.rm = TRUE),
+    sd(x, na.rm = TRUE)
+  )
+}
 
-paper_fmt <- function(x) {
-  
+paper_fmt_violation <- function(x) {
   sprintf(
     "%.2f ± %.2f",
     mean(x, na.rm = TRUE),
     sd(x, na.rm = TRUE)
   )
-  
 }
-
 
 paper_fmt_len <- function(x) {
-  
   sprintf(
     "%.2f ± %.2f",
     mean(x, na.rm = TRUE),
     sd(x, na.rm = TRUE)
   )
-  
 }
-
 
 # ============================================================
 # Create summary table
@@ -88,17 +89,17 @@ make_row <- function(level, d) {
   tibble(
     Level = level,
     
-    PPO_s = paper_fmt(d$PPO$success),
-    PPO_v = paper_fmt(d$PPO$violation),
-    PPO_mu = paper_fmt(d$PPO$ep_len),
+    PPO_s   = paper_fmt_success(d$PPO$success),
+    PPO_v   = paper_fmt_violation(d$PPO$violation),
+    PPO_mu  = paper_fmt_len(d$PPO$ep_len),
     
-    PPOL_s = paper_fmt(d$PPO_Lagrangian$success),
-    PPOL_v = paper_fmt(d$PPO_Lagrangian$violation),
-    PPOL_mu = paper_fmt(d$PPO_Lagrangian$ep_len),
+    PPOL_s  = paper_fmt_success(d$PPO_Lagrangian$success),
+    PPOL_v  = paper_fmt_violation(d$PPO_Lagrangian$violation),
+    PPOL_mu = paper_fmt_len(d$PPO_Lagrangian$ep_len),
     
-    GENZ_s = paper_fmt(d$GenZ_LTL$success),
-    GENZ_v = paper_fmt(d$GenZ_LTL$violation),
-    GENZ_mu = paper_fmt(d$GenZ_LTL$ep_len)
+    GENZ_s  = paper_fmt_success(d$GenZ_LTL$success),
+    GENZ_v  = paper_fmt_violation(d$GenZ_LTL$violation),
+    GENZ_mu = paper_fmt_len(d$GenZ_LTL$ep_len)
   )
 }
 
