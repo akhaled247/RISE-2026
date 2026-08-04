@@ -11,12 +11,12 @@ from gymnasium.wrappers import FlattenObservation
 from rise_training.env_utils import *
 
 seed = 0
-env_name = 'PointLTL0MASAR1Debug-v0'
+env_name = 'PointLTL1MASAR2Debug-v0'
 steps = 2500
 
 print(f"="*40)
 print(f"environment: {env_name}")
-render_mode = "human" if 'Vision' not in env_name else None
+render_mode = 'human' if 'Vision' not in env_name else None
 env = make_env(env_name, render_mode=render_mode, sar_ltl_ordering=True)
 # env = FlattenObservation(gym.make(env_name, render_mode="human"))
 obs, info = env.reset(seed=seed)
@@ -29,7 +29,7 @@ while not done:
     obs, reward, terminated, truncated, info = env.step(action)
     done = any(list(terminated.values())) or any(list(truncated.values()))
     # print(
-        # f'obs = {obs} \n'
+    #     f'obs = {obs} \n'
         # f'reward = {reward} \n'
         # f'terminated = {terminated} \n'
         # f'truncated = {truncated} \n'

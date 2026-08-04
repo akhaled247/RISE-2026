@@ -3,7 +3,7 @@
 Examples:
   cd RISE-Training
   python eval_safepo_sa_on_ma_env.py \\
-    --run-dir ./_training_logs/safepo/PointLTL0MASAR1WC-v0/ppo/seed-000-... \\
+    --run-dir ./_training_logs/safepo/PointLTL1MASAR1WC-v0/ppo/seed-001-2026-08-01-01-33-28 \\
     --eval-env PointLTL0MASAR2WC-v0 --eval-episodes 50
 """
 from __future__ import annotations
@@ -41,6 +41,18 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Override sar_ltl_ordering (default: from train config.json)",
     )
+    p.add_argument(
+        "--rms",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Apply frozen train RMS (default: on; match SA train preprocess)",
+    )
+    p.add_argument(
+        "--buildings-visited",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Pass through buildings_visited (default: on; --no-buildings-visited zeros it)",
+    )
     args = p.parse_args(argv)
 
     out_path = eval_single_run(
@@ -50,9 +62,12 @@ def main(argv: list[str] | None = None) -> None:
         seed=args.seed,
         device=args.device,
         sar_ltl_ordering=args.sar_ltl_ordering,
-        render_mode=args.render_mode
+        render_mode=args.render_mode,
+        use_rms=args.rms,
+        zero_buildings_visited=not args.buildings_visited,
     )
     print(f"EVAL_MA_DEPLOY_PATH={out_path}")
+    print("Primary metrics: success_rate (S), violation_rate (V), mean_success_ep_len (AS)")
 
 
 if __name__ == "__main__":

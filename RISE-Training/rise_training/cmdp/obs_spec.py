@@ -37,15 +37,55 @@ def flatten_agent_obs(agent_obs: dict[str, Any], keys: list[str]) -> np.ndarray:
     return np.concatenate(parts, axis=0).astype(np.float32)
 
 
+def is_gremlins_lidar_key(key: str) -> bool:
+    """True for per-agent gremlin lidar channels (other-agent proxy on MASAR2)."""
+    return "gremlins" in key and "lidar" in key
+
+
+def zero_gremlins_lidar_channels(mapped: dict[str, Any]) -> dict[str, Any]:
+    """Zero gremlin lidar to match MASAR1 train (always empty after self-exclude).
+
+    Paper §5.3 ignores inter-agent collision; MASAR1 ``gremlins_lidar_0`` is ~zeros
+    because the sole gremlin pose is deleted. MASAR2 fills that slot with the other
+    agent — OOD for SA checkpoints unless zeroed at deploy.
+    """
+    out = dict(mapped)
+    for key, value in mapped.items():
+        if is_gremlins_lidar_key(key):
+            arr = np.asarray(value, dtype=np.float32)
+            out[key] = np.zeros_like(arr, dtype=np.float32)
+    return out
+
+
+def is_buildings_visited_key(key: str) -> bool:
+    """True for ``*_buildings_visited`` (MA semantics differ from SA)."""
+    return key.endswith("buildings_visited") or "buildings_visited" in key
+
+
+def zero_buildings_visited_channels(mapped: dict[str, Any]) -> dict[str, Any]:
+    """Zero buildings-visited flags; keep slot so actor obs dim stays valid."""
+    out = dict(mapped)
+    for key, value in mapped.items():
+        if is_buildings_visited_key(key):
+            arr = np.asarray(value, dtype=np.float32)
+            out[key] = np.zeros_like(arr, dtype=np.float32)
+    return out
+
+
 def remap_ma_agent_obs_to_sa_train(
     agent_obs: dict[str, Any],
     agent_idx: int,
     train_keys: list[str],
+    *,
+    zero_gremlins: bool = True,
+    zero_buildings_visited: bool = False,
 ) -> dict[str, Any]:
     """Map MA per-agent dict obs to SA train key names (shared-policy deploy).
 
     SA training on MASAR1WC uses ``*_0`` sensor keys. On MASAR2WC deploy, agent_k
     exposes ``*_{k}``; remap so the same flatten_keys work for every agent.
+
+    By default zeros ``gremlins_lidar_*`` so deploy matches MASAR1 train distribution.
     """
     out: dict[str, Any] = {}
     alt_suffix = f"_{agent_idx}"
@@ -59,6 +99,10 @@ def remap_ma_agent_obs_to_sa_train(
                 out[key] = agent_obs[alt]
                 continue
         raise KeyError(f"{key!r} missing for agent_{agent_idx} (keys={sorted(agent_obs)})")
+    if zero_gremlins:
+        out = zero_gremlins_lidar_channels(out)
+    if zero_buildings_visited:
+        out = zero_buildings_visited_channels(out)
     return out
 
 
@@ -66,9 +110,18 @@ def flatten_ma_agent_for_sa_deploy(
     agent_obs: dict[str, Any],
     agent_idx: int,
     train_keys: list[str],
+    *,
+    zero_gremlins: bool = True,
+    zero_buildings_visited: bool = False,
 ) -> np.ndarray:
     """Remap MA agent obs to SA train layout, then flatten."""
-    mapped = remap_ma_agent_obs_to_sa_train(agent_obs, agent_idx, train_keys)
+    mapped = remap_ma_agent_obs_to_sa_train(
+        agent_obs,
+        agent_idx,
+        train_keys,
+        zero_gremlins=zero_gremlins,
+        zero_buildings_visited=zero_buildings_visited,
+    )
     return flatten_agent_obs(mapped, train_keys)
 
 
@@ -176,6 +229,14 @@ def assert_deploy_obs_compatible(
             s_eval = _key_ravel_size(eval_obs, key)
             if s_train != s_eval:
                 mismatches.append(f"{key!r}: train={s_train} eval_agent_0={s_eval}")
+            if is_gremlins_lidar_key(key) and key in train_obs and key in eval_obs:
+                t_norm = float(np.linalg.norm(np.ravel(train_obs[key])))
+                e_norm = float(np.linalg.norm(np.ravel(eval_obs[key])))
+                if t_norm < 1e-6 and e_norm > 1e-3:
+                    mismatches.append(
+                        f"{key!r}: train≈0 but eval_agent_0 live "
+                        f"(norm {e_norm:.4f}); zero at SA→MA deploy"
+                    )
 
     detail = "; ".join(mismatches) if mismatches else "no per-key diff (check flatten_keys order)"
     raise ValueError(

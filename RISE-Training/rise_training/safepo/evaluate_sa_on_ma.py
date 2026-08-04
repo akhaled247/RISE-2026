@@ -39,8 +39,16 @@ def eval_sa_on_ma(
     device: str = "cpu",
     render_mode: str | None = None,
     sar_ltl_ordering: bool | None = None,
+    use_rms: bool = True,
+    zero_buildings_visited: bool = False,
 ) -> dict[str, float]:
-    """Roll out shared SA actor on native MA env (flat=False)."""
+    """Roll out shared SA actor on native MA env (flat=False).
+
+    Primary metrics mirror GenZ-LTL MA deploy:
+    - ``success_rate`` (S): full team rescue
+    - ``violation_rate`` (V): wall-cost termination without success
+    - ``mean_success_ep_len`` (AS): mean length of successful episodes only
+    """
     from rise_training.env_utils import make_env
     from rise_training.paths import ensure_specrlbench_paths
     from safepo.common.model import ActorVCritic
@@ -67,7 +75,13 @@ def eval_sa_on_ma(
         str(train_env),
         sar_ltl_ordering=sar_ltl_ordering,
     )
-    rms = load_rms_from_pkl(norm_path) if norm_path and os.path.isfile(norm_path) else None
+    rms = None
+    if use_rms and norm_path and os.path.isfile(norm_path):
+        rms = load_rms_from_pkl(norm_path)
+    print(
+        f"[sa_on_ma] use_rms={use_rms and rms is not None} "
+        f"zero_buildings_visited={zero_buildings_visited}"
+    )
 
     hidden_sizes = config.get("hidden_sizes", [64, 64])
     device_t = torch.device(device)
@@ -84,7 +98,12 @@ def eval_sa_on_ma(
     )
     agents = list(env.unwrapped.possible_agents)
     obs0, _ = env.reset(seed=seed)
-    flat0 = flatten_ma_agent_for_sa_deploy(obs0[agents[0]], 0, flatten_keys)
+    flat0 = flatten_ma_agent_for_sa_deploy(
+        obs0[agents[0]],
+        0,
+        flatten_keys,
+        zero_buildings_visited=zero_buildings_visited,
+    )
     assert_deploy_obs_compatible(
         flat0,
         flatten_keys,
@@ -106,14 +125,17 @@ def eval_sa_on_ma(
     rew_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
     cost_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
     len_deque: deque[float] = deque(maxlen=max(50, eval_episodes))
+    success_steps: list[float] = []
     full_count = partial_count = none_count = 0
+    violation_count = 0
     total_casualty_rescues = 0
     fail_walls = fail_collision = fail_timeout = fail_other = 0
     collision_events = 0
     casualty_num = 1
     ep_seed = seed if seed is not None else 0
 
-    for _ in trange(eval_episodes):
+    pbar = trange(eval_episodes)
+    for ep_i in pbar:
         obs, info0 = env.reset(seed=ep_seed)
         ep_rew = ep_cost = ep_len = 0.0
         rescued = _rescued_from_info(_info_dict(info0))
@@ -128,7 +150,12 @@ def eval_sa_on_ma(
             actions = {}
             for agent in agents:
                 agent_idx = int(agent.rsplit("_", 1)[-1])
-                flat = flatten_ma_agent_for_sa_deploy(obs[agent], agent_idx, flatten_keys)
+                flat = flatten_ma_agent_for_sa_deploy(
+                    obs[agent],
+                    agent_idx,
+                    flatten_keys,
+                    zero_buildings_visited=zero_buildings_visited,
+                )
                 if rms is not None:
                     flat = normalize_obs_vector(flat, rms)
                 obs_t = torch.as_tensor(flat, dtype=torch.float32, device=device_t)
@@ -139,7 +166,8 @@ def eval_sa_on_ma(
             obs, rewards, terminated, truncated, info = env.step(actions)
             ep_len += 1
             if isinstance(rewards, dict):
-                ep_rew += float(np.mean([float(rewards[a]) for a in agents]))
+                # Team sum (not mean) so full-rescue return scale stays comparable to SA.
+                ep_rew += float(np.sum([float(rewards[a]) for a in agents]))
             else:
                 ep_rew += float(rewards)
 
@@ -155,10 +183,10 @@ def eval_sa_on_ma(
                 if float(ai.get("cost_collision", 0) or 0) > 0:
                     saw_collision = True
                     collision_events += 1
+            # WC wrappers set info["cost"] from walls (and LTL surface-order); do not
+            # infer walls from cost when only collision fired.
             if float(info_d.get("cost", 0) or 0) > 0:
                 ep_cost += float(info_d.get("cost", 0))
-                if not saw_collision:
-                    saw_walls = True
 
             if isinstance(terminated, dict):
                 term = any(bool(terminated[a]) for a in agents)
@@ -177,22 +205,30 @@ def eval_sa_on_ma(
             n_rescued = int(rescued)
             casualty_num = max(casualty_num, 1)
         total_casualty_rescues += n_rescued
-        if n_rescued >= casualty_num:
+        success = n_rescued >= casualty_num
+        if success:
             full_count += 1
             rescued = True
+            success_steps.append(ep_len)
         elif n_rescued > 0:
             partial_count += 1
         else:
             none_count += 1
 
+        # GenZ-style violation: constraint fail without success (walls on WC).
+        if not success and saw_walls:
+            violation_count += 1
+
         fail = _classify_fail(
-            success=n_rescued >= casualty_num,
+            success=success,
             saw_walls=saw_walls,
-            saw_collision=False,
+            saw_collision=saw_collision,
             truncated=last_trunc and not rescued,
         )
         if fail == "cost_walls":
             fail_walls += 1
+        elif fail == "cost_collision":
+            fail_collision += 1
         elif fail == "timeout":
             fail_timeout += 1
         elif fail == "other":
@@ -203,16 +239,34 @@ def eval_sa_on_ma(
         len_deque.append(ep_len)
         ep_seed += 1
 
+        success_rate = float(full_count) / float(ep_i + 1)
+        violation_rate = float(violation_count) / float(ep_i + 1)
+        as_so_far = float(np.mean(success_steps)) if success_steps else 0.0
+        pbar.set_postfix({
+            "S": f"{success_rate:.3f}",
+            "V": f"{violation_rate:.3f}",
+            "AS": f"{as_so_far:.0f}",
+        })
+
     env.close()
 
+    success_rate = float(full_count) / float(eval_episodes)
+    violation_rate = float(violation_count) / float(eval_episodes)
+    mean_success_ep_len = float(np.mean(success_steps)) if success_steps else float("nan")
+
     metrics = {
+        # GenZ-LTL MA deploy parity
+        "success_rate": success_rate,
+        "violation_rate": violation_rate,
+        "mean_success_ep_len": mean_success_ep_len,
+        # Legacy / diagnostic
         "mean_reward": float(np.mean(rew_deque)),
         "std_reward": float(np.std(rew_deque)),
         "mean_cost": float(np.mean(cost_deque)),
         "std_cost": float(np.std(cost_deque)),
         "mean_ep_len": float(np.mean(len_deque)),
         "std_ep_len": float(np.std(len_deque)),
-        "rescue_rate": float(full_count) / float(eval_episodes),
+        "rescue_rate": success_rate,
         "eval_episodes": float(eval_episodes),
         "casualty_num": float(casualty_num),
         "rescue_full": float(full_count),
@@ -231,7 +285,13 @@ def eval_sa_on_ma(
         "deploy_mode": "sa_on_ma",
         "obs_dim": float(obs_dim),
         "flatten_keys_count": float(len(flatten_keys)),
+        "use_rms": float(use_rms and rms is not None),
+        "zero_buildings_visited": float(zero_buildings_visited),
     }
+    print(
+        f"[S={success_rate:.3f}, V={violation_rate:.3f}, "
+        f"AS={mean_success_ep_len:.1f}]"
+    )
     return metrics
 
 
@@ -244,6 +304,8 @@ def eval_single_run(
     device: str = "cpu",
     render_mode: str | None = None,
     sar_ltl_ordering: bool | None = None,
+    use_rms: bool = True,
+    zero_buildings_visited: bool = False,
 ) -> str:
     """Evaluate and write ``eval_summary_ma_deploy.json`` next to run dir."""
     metrics = eval_sa_on_ma(
@@ -254,13 +316,14 @@ def eval_single_run(
         device=device,
         sar_ltl_ordering=sar_ltl_ordering,
         render_mode=render_mode,
+        use_rms=use_rms,
+        zero_buildings_visited=zero_buildings_visited,
     )
     out_path = os.path.join(os.path.abspath(run_dir), "eval_summary_ma_deploy.json")
     payload = {
         "run_dir": os.path.abspath(run_dir),
         "metrics": metrics,
     }
-    out_path = os.path.join(os.path.abspath(run_dir), "eval_summary_ma_deploy.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
     return out_path
