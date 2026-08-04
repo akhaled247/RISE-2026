@@ -2,68 +2,85 @@
 # Packages
 # ============================================================
 
-# install.packages(c("dplyr", "gt", "webshot2"))
-
 library(dplyr)
 library(gt)
 
 # ============================================================
-# Raw data
+# Raw data (revised from experiment logs)
 # ============================================================
 
 L0 <- list(
+  
   PPO = list(
-    success = c(0.01,0.00,0.08,0.20,0.06),
-    violation = c(0.10,0.13,0.18,0.15,0.02),
-    ep_len = c(1586,766,1779,1415,963)
+    success = c(0.050, 0.000, 0.020, 0.030, 0.250),
+    violation = c(0.160, 0.640, 0.710, 0.100, 0.090),
+    ep_len = c(1028.8, NA, 1426.0, 1107.3, 1069.2)
   ),
+  
   PPO_Lagrangian = list(
-    success = c(0.00,0.23,0.05,0.22,0.24),
-    violation = c(0.03,0.19,0.19,0.34,0.14),
-    ep_len = c(662,837,1538,820,796)
+    success = c(0.140, 0.280, 0.140, 0.330, 0.470),
+    violation = c(0.190, 0.130, 0.070, 0.210, 0.220),
+    ep_len = c(1005.4, 941.5, 810.4, 879.1, 892.5)
   ),
+  
   GenZ_LTL = list(
-    success = c(0.44,0.46,0.45,0.44,0.45),
-    violation = c(0.22,0.18,0.10,0.19,0.08),
-    ep_len = c(774,712,922,737,837)
+    success = c(0.730, 0.850, 0.780, 0.750, 0.780),
+    violation = c(0.160, 0.050, 0.040, 0.160, 0.020),
+    ep_len = c(776.000, 766.718, 890.731, 765.800, 826.974)
   )
 )
+
 
 L1 <- list(
+  
   PPO = list(
-    success = c(0.01,0.00,0.00,0.00,0.00),
-    violation = c(0.03,0.01,0.111,0.05,0.28),
-    ep_len = c(721,467,1869,2319,2275)
+    success = c(0.010, 0.010, 0.000, 0.000, 0.000),
+    violation = c(0.690, 0.740, 0.170, 0.190, 0.140),
+    ep_len = c(637.0, 625.0, NA, NA, NA)
   ),
+  
   PPO_Lagrangian = list(
-    success = c(0.00,0.00,0.00,0.00,0.00),
-    violation = c(0.25,0.13,0.17,0.07,0.24),
-    ep_len = c(922,881,576,787,1114)
+    success = c(0.000, 0.010, 0.030, 0.000, 0.000),
+    violation = c(0.570, 0.600, 0.570, 0.870, 0.510),
+    ep_len = c(NA, 2259.0, 1169.7, NA, NA)
+  ),
+  
+  GenZ_LTL = list(
+    success = c(0.090, 0.200, 0.050, 0.140, 0.020),
+    violation = c(0.130, 0.040, 0.300, 0.110, 0.060),
+    ep_len = c(600.778, 826.750, 708.600, 834.571, 725.000)
   )
 )
 
+
 # ============================================================
-# Formatting helper
+# Formatting
 # ============================================================
 
-paper_fmt <- function(x, digits = 2) {
+paper_fmt <- function(x) {
+  
   sprintf(
     "%.2f ± %.2f",
-    mean(x),
-    sd(x)
+    mean(x, na.rm = TRUE),
+    sd(x, na.rm = TRUE)
   )
+  
 }
+
 
 paper_fmt_len <- function(x) {
+  
   sprintf(
     "%.2f ± %.2f",
-    mean(x),
-    sd(x)
+    mean(x, na.rm = TRUE),
+    sd(x, na.rm = TRUE)
   )
+  
 }
 
+
 # ============================================================
-# Summary table
+# Create summary table
 # ============================================================
 
 make_row <- function(level, d) {
@@ -71,108 +88,110 @@ make_row <- function(level, d) {
   tibble(
     Level = level,
     
-    PPO_s   = paper_fmt(d$PPO$success),
-    PPO_v   = paper_fmt(d$PPO$violation),
-    PPO_mu  = paper_fmt_len(d$PPO$ep_len),
+    PPO_s = paper_fmt(d$PPO$success),
+    PPO_v = paper_fmt(d$PPO$violation),
+    PPO_mu = paper_fmt(d$PPO$ep_len),
     
-    PPOL_s  = paper_fmt(d$PPO_Lagrangian$success),
-    PPOL_v  = paper_fmt(d$PPO_Lagrangian$violation),
-    PPOL_mu = paper_fmt_len(d$PPO_Lagrangian$ep_len),
+    PPOL_s = paper_fmt(d$PPO_Lagrangian$success),
+    PPOL_v = paper_fmt(d$PPO_Lagrangian$violation),
+    PPOL_mu = paper_fmt(d$PPO_Lagrangian$ep_len),
     
-    GENZ_s = if ("GenZ_LTL" %in% names(d))
-      paper_fmt(d$GenZ_LTL$success) else NA_character_,
-    
-    GENZ_v = if ("GenZ_LTL" %in% names(d))
-      paper_fmt(d$GenZ_LTL$violation) else NA_character_,
-    
-    GENZ_mu = if ("GenZ_LTL" %in% names(d))
-      paper_fmt_len(d$GenZ_LTL$ep_len) else NA_character_
+    GENZ_s = paper_fmt(d$GenZ_LTL$success),
+    GENZ_v = paper_fmt(d$GenZ_LTL$violation),
+    GENZ_mu = paper_fmt(d$GenZ_LTL$ep_len)
   )
 }
+
 
 tbl <- bind_rows(
   make_row("Level 0", L0),
   make_row("Level 1", L1)
 )
 
+
+# ============================================================
+# Bold best values per level
+# ============================================================
+
 bold_row_best <- function(row, cols, direction = "max") {
   
-  vals <- sapply(
-    row[cols],
-    function(x) as.numeric(trimws(sub(" ±.*", "", x)))
+  values <- sapply(
+    cols,
+    function(col) {
+      as.numeric(sub(" ±.*", "", row[[col]]))
+    }
   )
   
   best <- if (direction == "max") {
-    max(vals, na.rm = TRUE)
+    max(values, na.rm = TRUE)
   } else {
-    min(vals, na.rm = TRUE)
+    min(values, na.rm = TRUE)
   }
   
-  for (i in seq_along(cols)) {
-    if (!is.na(vals[i]) && vals[i] == best) {
-      row[[cols[i]]] <- paste0(
+  
+  for (col in cols) {
+    
+    value <- as.numeric(
+      sub(" ±.*", "", row[[col]])
+    )
+    
+    if (value == best) {
+      
+      row[[col]] <- paste0(
         "<span style='font-weight:600'>",
-        row[[cols[i]]],
+        row[[col]],
         "</span>"
       )
+      
     }
   }
   
   row
 }
 
+
+tbl <- split(tbl, seq_len(nrow(tbl))) |>
+  lapply(function(row) {
+    
+    row <- bold_row_best(
+      row,
+      c("PPO_s", "PPOL_s", "GENZ_s"),
+      "max"
+    )
+    
+    row <- bold_row_best(
+      row,
+      c("PPO_v", "PPOL_v", "GENZ_v"),
+      "min"
+    )
+    
+    row <- bold_row_best(
+      row,
+      c("PPO_mu", "PPOL_mu", "GENZ_mu"),
+      "min"
+    )
+    
+    row
+    
+  }) |>
+  bind_rows()
+
+
+# ============================================================
+# Make standard deviation smaller
+# ============================================================
+
 small_sd <- function(x) {
   
-  x <- gsub(
+  sub(
     " ± ",
     "<span style='font-size:65%'> ± ",
     x
-  )
+  ) |>
+    paste0("</span>")
   
-  x <- gsub(
-    "$",
-    "</span>",
-    x
-  )
-  
-  x
 }
 
-tbl <- as.data.frame(tbl)
-
-tbl <- t(apply(tbl, 1, function(x) {
-  
-  x <- as.list(x)
-  
-  x <- bold_row_best(
-    x,
-    c("PPO_s", "PPOL_s", "GENZ_s"),
-    "max"
-  )
-  
-  x <- bold_row_best(
-    x,
-    c("PPO_v", "PPOL_v", "GENZ_v"),
-    "min"
-  )
-  
-  x <- bold_row_best(
-    x,
-    c("PPO_mu", "PPOL_mu", "GENZ_mu"),
-    "min"
-  )
-  
-  unlist(x)
-  
-})) |> 
-  as.data.frame(stringsAsFactors = FALSE)
-
-names(tbl) <- c(
-  "Level",
-  "PPO_s", "PPO_v", "PPO_mu",
-  "PPOL_s", "PPOL_v", "PPOL_mu",
-  "GENZ_s", "GENZ_v", "GENZ_mu"
-)
 
 tbl <- tbl |>
   mutate(
@@ -182,17 +201,20 @@ tbl <- tbl |>
     )
   )
 
+
 # ============================================================
-# Table
+# GT table
 # ============================================================
 
 gt_tbl <-
   gt(tbl) |>
+  
   fmt_markdown(
     columns = everything()
   ) |>
   
   cols_label(
+    
     Level = "",
     
     PPO_s = md("&eta;<sub>s</sub> &uarr;"),
@@ -206,6 +228,7 @@ gt_tbl <-
     GENZ_s = md("&eta;<sub>s</sub> &uarr;"),
     GENZ_v = md("&eta;<sub>v</sub> &darr;"),
     GENZ_mu = md("&mu; &darr;")
+    
   ) |>
   
   tab_spanner(
@@ -232,23 +255,25 @@ gt_tbl <-
   ) |>
   
   tab_options(
-    table.font.size = px(22),
     
-    heading.border.bottom.width = px(1),
+    table.font.size = px(22),
     
     table.border.top.width = px(2),
     table.border.bottom.width = px(2),
     
-    table_body.hlines.width = px(1),
+    heading.border.bottom.width = px(1),
     
     column_labels.border.top.width = px(1),
     column_labels.border.bottom.width = px(1),
+    
+    table_body.hlines.width = px(1),
     
     table_body.vlines.width = px(0),
     column_labels.vlines.width = px(0),
     
     data_row.padding = px(12)
   )
+
 
 # ============================================================
 # Export
@@ -262,5 +287,5 @@ gtsave(
   vheight = 700
 )
 
-gt_tbl
 
+gt_tbl
