@@ -24,7 +24,7 @@ DEVICE="${DEVICE:-cuda:0}"
 ENV="${ENV:-PointLTL0MASAR1WC-v0}"
 EVAL_ENV="${EVAL_ENV:-PointLTL0MASAR2WC-v0}"
 NUM_STEPS="${NUM_STEPS:-15000000}"
-NUM_PROCS="${NUM_PROCS:-16}"
+NUM_PROCS="${NUM_PROCS:-24}"
 EVAL_EPISODES="${EVAL_EPISODES:-100}"
 FORMULA="${FORMULA:-((!surface_0 & !surface_1) U all_entrapped) & (F surface_0 & F surface_1)}"
 

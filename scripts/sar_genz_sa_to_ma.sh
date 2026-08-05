@@ -31,7 +31,7 @@ if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
     --seed "$SEED" \
     --device "$DEVICE" \
     --num_steps 15000000 \
-    --num_procs 16 \
+    --num_procs 24 \
     --steps_per_process 4096 \
     --batch_size 2048 \
     --epochs 80 \
