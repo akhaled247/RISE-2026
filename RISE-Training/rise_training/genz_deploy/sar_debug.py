@@ -13,10 +13,7 @@ from envs.sar_features import (
     sar_preprocess_for_deploy,
 )
 from envs.seq_wrapper import (
-    lidar_for_assignments,
-    sar_agent_obs,
     sar_task,
-    walls_lidar_key,
 )
 
 GENZ_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -135,9 +132,25 @@ def _info_goal_met(info: dict[str, Any]) -> bool:
     return False
 
 
-def _fmt_lidar(arr: np.ndarray) -> str:
+def _fmt_feat_slice(arr: np.ndarray) -> str:
     a = np.asarray(arr, dtype=float).reshape(-1)
-    return f"max={a.max():.3f} {np.array2string(a, precision=3, suppress_small=True)}"
+    return f"len={len(a)} max={a.max():.3f} {np.array2string(a, precision=3, suppress_small=True)}"
+
+
+def split_sar_feature_pack(
+    features: np.ndarray,
+    lidar_bins: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Split packed SAR obs into independent | reach | avoid (reach/avoid = last 2×bins)."""
+    f = np.asarray(features, dtype=float).reshape(-1)
+    if lidar_bins <= 0 or f.size < 2 * lidar_bins:
+        raise ValueError(
+            f"Cannot split features shape={f.shape} with lidar_bins={lidar_bins}"
+        )
+    independent = f[: -2 * lidar_bins]
+    reach = f[-2 * lidar_bins : -lidar_bins]
+    avoid = f[-lidar_bins :]
+    return independent, reach, avoid
 
 
 def classify_wall_geom_name(name: str) -> str:
@@ -344,6 +357,7 @@ def print_ma_episode_done_debug(
     strip_walls_avoid_lidar: bool = False,
 ) -> None:
     """Print termination diagnostics when an MA deploy episode ends."""
+    _ = entr_bldg_obs  # wrapper.pre_process_obs_sar uses env.entr_bldg_obs
     task = sar_task(env)
     num_agents = getattr(task, "agent_num", 2)
     agents = [f"agent_{i}" for i in range(num_agents)]
@@ -355,7 +369,8 @@ def print_ma_episode_done_debug(
     # Prefer live wrapper/model flags so debug matches agent features.
     if hasattr(env, "strip_walls_avoid_lidar"):
         strip_walls_avoid_lidar = bool(getattr(env, "strip_walls_avoid_lidar"))
-    avoid_skip = {"walls", "any_walls"} if strip_walls_avoid_lidar else None
+    if hasattr(env, "zone_compat"):
+        zone_compat = bool(getattr(env, "zone_compat"))
 
     header = f"[MA done debug] step={step}" if step is not None else "[MA done debug]"
     goal_met = _info_goal_met(info)
@@ -376,98 +391,34 @@ def print_ma_episode_done_debug(
     if strip_walls_avoid_lidar:
         print("  strip_walls_avoid_lidar: True (walls omitted from avoid *features*)")
 
-    # --- root-cause probes (wall cost vs lidar, blank all_surface reach) ---
-    contacts = collect_gremlin_wall_contacts(task)
-    print(f"  gremlin↔wall contacts now: {len(contacts)}")
-    for c in contacts:
-        print(
-            f"    agent_{c['agent_id']}: {c['gremlin']} ↔ {c['wall']} "
-            f"[{c['wall_class']}]"
-        )
-    if not contacts and wall_violation:
-        print(
-            "    (none live — cost may be first-frame-only / contact already cleared)"
-        )
+    if reach is None and avoid is None:
+        return
+    if not hasattr(env, "pre_process_obs_sar"):
+        print("  features: (skipped — env has no pre_process_obs_sar)")
+        return
 
-    if reach is not None or avoid is not None:
-        lidar_dim = int(task.lidar_conf.num_bins)
-        print(f"  reach set: {reach}")
-        print(f"  avoid set: {avoid}")
-        for agent_idx in range(num_agents):
-            original_obs = sar_agent_obs(env, agent_idx)
-            if isinstance(reach, dict):
-                reach_i = reach.get(agent_idx, frozenset())
-            else:
-                reach_i = reach or frozenset()
-            if isinstance(avoid, dict):
-                avoid_i = avoid.get(agent_idx, frozenset())
-            else:
-                avoid_i = avoid or frozenset()
-            reach_obs = lidar_for_assignments(
-                original_obs,
-                reach_i,
-                lidar_dim,
-                agent_idx=agent_idx,
-                num_agents=num_agents,
-                for_reach=entr_bldg_obs,
-                zone_compat=zone_compat,
-            )
-            avoid_obs = lidar_for_assignments(
-                original_obs,
-                avoid_i,
-                lidar_dim,
-                agent_idx=agent_idx,
-                num_agents=num_agents,
-                zone_compat=zone_compat,
-                skip_props=avoid_skip,
-            )
-            print(f"  agent_{agent_idx} reach_lidar: {_fmt_lidar(reach_obs)}")
-            print(f"  agent_{agent_idx} avoid_lidar: {_fmt_lidar(avoid_obs)}")
-            surf_key = f"surface_casualtys_lidar_{agent_idx}"
-            if surf_key in original_obs:
-                surf_arr = np.asarray(original_obs[surf_key], dtype=float)
-                peak_bin = int(np.argmax(surf_arr)) if surf_arr.size else -1
-                print(
-                    f"  agent_{agent_idx} surface_lidar: "
-                    f"{_fmt_lidar(surf_arr)} peak_bin={peak_bin}"
-                )
-            walls_key = walls_lidar_key(agent_idx)
-            walls_max = None
-            if walls_key in original_obs:
-                walls_arr = np.asarray(original_obs[walls_key], dtype=float)
-                walls_max = float(walls_arr.max())
-                print(
-                    f"  agent_{agent_idx} walls_lidar: "
-                    f"{_fmt_lidar(walls_arr)}"
-                )
-            nearest = nearest_interior_wall_debug(task, agent_idx)
-            if nearest is not None:
-                mismatch = (
-                    walls_max is not None
-                    and abs(walls_max - nearest["expected_lidar"]) > 0.15
-                )
-                print(
-                    f"  agent_{agent_idx} nearest interior wall: "
-                    f"row={nearest['row']} dist={nearest['dist']:.3f} "
-                    f"expected_lidar={nearest['expected_lidar']:.3f} "
-                    f"los={nearest['los']} "
-                    f"walls_lidar_max={walls_max} "
-                    f"{'MISMATCH' if mismatch else 'ok'}"
-                )
-            for row in remaining_surface_debug(task, agent_idx):
-                hit = row.get("first_hit") or {}
-                hit_bits = ""
-                if row.get("los") is False and hit:
-                    hit_bits = (
-                        f" first_hit={hit.get('geom_name')} "
-                        f"[{hit.get('wall_class')}] "
-                        f"hit_dist={hit.get('hit_dist')}"
-                    )
-                print(
-                    f"  agent_{agent_idx} remaining surface_{row['row']}: "
-                    f"dist={row['dist']:.3f} expected_lidar={row['expected_lidar']:.3f} "
-                    f"los={row['los']} sticky={row['sticky']} "
-                    f"last_seen_xy={row['last_seen_xy']} "
-                    f"rescued_live={row['rescued_live']} xy={row['xy']}"
-                    f"{hit_bits}"
-                )
+    lidar_dim = int(task.lidar_conf.num_bins)
+    print(f"  reach set: {reach}")
+    print(f"  avoid set: {avoid}")
+    print(f"  feature pack: independent | reach[{lidar_dim}] | avoid[{lidar_dim}]")
+    for agent_idx in range(num_agents):
+        if isinstance(reach, dict):
+            reach_i = reach.get(agent_idx, frozenset())
+        else:
+            reach_i = reach or frozenset()
+        if isinstance(avoid, dict):
+            avoid_i = avoid.get(agent_idx, frozenset())
+        else:
+            avoid_i = avoid or frozenset()
+        feats = env.pre_process_obs_sar(
+            reach_i,
+            avoid_i,
+            agent_idx=agent_idx,
+            zone_compat=zone_compat,
+            strip_walls_avoid_lidar=strip_walls_avoid_lidar,
+        )
+        independent, reach_feat, avoid_feat = split_sar_feature_pack(feats, lidar_dim)
+        print(f"  agent_{agent_idx} features total={len(np.asarray(feats).reshape(-1))}")
+        print(f"    independent: {_fmt_feat_slice(independent)}")
+        print(f"    reach:       {_fmt_feat_slice(reach_feat)}")
+        print(f"    avoid:       {_fmt_feat_slice(avoid_feat)}")

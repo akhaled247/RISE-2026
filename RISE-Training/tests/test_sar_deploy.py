@@ -99,6 +99,57 @@ def test_ma_agent_cost_walls():
     ) == {"agent_0": 1.0, "agent_1": 0.0}
 
 
+def test_split_sar_feature_pack_48d_zone_compat():
+    from rise_training.genz_deploy.sar_debug import split_sar_feature_pack
+
+    feats = np.arange(48, dtype=np.float32)
+    independent, reach, avoid = split_sar_feature_pack(feats, lidar_bins=16)
+    assert independent.tolist() == list(range(16))
+    assert reach.tolist() == list(range(16, 32))
+    assert avoid.tolist() == list(range(32, 48))
+
+
+def test_split_sar_feature_pack_64d_with_walls():
+    from rise_training.genz_deploy.sar_debug import split_sar_feature_pack
+
+    feats = np.arange(64, dtype=np.float32)
+    independent, reach, avoid = split_sar_feature_pack(feats, lidar_bins=16)
+    assert len(independent) == 32
+    assert reach.tolist() == list(range(32, 48))
+    assert avoid.tolist() == list(range(48, 64))
+
+
+def test_print_ma_episode_done_debug_prints_feature_split(capsys):
+    from rise_training.genz_deploy.sar_debug import print_ma_episode_done_debug
+
+    feats = np.arange(48, dtype=np.float32)
+    env = MagicMock()
+    env.pre_process_obs_sar.return_value = feats
+    env.zone_compat = True
+    env.strip_walls_avoid_lidar = False
+    task = SimpleNamespace(
+        agent_num=1,
+        lidar_conf=SimpleNamespace(num_bins=16),
+        surface_casualtys=SimpleNamespace(rescued=[False, False]),
+        entrapped_casualtys=SimpleNamespace(rescued=[True, True]),
+    )
+    with patch("rise_training.genz_deploy.sar_debug.sar_task", return_value=task):
+        print_ma_episode_done_debug(
+            env,
+            {"success": False, "violation": True, "propositions": ["walls"]},
+            step=3,
+            reach={0: frozenset()},
+            avoid={0: frozenset()},
+            zone_compat=True,
+        )
+    out = capsys.readouterr().out
+    assert "independent:" in out
+    assert "reach:" in out
+    assert "avoid:" in out
+    assert "reach_lidar" not in out
+    assert "avoid_lidar" not in out
+
+
 def test_classify_wall_geom_name():
     from rise_training.genz_deploy.sar_debug import classify_wall_geom_name, expected_pseudo_lidar
 
