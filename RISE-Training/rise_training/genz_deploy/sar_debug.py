@@ -16,7 +16,8 @@ from envs.seq_wrapper import (
     sar_task,
 )
 
-GENZ_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_RISE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+GENZ_ROOT = os.path.join(_RISE_ROOT, "GenZ-LTL")
 RABINIZER_REL = os.path.join("rabinizer4", "bin", "ltl2ldba")
 
 
