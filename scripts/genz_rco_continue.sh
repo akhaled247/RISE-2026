@@ -16,7 +16,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$REPO_ROOT/GenZ-LTL"
+cd "$REPO_ROOT"
 
 NAME="${NAME:?Set NAME to the experiment folder (e.g. GenZ-LTL-RCO-Direct or GenZ-RCO-SAR-s0)}"
 SEED="${SEED:-0}"
@@ -26,7 +26,7 @@ EVAL_ENV="${EVAL_ENV:-PointLTL0MASAR2WC-v0}"
 NUM_STEPS="${NUM_STEPS:-15000000}"
 NUM_PROCS="${NUM_PROCS:-24}"
 EVAL_EPISODES="${EVAL_EPISODES:-100}"
-FORMULA="${FORMULA:-((!surface_0 & !surface_1) U all_entrapped) & (F surface_0 & F surface_1)}"
+FORMULA="${FORMULA:-(!(any_walls | any_surface) U all_entrapped) & (!any_walls U all_surface)}"
 
 # RCO hyperparams (override via env; presets set these in wrapper scripts)
 LR="${LR:-0.0003}"
@@ -40,12 +40,12 @@ DISCOUNT="${DISCOUNT:-0.998}"
 ENTROPY_COEF="${ENTROPY_COEF:-0.003}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
 
-EXP_DIR="experiments/rco/${ENV}/${NAME}/${SEED}"
+EXP_DIR="GenZ-LTL/experiments/rco/${ENV}/${NAME}/${SEED}"
 
-export PYTHONPATH=src
+export PYTHONPATH="${REPO_ROOT}/RISE-Training:${REPO_ROOT}/GenZ-LTL/src:${PYTHONPATH:-}"
 
 # Preflight: Rabinizer + Java (Büchi search during MA eval)
-python -c "from envs.sar_deploy import check_rabinizer; check_rabinizer()"
+python -c "from rise_training.paths import ensure_genz_paths; ensure_genz_paths(); from rise_training.genz_deploy.sar_debug import check_rabinizer; check_rabinizer()"
 
 if [[ "${EVAL_ONLY:-0}" == "1" && ! -f "${EXP_DIR}/status.pth" ]]; then
   echo "ERROR: EVAL_ONLY=1 but no ${EXP_DIR}/status.pth" >&2
@@ -72,18 +72,16 @@ if [[ ! -f "${EXP_DIR}/status.pth" && "${EVAL_ONLY:-0}" != "1" ]]; then
 fi
 
 if [[ "${EVAL_ONLY:-0}" != "1" ]]; then
-  echo "======== GenZ RCO resume ${ENV} name=${NAME} seed=${SEED} ========"
+  echo "======== GenZ RCO async resume ${ENV} name=${NAME} seed=${SEED} ========"
   echo "experiment_dir=${EXP_DIR}"
-  python src/train/train_rco.py \
+  python RISE-Training/train/genz_rco_async.py \
     --name "$NAME" \
     --env "$ENV" \
     --seed "$SEED" \
     --num_steps "$NUM_STEPS" \
     --num_procs "$NUM_PROCS" \
     --device "$DEVICE" \
-    --vec_backend safety_async \
     --sar_env_backend specrl \
-    --fast_action_bridge \
     --model_config "$ENV" \
     --curriculum "$ENV" \
     --epochs "$EPOCHS" \
@@ -104,7 +102,7 @@ if [[ "${TRAIN_ONLY:-0}" == "1" ]]; then
 fi
 
 echo "======== GenZ MA deploy eval ${EVAL_ENV} exp=${NAME} seed=${SEED} ========"
-python src/evaluation/simulate_ma_sar.py \
+python RISE-Training/eval_genz_ma_sar.py \
   --exp "$NAME" \
   --seed "$SEED" \
   --formula "$FORMULA" \

@@ -36,13 +36,14 @@ case "$MODE" in
       --num_episodes "$EPISODES"
     ;;
   ma)
-    python src/evaluation/simulate_ma_ppo.py \
+    export PYTHONPATH="${REPO_ROOT}/RISE-Training:${REPO_ROOT}/GenZ-LTL/src:${PYTHONPATH:-}"
+    python "$REPO_ROOT/RISE-Training/eval_genz_ma_ppo.py" \
       --train_env "$TRAIN_ENV" \
       --eval_env PointLTL0MASAR2WC-v0 \
       --exp "$NAME" \
       --seed "$SEED" \
       --formula "$FORMULA_MA" \
-      --num_episodes "$EPISODES" \
+      --num_episodes "$EPISODES"
     ;;
   *)
     echo "MODE must be sa or ma (got $MODE)" >&2
