@@ -7,7 +7,7 @@ Aligned with SpecRLBench paper §5.3: **train single-agent → deploy shared pol
 | Step | GenZ-LTL | SafePO |
 |------|----------|--------|
 | Train | `PointLTL0MASAR1WC-v0`, RCO + LTL curriculum | `PointLTL0MASAR1WC-v0`, PPO / PPO-Lag |
-| Eval | `PointLTL0MASAR2WC-v0`, `simulate_ma_sar.py` + Büchi | `PointLTL0MASAR2WC-v0`, `eval_safepo_sa_on_ma_env.py` |
+| Eval | `PointLTL0MASAR2WC-v0`, `RISE-Training/eval_genz_ma_sar.py` + Büchi | `PointLTL0MASAR2WC-v0`, `eval_safepo_sa_on_ma_env.py` |
 
 Team episode end on MA deploy: **`any(terminated/truncated)`**.
 
@@ -52,13 +52,24 @@ Writes `eval_summary_ma_deploy.json` beside the run dir.
 
 ## GenZ-LTL
 
-```bash
-PYTHONPATH=src/ python src/train/train_rco.py \
-  --env PointLTL0MASAR1WC-v0 --curriculum PointLTL0MASAR1WC-v0 \
-  --model_config zones_safety --name GenZ-SAR --seed 0
+Train (SyncEnv, inside GenZ) or async (RISE):
 
-PYTHONPATH=src/ python src/evaluation/simulate_ma_sar.py --exp GenZ-SAR --seed 0
+```bash
+# Slow / default GenZ path
+cd GenZ-LTL
+PYTHONPATH=src/ python run_sar.py --script train_rco --name GenZ-SAR --env PointLTL0MASAR1WC-v0 \
+  --curriculum PointLTL0MASAR1WC-v0 --model_config PointLTL0MASAR1WC-v0 --seed 0 --num_procs 1
+
+# Fast async path (RISE-owned vec)
+python RISE-Training/train/genz_rco_async.py \
+  --env PointLTL0MASAR1WC-v0 --curriculum PointLTL0MASAR1WC-v0 \
+  --model_config PointLTL0MASAR1WC-v0 --name GenZ-SAR-s0 --seed 0 --num_procs 24
+
+# MA deploy eval (RISE-owned)
+python RISE-Training/eval_genz_ma_sar.py --exp GenZ-SAR-s0 --seed 0
 ```
+
+Or: `./scripts/sar_genz_sa_to_ma.sh`
 
 ## Optional MARL baseline (not paper protocol)
 

@@ -11,6 +11,7 @@ _SPECRL_ROOT = _RISE_ROOT / "SpecRLBench"
 _SG_ROOT = _SPECRL_ROOT / "specbench" / "envs" / "zones" / "safety-gymnasium"
 _SAFEPO_ROOT = _RISE_ROOT / "Safe-Policy-Optimization"
 _TRAINING_ROOT = _RISE_ROOT / "RISE-Training"
+_GENZ_SRC = _RISE_ROOT / "GenZ-LTL" / "src"
 
 
 def specrl_path_roots() -> tuple[str, str, str]:
@@ -79,4 +80,25 @@ def ensure_specrlbench_paths() -> None:
             parts.insert(0, p)
             changed = True
     if changed:
+        os.environ["PYTHONPATH"] = os.pathsep.join(parts)
+
+
+def genz_src_root() -> str:
+    """Absolute GenZ-LTL ``src`` root."""
+    return str(_GENZ_SRC)
+
+
+def ensure_genz_paths() -> None:
+    """Prepend GenZ-LTL/src and SpecRLBench (+ vendored safety-gymnasium, SafePO).
+
+    Call before importing GenZ train/deploy modules or running GenZ MA eval CLIs.
+    """
+    ensure_specrlbench_paths()
+    genz_src = str(_GENZ_SRC)
+    _prepend_sys_path(genz_src)
+
+    cur = os.environ.get("PYTHONPATH", "")
+    parts = [x for x in cur.split(os.pathsep) if x]
+    if genz_src not in parts:
+        parts.insert(0, genz_src)
         os.environ["PYTHONPATH"] = os.pathsep.join(parts)

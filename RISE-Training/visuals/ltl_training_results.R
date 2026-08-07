@@ -46,9 +46,9 @@ L1 <- list(
   ),
   
   GenZ_LTL = list(
-  success = c(0.020, 0.050, 0.100, 0.010, 0.030),
-  violation = c(0.910, 0.910, 0.870, 0.950, 0.900),
-  ep_len = c(542.500, 652.600, 620.100, 716.000, 664.667)
+  success = c(0.120, 0.200, 0.030, 0.190, 0.120),
+  violation = c(0.720, 0.580, 0.580, 0.470, 0.610),
+  ep_len = c(1000.833, 1167.300, 1381.667, 1008.895, 856.583)
   )
 )
 
@@ -115,38 +115,37 @@ tbl <- bind_rows(
 # ============================================================
 
 bold_row_best <- function(row, cols, direction = "max") {
-  
-  values <- sapply(
+
+  cols <- cols[cols %in% names(row)]
+  if (length(cols) == 0) {
+    return(row)
+  }
+
+  values <- vapply(
     cols,
     function(col) {
-      as.numeric(sub(" ±.*", "", row[[col]]))
-    }
+      as.numeric(sub(" ±.*", "", row[[col]][[1]]))
+    },
+    numeric(1)
   )
-  
+
   best <- if (direction == "max") {
     max(values, na.rm = TRUE)
   } else {
     min(values, na.rm = TRUE)
   }
-  
-  
+
   for (col in cols) {
-    
-    value <- as.numeric(
-      sub(" ±.*", "", row[[col]])
-    )
-    
-    if (value == best) {
-      
+    value <- as.numeric(sub(" ±.*", "", row[[col]][[1]]))
+    if (!is.na(value) && value == best) {
       row[[col]] <- paste0(
         "<span style='font-weight:600'>",
-        row[[col]],
+        row[[col]][[1]],
         "</span>"
       )
-      
     }
   }
-  
+
   row
 }
 
