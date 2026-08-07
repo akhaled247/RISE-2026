@@ -46,9 +46,9 @@ L1 <- list(
   ),
   
   GenZ_LTL = list(
-  success = c(0.080, 0.100, 0.170, 0.130, 0.240),
-  violation = c(0.910, 0.900, 0.820, 0.850, 0.750),
-  ep_len = c(633.250, 786.600, 833.059, 785.077, 794.458)
+  success = c(0.120, 0.200, 0.030, 0.190, 0.120),
+  violation = c(0.720, 0.580, 0.580, 0.470, 0.610),
+  ep_len = c(1000.833, 1167.300, 1381.667, 1008.895, 856.583)
   )
 )
 
@@ -97,7 +97,7 @@ make_row <- function(level, d) {
     PPOL_v  = paper_fmt_violation(d$PPO_Lagrangian$violation),
     PPOL_mu = paper_fmt_len(d$PPO_Lagrangian$ep_len),
     
-    # GENZ_s  = paper_fmt_success(d$GenZ_LTL$success),
+    GENZ_s  = paper_fmt_success(d$GenZ_LTL$success),
     GENZ_v  = paper_fmt_violation(d$GenZ_LTL$violation),
     GENZ_mu = paper_fmt_len(d$GenZ_LTL$ep_len)
   )
@@ -115,38 +115,37 @@ tbl <- bind_rows(
 # ============================================================
 
 bold_row_best <- function(row, cols, direction = "max") {
-  
-  values <- sapply(
+
+  cols <- cols[cols %in% names(row)]
+  if (length(cols) == 0) {
+    return(row)
+  }
+
+  values <- vapply(
     cols,
     function(col) {
-      as.numeric(sub(" ±.*", "", row[[col]]))
-    }
+      as.numeric(sub(" ±.*", "", row[[col]][[1]]))
+    },
+    numeric(1)
   )
-  
+
   best <- if (direction == "max") {
     max(values, na.rm = TRUE)
   } else {
     min(values, na.rm = TRUE)
   }
-  
-  
+
   for (col in cols) {
-    
-    value <- as.numeric(
-      sub(" ±.*", "", row[[col]])
-    )
-    
-    if (value == best) {
-      
+    value <- as.numeric(sub(" ±.*", "", row[[col]][[1]]))
+    if (!is.na(value) && value == best) {
       row[[col]] <- paste0(
         "<span style='font-weight:600'>",
-        row[[col]],
+        row[[col]][[1]],
         "</span>"
       )
-      
     }
   }
-  
+
   row
 }
 
