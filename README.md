@@ -1,8 +1,3 @@
-# RISE-2026
-
-James Peilun Li's Repository: [https://github.com/BU-DEPEND-Lab/RISE-2026/tree/jamespeilunli](https://github.com/BU-DEPEND-Lab/RISE-2026/tree/jamespeilunli)
-
-Abdullah Khaled's Repository: [https://github.com/BU-DEPEND-Lab/RISE-2026/tree/abdullahkhaled](https://github.com/BU-DEPEND-Lab/RISE-2026/tree/abdullahkhaled)
 # RISE 2026: Search and Rescue Benchmark for RL Algorithms
 
 This repository is a workspace that hopes to evaluate various RL algorithms, and specifically specification-guided RL algorithms, using Search and Rescue (SAR) environments. 
